@@ -30,9 +30,10 @@ type UploadPanelProps = {
   onAnalyze: (file: File) => Promise<void>;
   onDemo: () => void;
   loading: boolean;
+  demoLoading?: boolean;
 };
 
-export function UploadPanel({ onAnalyze, onDemo, loading }: UploadPanelProps) {
+export function UploadPanel({ onAnalyze, onDemo, loading, demoLoading = false }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const form = useForm<UploadForm>({ resolver: zodResolver(uploadSchema) });
@@ -48,8 +49,8 @@ export function UploadPanel({ onAnalyze, onDemo, loading }: UploadPanelProps) {
   }
 
   return (
-    <Card className="glass-panel overflow-hidden border-slate-200 shadow-glow">
-      <form onSubmit={form.handleSubmit(submit)} className="space-y-5 p-6">
+    <Card className="glass-panel overflow-hidden border-slate-200 shadow-lg">
+      <form onSubmit={form.handleSubmit(submit)} className="space-y-3 p-4">
         <div
           role="button"
           tabIndex={0}
@@ -68,18 +69,17 @@ export function UploadPanel({ onAnalyze, onDemo, loading }: UploadPanelProps) {
             setFile(event.dataTransfer.files?.[0]);
           }}
           className={cn(
-            "group flex min-h-72 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white/70 p-8 text-center transition",
+            "group flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-center transition",
             isDragging && "border-slate-950 bg-slate-50",
-            loading && "pointer-events-none opacity-70"
+            (loading || demoLoading) && "pointer-events-none opacity-70"
           )}
         >
-          <div className="mb-5 rounded-2xl bg-slate-950 p-4 text-white shadow-lg shadow-slate-950/20">
-            <UploadCloud className="h-8 w-8" />
+          <div className="mb-3 rounded-2xl bg-slate-950 p-3 text-white shadow-lg shadow-slate-950/20">
+            <UploadCloud className="h-6 w-6" />
           </div>
-          <h3 className="text-xl font-semibold text-slate-950">Upload contract for AI risk review</h3>
-          <p className="mt-2 max-w-md text-sm leading-6 text-slate-600">
-            Drag and drop a PDF or DOCX. The system extracts text, chunks long documents, validates JSON output, and
-            applies deterministic decision logic.
+          <h3 className="text-lg font-semibold text-slate-950">Upload agreement for AI risk review</h3>
+          <p className="mt-1 max-w-md text-sm leading-5 text-slate-600">
+            Drop a PDF or DOCX to generate a structured risk review, clause-level insights, and a decision recommendation
           </p>
           <Input
             ref={inputRef}
@@ -89,7 +89,7 @@ export function UploadPanel({ onAnalyze, onDemo, loading }: UploadPanelProps) {
             onChange={(event) => setFile(event.target.files?.[0])}
           />
           {selectedFile ? (
-            <div className="mt-6 flex items-center gap-2 rounded-full border bg-white px-4 py-2 text-sm font-medium text-slate-700">
+            <div className="mt-3 flex items-center gap-2 rounded-full border bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
               <FileText className="h-4 w-4" />
               {selectedFile.name}
             </div>
@@ -102,12 +102,12 @@ export function UploadPanel({ onAnalyze, onDemo, loading }: UploadPanelProps) {
           </p>
         ) : null}
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button type="submit" className="w-full sm:w-auto" disabled={loading}>
-            {loading ? "Analyzing..." : "Analyze Contract"}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="submit" className="w-full sm:flex-1" disabled={loading || demoLoading}>
+            {loading ? "Analyzing..." : "Analyze Risks"}
           </Button>
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onDemo} disabled={loading}>
-            Try Demo Contract
+          <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={onDemo} disabled={loading || demoLoading}>
+            {demoLoading ? "Reviewing demo..." : "Try Demo Contract"}
           </Button>
         </div>
       </form>
