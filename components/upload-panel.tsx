@@ -31,9 +31,16 @@ type UploadPanelProps = {
   onDemo: () => void;
   loading: boolean;
   demoLoading?: boolean;
+  demoHref?: string;
 };
 
-export function UploadPanel({ onAnalyze, onDemo, loading, demoLoading = false }: UploadPanelProps) {
+export function UploadPanel({
+  onAnalyze,
+  onDemo,
+  loading,
+  demoLoading = false,
+  demoHref = "/sample-contract.pdf"
+}: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const form = useForm<UploadForm>({ resolver: zodResolver(uploadSchema) });
@@ -49,8 +56,8 @@ export function UploadPanel({ onAnalyze, onDemo, loading, demoLoading = false }:
   }
 
   return (
-    <Card className="glass-panel overflow-hidden border-slate-200 shadow-lg">
-      <form onSubmit={form.handleSubmit(submit)} className="space-y-3 p-4">
+    <Card className="glass-panel overflow-hidden border-slate-200 shadow-md">
+      <form onSubmit={form.handleSubmit(submit)} className="space-y-3 p-3.5">
         <div
           role="button"
           tabIndex={0}
@@ -69,17 +76,17 @@ export function UploadPanel({ onAnalyze, onDemo, loading, demoLoading = false }:
             setFile(event.dataTransfer.files?.[0]);
           }}
           className={cn(
-            "group flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-center transition",
-            isDragging && "border-slate-950 bg-slate-50",
+            "group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4 text-center transition",
+            isDragging && "border-slate-900 bg-blue-50/60",
             (loading || demoLoading) && "pointer-events-none opacity-70"
           )}
         >
-          <div className="mb-3 rounded-2xl bg-slate-950 p-3 text-white shadow-lg shadow-slate-950/20">
+          <div className="mb-3 rounded-2xl bg-slate-900 p-3 text-white shadow-lg shadow-slate-900/15">
             <UploadCloud className="h-6 w-6" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-950">Upload agreement for AI risk review</h3>
+          <h3 className="text-lg font-semibold text-slate-950">Upload document for AI risk review</h3>
           <p className="mt-1 max-w-md text-sm leading-5 text-slate-600">
-            Drop a PDF or DOCX to generate a structured risk review, clause-level insights, and a decision recommendation
+            Drop a PDF or DOCX to generate a structured risk review, clause-level insights, and a decision recommendation.
           </p>
           <Input
             ref={inputRef}
@@ -110,6 +117,15 @@ export function UploadPanel({ onAnalyze, onDemo, loading, demoLoading = false }:
             {demoLoading ? "Reviewing demo..." : "Try Demo Contract"}
           </Button>
         </div>
+
+        <a
+          href={demoHref}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-block text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline"
+        >
+          View demo contract
+        </a>
       </form>
     </Card>
   );
