@@ -113,19 +113,27 @@ export function UploadPanel({
           <Button type="submit" className="w-full sm:flex-1" disabled={loading || demoLoading}>
             {loading ? "Analyzing..." : "Analyze Risks"}
           </Button>
-          <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={onDemo} disabled={loading || demoLoading}>
-            {demoLoading ? "Reviewing demo..." : "Try Demo Contract"}
-          </Button>
+          <div className="w-full sm:flex-1">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={onDemo}
+              disabled={loading || demoLoading}
+            >
+              {demoLoading ? "Reviewing demo..." : "Try Demo"}
+            </Button>
+            <a
+              href={demoHref}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline"
+            >
+              <FileText className="mr-1.5 h-3.5 w-3.5" />
+              View demo doc
+            </a>
+          </div>
         </div>
-
-        <a
-          href={demoHref}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-block text-sm font-medium text-red-600 transition hover:text-red-700 hover:underline"
-        >
-          View demo contract
-        </a>
       </form>
     </Card>
   );

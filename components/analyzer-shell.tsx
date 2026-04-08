@@ -62,6 +62,8 @@ export function AnalyzerShell() {
               text="Identify liability, payment ambiguity, and more."
             />
           </div>
+
+          <RiskPromptCard />
         </div>
 
         <div className="space-y-3">
@@ -112,6 +114,33 @@ function BenefitCard({ icon, title, text }: { icon: ReactNode; title: string; te
           <h2 className="text-sm font-medium text-slate-950">{title}</h2>
           <p className="mt-1 text-sm leading-5 text-slate-600">{text}</p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RiskPromptCard() {
+  const bullets = [
+    "Risks hidden in language that appears standard",
+    "Critical clauses overlooked under time constraints",
+    "Reliance on individual expertise instead of structured analysis"
+  ];
+
+  return (
+    <Card className="border-blue-100 bg-blue-50/50 shadow-sm">
+      <CardContent className="p-3.5">
+        <h2 className="text-sm font-semibold text-slate-950">Most contracts hide risks like this</h2>
+        <div className="mt-2 space-y-1.5">
+          {bullets.map((bullet) => (
+            <div key={bullet} className="flex gap-2 text-sm leading-5 text-slate-600">
+              <span className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+              <span>{bullet}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2.5 text-sm font-medium leading-5 text-slate-800">
+          Think your contract is safe? Upload it and find out in seconds.
+        </p>
       </CardContent>
     </Card>
   );
