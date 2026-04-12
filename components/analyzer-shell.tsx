@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { useRouter } from "next/navigation";
+import { startTransition, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Gauge,
@@ -8,21 +9,37 @@ import {
   ShieldAlert,
   WandSparkles
 } from "lucide-react";
-import { AnalysisDashboard } from "@/components/analysis-dashboard";
-import { ClauseDeepDive } from "@/components/clause-deep-dive";
-import { ReportPreview } from "@/components/report-preview";
-import { RiskTable } from "@/components/risk-table";
 import { UploadPanel } from "@/components/upload-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { useContractAnalysis } from "@/hooks/use-contract-analysis";
+import { writeAnalysisSession } from "@/lib/analysis-session";
 
 const demoContractHref = "/sample-contract.pdf";
 
 export function AnalyzerShell() {
-  const { analysis, selectedRisk, setSelectedRisk, loading, error, riskSignal, analyzeFile, loadDemo } =
-    useContractAnalysis();
+  const { analysis, loading, error, sourceLabel, analyzeFile, loadDemo } = useContractAnalysis();
+  const router = useRouter();
   const [demoLoading, setDemoLoading] = useState(false);
+  const redirectedAnalysisKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!analysis) return;
+
+    const analysisKey = `${analysis.contractTitle}:${analysis.riskSummary.total}:${sourceLabel}`;
+    if (redirectedAnalysisKey.current === analysisKey) return;
+
+    redirectedAnalysisKey.current = analysisKey;
+    writeAnalysisSession({
+      analysis,
+      sourceLabel,
+      savedAt: new Date().toISOString()
+    });
+
+    startTransition(() => {
+      router.push("/analysis");
+    });
+  }, [analysis, router, sourceLabel]);
 
   function runDemoReview() {
     setDemoLoading(true);
@@ -84,21 +101,6 @@ export function AnalyzerShell() {
           ) : null}
         </div>
       </section>
-
-      {analysis ? (
-        <section className="mx-auto max-w-7xl space-y-5 px-5 py-5">
-          <div className="rounded-3xl border bg-white p-4 shadow-sm">
-            <div className="text-sm font-semibold text-slate-950">AI review summary</div>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{riskSignal}</p>
-          </div>
-          <AnalysisDashboard analysis={analysis} />
-          <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-            <RiskTable analysis={analysis} selectedRiskId={selectedRisk?.id} onSelectRisk={setSelectedRisk} />
-            <ClauseDeepDive risk={selectedRisk} />
-          </div>
-          <ReportPreview analysis={analysis} />
-        </section>
-      ) : null}
     </main>
   );
 }
@@ -120,29 +122,27 @@ function BenefitCard({ icon, title, text }: { icon: ReactNode; title: string; te
 }
 
 function RiskPromptCard() {
-  const bullets = [
-    "Risks hidden in language that appears standard",
-    "Critical clauses overlooked under time constraints",
-    "Reliance on individual expertise instead of structured analysis"
+  const problemPoints = [
+    "Standard-looking clauses with hidden exposure",
+    "Critical terms missed under time pressure",
+    "Decisions driven without structured analysis"
   ];
 
   return (
-    <Card className="border-blue-100 bg-blue-50/50 shadow-sm">
-      <CardContent className="p-3.5">
-        <h2 className="text-sm font-semibold text-slate-950">Most contracts hide risks like this</h2>
-        <div className="mt-2 space-y-1.5">
-          {bullets.map((bullet) => (
-            <div key={bullet} className="flex gap-2 text-sm leading-5 text-slate-600">
-              <span className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
-              <span>{bullet}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-2.5 text-sm font-medium leading-5 text-slate-800">
-          Think your contract is safe? Upload it and find out in seconds.
+    <section className="py-2">
+      <h2 className="text-base font-semibold tracking-tight text-slate-950">Hidden risks most teams miss</h2>
+      <ul className="mt-3 list-disc space-y-2.5 pl-5 text-sm leading-6 text-slate-600">
+        {problemPoints.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
+      <div className="mt-10">
+        <p className="text-base font-semibold leading-6 text-slate-900">
+          How many of these risks are hiding in your document?
         </p>
-      </CardContent>
-    </Card>
+        <p className="mt-1 text-sm font-normal leading-5 text-slate-500">Find out in seconds.</p>
+      </div>
+    </section>
   );
 }
 

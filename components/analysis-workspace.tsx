@@ -1,0 +1,679 @@
+"use client";
+
+import Link from "next/link";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  ChevronRight,
+  FileSearch,
+  Filter,
+  LayoutPanelLeft,
+  Search,
+  ShieldCheck,
+  TriangleAlert
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { RISK_CATEGORIES, SEVERITIES, decisionStyles, severityRank, severityStyles } from "@/constants/risk";
+import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
+import { buildClauseAction } from "@/lib/reporting/actions";
+import { downloadReportPdf } from "@/lib/reporting/pdf";
+import { cn, percent, truncate } from "@/lib/utils";
+import type { ContractAnalysis, RiskCategory, Severity } from "@/types/contract";
+
+type SortKey = "severity" | "confidence" | "category";
+type ReviewLens = "safer" | "simplify" | "hidden" | "standard";
+
+const sortLabels: Record<SortKey, string> = {
+  severity: "Severity",
+  confidence: "Confidence",
+  category: "Category"
+};
+
+const reviewLenses: { key: ReviewLens; label: string }[] = [
+  { key: "safer", label: "Safer wording" },
+  { key: "simplify", label: "Simplify" },
+  { key: "hidden", label: "Hidden risk" },
+  { key: "standard", label: "Standard position" }
+];
+
+export function AnalysisWorkspace() {
+  const [session, setSession] = useState<StoredAnalysisSession | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [search, setSearch] = useState("");
+  const [severity, setSeverity] = useState<Severity | "All">("All");
+  const [category, setCategory] = useState<RiskCategory | "All">("All");
+  const [sortKey, setSortKey] = useState<SortKey>("severity");
+  const [selectedRiskId, setSelectedRiskId] = useState("");
+  const [reviewLens, setReviewLens] = useState<ReviewLens>("safer");
+  const [draftText, setDraftText] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => {
+    const storedSession = readAnalysisSession();
+    setSession(storedSession);
+    setLoaded(true);
+
+    if (storedSession) {
+      const initialRisk = getPriorityRisk(storedSession.analysis);
+      setSelectedRiskId(initialRisk?.id ?? "");
+    }
+  }, []);
+
+  const analysis = session?.analysis;
+
+  const selectedRisk = useMemo(() => {
+    if (!analysis) return undefined;
+    return analysis.risks.find((risk) => risk.id === selectedRiskId);
+  }, [analysis, selectedRiskId]);
+
+  const filteredRisks = useMemo(() => {
+    if (!analysis) return [];
+
+    const query = deferredSearch.trim().toLowerCase();
+
+    return [...analysis.risks]
+      .filter((risk) => severity === "All" || risk.severity === severity)
+      .filter((risk) => category === "All" || risk.category === category)
+      .filter((risk) => {
+        if (!query) return true;
+
+        return [risk.title, risk.clauseRef, risk.highlightedText, risk.whyRisky, risk.impactIfIgnored]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      })
+      .sort((a, b) => {
+        if (sortKey === "severity") {
+          return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+        }
+
+        if (sortKey === "confidence") {
+          return b.confidence - a.confidence || severityRank[b.severity] - severityRank[a.severity];
+        }
+
+        return a.category.localeCompare(b.category) || severityRank[b.severity] - severityRank[a.severity];
+      });
+  }, [analysis, category, deferredSearch, severity, sortKey]);
+
+  const categoryBreakdown = useMemo(() => {
+    if (!analysis) return [];
+
+    return Object.entries(analysis.riskSummary.byCategory)
+      .map(([name, count]) => ({ name: name as RiskCategory, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [analysis]);
+
+  useEffect(() => {
+    if (!analysis || !analysis.risks.length) return;
+
+    const currentSelectionExists = analysis.risks.some((risk) => risk.id === selectedRiskId);
+    if (!currentSelectionExists) {
+      setSelectedRiskId(getPriorityRisk(analysis)?.id ?? analysis.risks[0].id);
+      return;
+    }
+
+    const currentSelectionVisible = filteredRisks.some((risk) => risk.id === selectedRiskId);
+    if (!currentSelectionVisible && filteredRisks.length > 0) {
+      setSelectedRiskId(filteredRisks[0].id);
+    }
+  }, [analysis, filteredRisks, selectedRiskId]);
+
+  useEffect(() => {
+    setReviewLens("safer");
+    setDraftText(selectedRisk?.suggestedImprovement ?? "");
+  }, [selectedRisk?.id, selectedRisk?.suggestedImprovement]);
+
+  if (!loaded) {
+    return (
+      <main className="min-h-screen px-5 py-10">
+        <div className="mx-auto max-w-7xl">
+          <Card className="border-slate-200 bg-white/90">
+            <CardContent className="p-8 text-sm text-slate-500">Loading analysis workspace...</CardContent>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  if (!session || !analysis) {
+    return (
+      <main className="min-h-screen px-5 py-10">
+        <div className="mx-auto max-w-4xl">
+          <Card className="border-slate-200 bg-white/95 shadow-sm">
+            <CardContent className="space-y-6 p-8">
+              <Badge className="border-slate-200 bg-slate-50 text-slate-700">No active analysis</Badge>
+              <div className="space-y-2">
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Open a contract review first</h1>
+                <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                  The analysis workspace is a dedicated output screen. Run a new review from the homepage to populate it.
+                </p>
+              </div>
+              <Link
+                href="/"
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Return to homepage
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  const reviewedAt = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(session.savedAt));
+
+  const documentName = getDocumentName(session.sourceLabel);
+  const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
+
+  return (
+    <main className="min-h-screen">
+      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-5 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-[1.6rem] font-semibold tracking-tight text-slate-950">Risk Analysis Results</h1>
+          </div>
+
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
+            <div className="min-w-0 max-w-full lg:max-w-[22rem]">
+              <p className="truncate text-sm font-medium text-slate-500" title={documentName}>
+                {documentName}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} className="h-8.5 px-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
+                Preview
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => downloadReportPdf(analysis)}
+                className="h-8.5 border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-100"
+              >
+                Download
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
+                onClick={() => setIsSubmitted(true)}
+                disabled={isSubmitted}
+              >
+                {isSubmitted ? "Submitted" : "Submit"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl space-y-5 px-5 py-5">
+        <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+          <Card className="border-slate-200 bg-white/95 shadow-sm">
+            <CardContent className="space-y-5 p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Executive summary</p>
+                  <p className="max-w-3xl text-sm leading-7 text-slate-700">{analysis.executiveSummary}</p>
+                </div>
+                <div className="min-w-fit rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Reviewed</div>
+                  <div className="mt-2 font-medium text-slate-950">{reviewedAt}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Overall risk" value={analysis.overallRiskLevel} badgeClass={severityStyles[analysis.overallRiskLevel]} />
+                <MetricCard
+                  label="Recommended action"
+                  value={analysis.decisionRecommendation}
+                  badgeClass={decisionStyles[analysis.decisionRecommendation]}
+                />
+                <MetricCard label="High severity findings" value={String(analysis.riskSummary.high)} detail="Items needing immediate review" />
+                <MetricCard label="Total findings" value={String(analysis.riskSummary.total)} detail="Structured clause-level issues" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 bg-slate-950 text-white shadow-sm">
+            <CardContent className="space-y-5 p-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Decision support</p>
+                <h2 className="mt-2 text-xl font-semibold">Why this recommendation stands</h2>
+                <p className="mt-3 text-sm leading-7 text-slate-300">{analysis.decisionRationale}</p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <ShieldCheck className="h-4 w-4 text-emerald-300" />
+                  Next actions
+                </div>
+                <div className="mt-3 space-y-3">
+                  {analysis.nextActions.map((action, index) => (
+                    <div key={action} className="flex gap-3 text-sm leading-6 text-slate-200">
+                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
+                        {index + 1}
+                      </span>
+                      <span>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
+          <Card className="border-slate-200 bg-white/95 shadow-sm">
+            <CardContent className="space-y-4 p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Risk register</p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Explore findings</h2>
+                  <p className="mt-1 text-sm text-slate-600">{filteredRisks.length} results in current view</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2 text-slate-500">
+                  <LayoutPanelLeft className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search clause, title, or rationale"
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SelectField
+                  label="Severity"
+                  value={severity}
+                  onChange={(value) => setSeverity(value as Severity | "All")}
+                  options={["All", ...SEVERITIES]}
+                />
+                <SelectField
+                  label="Category"
+                  value={category}
+                  onChange={(value) => setCategory(value as RiskCategory | "All")}
+                  options={["All", ...RISK_CATEGORIES]}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4" />
+                  Sort by
+                </div>
+                <select
+                  value={sortKey}
+                  onChange={(event) => setSortKey(event.target.value as SortKey)}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 outline-none"
+                >
+                  {Object.entries(sortLabels).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                {filteredRisks.length ? (
+                  filteredRisks.map((risk) => (
+                    <button
+                      key={risk.id}
+                      type="button"
+                      onClick={() => setSelectedRiskId(risk.id)}
+                      className={cn(
+                        "w-full rounded-2xl border px-4 py-4 text-left transition",
+                        selectedRiskId === risk.id
+                          ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className={cn("border", selectedRiskId === risk.id ? "border-white/20 bg-white/10 text-white" : severityStyles[risk.severity])}>
+                              {risk.severity}
+                            </Badge>
+                            <Badge
+                              className={cn(
+                                "border",
+                                selectedRiskId === risk.id
+                                  ? "border-white/20 bg-white/10 text-white"
+                                  : "border-slate-200 bg-slate-50 text-slate-700"
+                              )}
+                            >
+                              {risk.category}
+                            </Badge>
+                            <span className={cn("text-xs", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-500")}>
+                              {risk.clauseRef}
+                            </span>
+                          </div>
+                          <div>
+                            <div className={cn("text-sm font-semibold", selectedRiskId === risk.id ? "text-white" : "text-slate-950")}>
+                              {risk.title}
+                            </div>
+                            <p className={cn("mt-1 text-sm leading-6", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-600")}>
+                              {truncate(risk.whyRisky, 120)}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={cn("mt-1 h-4 w-4 shrink-0", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-400")} />
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                    <p className="text-sm font-medium text-slate-700">No findings match the current filters.</p>
+                    <p className="mt-1 text-sm text-slate-500">Broaden the search or reset severity and category filters.</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 bg-white/95 shadow-sm">
+            <CardContent className="space-y-5 p-6">
+              {selectedRisk ? (
+                <>
+                  <div className="flex flex-col gap-4 border-b border-slate-200 pb-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={severityStyles[selectedRisk.severity]}>{selectedRisk.severity}</Badge>
+                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">{selectedRisk.category}</Badge>
+                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">{selectedRisk.mitigability} mitigability</Badge>
+                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">
+                        {Math.round(selectedRisk.confidence * 100)}% confidence
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Clause review</p>
+                      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{selectedRisk.title}</h2>
+                      <p className="mt-1 text-sm text-slate-600">{selectedRisk.clauseRef}</p>
+                    </div>
+                  </div>
+
+                  <WorkspacePanel
+                    title="Flagged language"
+                    description="The excerpt driving the current risk finding."
+                    tone="alert"
+                  >
+                    {selectedRisk.highlightedText}
+                  </WorkspacePanel>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <WorkspacePanel title="Why this matters" description="Negotiation and legal posture">
+                      {selectedRisk.whyRisky}
+                    </WorkspacePanel>
+                    <WorkspacePanel title="Impact if accepted" description="Operational or commercial downside">
+                      {selectedRisk.impactIfIgnored}
+                    </WorkspacePanel>
+                  </div>
+
+                  <WorkspacePanel title="Full clause text" description="Source language for reviewer validation">
+                    {selectedRisk.clauseText}
+                  </WorkspacePanel>
+
+                  <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Review lens</p>
+                      <h3 className="mt-2 text-lg font-semibold text-slate-950">Pressure-test the clause</h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {reviewLenses.map((lens) => (
+                        <button
+                          key={lens.key}
+                          type="button"
+                          onClick={() => setReviewLens(lens.key)}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-sm font-medium transition",
+                            reviewLens === lens.key
+                              ? "border-slate-950 bg-slate-950 text-white"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          )}
+                        >
+                          {lens.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700">
+                      {buildClauseAction(reviewLens, selectedRisk)}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Draft safer position</p>
+                        <h3 className="mt-1 text-lg font-semibold text-slate-950">Editable fallback language</h3>
+                      </div>
+                      <Button type="button" variant="secondary" size="sm" onClick={() => setDraftText(selectedRisk.suggestedImprovement)}>
+                        Reset draft
+                      </Button>
+                    </div>
+                    <Textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} className="min-h-40 bg-white" />
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-500">
+                  Select a finding from the register to open clause-level review.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-5">
+            <Card className="border-slate-200 bg-white/95 shadow-sm">
+              <CardContent className="space-y-4 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Portfolio view</p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Risk concentration</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {dominantCategory
+                      ? `${percent(dominantCategory.count, analysis.riskSummary.total)} of findings sit in ${dominantCategory.name.toLowerCase()}.`
+                      : "No category concentration detected."}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {categoryBreakdown.map((item) => (
+                    <div key={item.name} className="space-y-2">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="font-medium text-slate-700">{item.name}</span>
+                        <span className="text-slate-500">
+                          {item.count} / {analysis.riskSummary.total}
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div
+                          className="h-2 rounded-full bg-slate-900"
+                          style={{ width: `${analysis.riskSummary.total ? (item.count / analysis.riskSummary.total) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-white/95 shadow-sm">
+              <CardContent className="space-y-4 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Critical watchlist</p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Priority items to resolve</h2>
+                </div>
+
+                <div className="space-y-3">
+                  {analysis.topCriticalRisks.map((risk) => (
+                    <div key={risk} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
+                      {risk}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-slate-200 bg-white/95 shadow-sm">
+              <CardContent className="space-y-4 p-5">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Review discipline</p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Decision checklist</h2>
+                </div>
+
+                <div className="space-y-3">
+                  <ChecklistItem
+                    label="Escalate high-severity findings before signature"
+                    done={analysis.riskSummary.high === 0}
+                  />
+                  <ChecklistItem
+                    label="Align liability and commercial protections with business value"
+                    done={analysis.decisionRecommendation === "Accept"}
+                  />
+                  <ChecklistItem
+                    label="Validate the selected clause against fallback wording"
+                    done={Boolean(draftText.trim())}
+                  />
+                  <ChecklistItem
+                    label="Confirm next actions have an owner and negotiation sequence"
+                    done={analysis.nextActions.length >= 3}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  badgeClass
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  badgeClass?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+      <div className="mt-3">
+        {badgeClass ? <Badge className={badgeClass}>{value}</Badge> : <div className="text-3xl font-semibold text-slate-950">{value}</div>}
+      </div>
+      {detail ? <p className="mt-2 text-sm text-slate-500">{detail}</p> : null}
+    </div>
+  );
+}
+
+function WorkspacePanel({
+  title,
+  description,
+  tone = "default",
+  children
+}: {
+  title: string;
+  description: string;
+  tone?: "default" | "alert";
+  children: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-3xl border p-4",
+        tone === "alert" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "mt-0.5 rounded-2xl p-2",
+            tone === "alert" ? "bg-amber-100 text-amber-700" : "bg-white text-slate-500 ring-1 ring-slate-200"
+          )}
+        >
+          {tone === "alert" ? <TriangleAlert className="h-4 w-4" /> : <FileSearch className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{title}</p>
+          <p className="mt-1 text-sm text-slate-500">{description}</p>
+          <p className="mt-3 text-sm leading-7 text-slate-700">{children}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+}) {
+  return (
+    <label className="space-y-2 text-sm">
+      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-900"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ChecklistItem({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div
+        className={cn(
+          "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+          done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+        )}
+      >
+        {done ? "OK" : "!"}
+      </div>
+      <p className="text-sm leading-6 text-slate-700">{label}</p>
+    </div>
+  );
+}
+
+function getPriorityRisk(analysis: ContractAnalysis) {
+  return [...analysis.risks].sort((a, b) => {
+    return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+  })[0];
+}
+
+function getDocumentName(sourceLabel?: string) {
+  if (!sourceLabel?.trim()) return "Uploaded Document";
+
+  const [rawName] = sourceLabel.split(" | ");
+  const normalizedName = rawName?.trim();
+
+  return normalizedName || "Uploaded Document";
+}
