@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   FileSearch,
@@ -46,6 +46,9 @@ const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "final-review", label: "Final Review" }
 ];
 
+const SECTION_SCROLL_BUFFER = 16;
+const SECTION_SETTLE_TOLERANCE = 12;
+
 export function AnalysisWorkspace() {
   const [session, setSession] = useState<StoredAnalysisSession | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -59,7 +62,106 @@ export function AnalysisWorkspace() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const deferredSearch = useDeferredValue(search);
-  const headerRef = useRef<HTMLElement | null>(null);
+  const mainHeaderRowRef = useRef<HTMLDivElement | null>(null);
+  const tabRowRef = useRef<HTMLElement | null>(null);
+  const pendingSectionRef = useRef<SectionId | null>(null);
+  const settleTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingNavigationTimeout = () => {
+    if (settleTimeoutRef.current === null) return;
+    window.clearTimeout(settleTimeoutRef.current);
+    settleTimeoutRef.current = null;
+  };
+
+  const getSharedScrollOffset = () => {
+    const headerHeight = mainHeaderRowRef.current?.getBoundingClientRect().height ?? 0;
+    const tabHeight = tabRowRef.current?.getBoundingClientRect().height ?? 0;
+
+    return headerHeight + tabHeight + SECTION_SCROLL_BUFFER;
+  };
+
+  const getSectionTop = (sectionId: SectionId) => {
+    const element = document.getElementById(sectionId);
+    if (!element) return null;
+
+    return window.scrollY + element.getBoundingClientRect().top;
+  };
+
+  const getScrollTarget = (sectionId: SectionId) => {
+    const sectionTop = getSectionTop(sectionId);
+    if (sectionTop === null) return null;
+
+    return Math.max(0, sectionTop - getSharedScrollOffset());
+  };
+
+  const detectActiveSection = () => {
+    const threshold = window.scrollY + getSharedScrollOffset();
+    let nextSection: SectionId = sectionTabs[0].id;
+
+    for (const section of sectionTabs) {
+      const sectionTop = getSectionTop(section.id);
+      if (sectionTop === null) continue;
+
+      if (sectionTop - SECTION_SETTLE_TOLERANCE <= threshold) {
+        nextSection = section.id;
+      }
+    }
+
+    return nextSection;
+  };
+
+  const syncActiveSection = () => {
+    const detectedSection = detectActiveSection();
+    const pendingSection = pendingSectionRef.current;
+
+    if (!pendingSection) {
+      setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+      return;
+    }
+
+    const pendingScrollTarget = getScrollTarget(pendingSection);
+    const pendingSectionTop = getSectionTop(pendingSection);
+    const threshold = window.scrollY + getSharedScrollOffset();
+    const pendingSettled =
+      pendingScrollTarget === null ||
+      pendingSectionTop === null ||
+      Math.abs(window.scrollY - pendingScrollTarget) <= SECTION_SETTLE_TOLERANCE ||
+      Math.abs(pendingSectionTop - threshold) <= SECTION_SETTLE_TOLERANCE;
+
+    if (pendingSettled) {
+      pendingSectionRef.current = null;
+      clearPendingNavigationTimeout();
+      setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+      return;
+    }
+
+    setActiveSection((current) => (current === pendingSection ? current : pendingSection));
+  };
+
+  const schedulePendingNavigationSync = (sectionId: SectionId) => {
+    clearPendingNavigationTimeout();
+    settleTimeoutRef.current = window.setTimeout(() => {
+      if (pendingSectionRef.current !== sectionId) return;
+
+      pendingSectionRef.current = null;
+      settleTimeoutRef.current = null;
+      const detectedSection = detectActiveSection();
+      setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+    }, 450);
+  };
+
+  const handleTabClick = (event: MouseEvent<HTMLAnchorElement>, sectionId: SectionId) => {
+    event.preventDefault();
+
+    const scrollTarget = getScrollTarget(sectionId);
+    if (scrollTarget === null) return;
+
+    pendingSectionRef.current = sectionId;
+    setActiveSection(sectionId);
+    window.history.replaceState(null, "", `#${sectionId}`);
+    window.scrollTo({ top: scrollTarget, behavior: "smooth" });
+    schedulePendingNavigationSync(sectionId);
+  };
 
   useEffect(() => {
     const storedSession = readAnalysisSession();
@@ -141,26 +243,9 @@ export function AnalysisWorkspace() {
 
     let frameId = 0;
 
-    const updateActiveSection = () => {
-      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
-      const anchorLine = headerHeight + 24;
-      let nextSection: SectionId = sectionTabs[0].id;
-
-      for (const section of sectionTabs) {
-        const element = document.getElementById(section.id);
-        if (!element) continue;
-
-        if (element.getBoundingClientRect().top - anchorLine <= 0) {
-          nextSection = section.id;
-        }
-      }
-
-      setActiveSection((current) => (current === nextSection ? current : nextSection));
-    };
-
     const queueSectionUpdate = () => {
       window.cancelAnimationFrame(frameId);
-      frameId = window.requestAnimationFrame(updateActiveSection);
+      frameId = window.requestAnimationFrame(syncActiveSection);
     };
 
     queueSectionUpdate();
@@ -169,6 +254,7 @@ export function AnalysisWorkspace() {
 
     return () => {
       window.cancelAnimationFrame(frameId);
+      clearPendingNavigationTimeout();
       window.removeEventListener("scroll", queueSectionUpdate);
       window.removeEventListener("resize", queueSectionUpdate);
     };
@@ -241,8 +327,8 @@ export function AnalysisWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <header ref={headerRef} className="sticky top-0 z-40 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="border-b border-slate-200/70">
+      <header className="sticky top-0 z-40 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
+        <div ref={mainHeaderRowRef} className="border-b border-slate-200/70">
           <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-5 py-2.5 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <h1 className="text-[1.6rem] font-semibold tracking-tight text-slate-950">Risk Analysis Results</h1>
@@ -282,14 +368,14 @@ export function AnalysisWorkspace() {
           </div>
         </div>
 
-        <nav aria-label="Analysis sections" className="border-b border-slate-200/70">
+        <nav ref={tabRowRef} aria-label="Analysis sections" className="border-b border-slate-200/70">
           <div className="mx-auto max-w-7xl px-5">
             <div className="flex items-center gap-6 overflow-x-auto">
               {sectionTabs.map((tab) => (
                 <a
                   key={tab.id}
                   href={`#${tab.id}`}
-                  onClick={() => setActiveSection(tab.id)}
+                  onClick={(event) => handleTabClick(event, tab.id)}
                   aria-current={activeSection === tab.id ? "page" : undefined}
                   className={cn(
                     "inline-flex h-11 items-center border-b-2 text-sm font-medium whitespace-nowrap transition-colors",
