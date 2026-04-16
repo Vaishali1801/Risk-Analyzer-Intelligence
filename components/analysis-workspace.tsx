@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   FileSearch,
   Filter,
   LayoutPanelLeft,
   Search,
-  ShieldCheck,
   TriangleAlert
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +60,8 @@ export function AnalysisWorkspace() {
   const [draftText, setDraftText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
+  const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
+  const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const mainHeaderRowRef = useRef<HTMLDivElement | null>(null);
   const tabRowRef = useRef<HTMLElement | null>(null);
@@ -298,13 +299,16 @@ export function AnalysisWorkspace() {
     );
   }
 
-  const reviewedAt = new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(session.savedAt));
-
   const documentName = getDocumentName(session.sourceLabel);
   const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
+  const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
+  const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
+  const totalAnalyzedSectionCount = getTotalAnalyzedSectionCount(analysis);
+  const highRiskSectionCount = getUniqueClauseCount(analysis.risks, "High");
+  const mediumRiskSectionCount = getUniqueClauseCount(analysis.risks, "Medium");
+  const severitySnapshot = `${analysis.riskSummary.high}H / ${analysis.riskSummary.medium}M / ${analysis.riskSummary.low}L`;
+  const summaryInsight = buildSummaryInsight(analysis, nonZeroCategoryBreakdown, highRiskSectionCount, mediumRiskSectionCount);
+  const executiveSummaryDetails = buildExecutiveSummaryDetails(analysis, nonZeroCategoryBreakdown);
   const finalReviewChecks = [
     {
       label: "Escalate high-severity findings before signature",
@@ -393,57 +397,82 @@ export function AnalysisWorkspace() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-5 px-5 py-5">
-        <section id="summary" className="scroll-mt-40 grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <section id="summary" className="scroll-mt-40">
           <Card className="border-slate-200 bg-white/95 shadow-sm">
-            <CardContent className="space-y-5 p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Executive summary</p>
-                  <p className="max-w-3xl text-sm leading-7 text-slate-700">{analysis.executiveSummary}</p>
+            <CardContent className="space-y-4 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Layer 1 Risk Summary</p>
+                  <h2 className="mt-1 text-lg font-semibold text-slate-950">Decision snapshot</h2>
                 </div>
-                <div className="min-w-fit rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Reviewed</div>
-                  <div className="mt-2 font-medium text-slate-950">{reviewedAt}</div>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLayerSummaryExpanded((current) => !current)}
+                  className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
+                >
+                  {isLayerSummaryExpanded ? "Collapse summary \u2190" : "Expand summary \u2192"}
+                </button>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Overall risk" value={analysis.overallRiskLevel} badgeClass={severityStyles[analysis.overallRiskLevel]} />
-                <MetricCard
-                  label="Recommended action"
-                  value={analysis.decisionRecommendation}
-                  badgeClass={decisionStyles[analysis.decisionRecommendation]}
+              <div className="grid gap-3 lg:grid-cols-3">
+                <PrimarySummaryCard
+                  label="Risk Level"
+                  value={<Badge className={severityStyles[analysis.overallRiskLevel]}>{analysis.overallRiskLevel || "Unavailable"}</Badge>}
                 />
-                <MetricCard label="High severity findings" value={String(analysis.riskSummary.high)} detail="Items needing immediate review" />
-                <MetricCard label="Total findings" value={String(analysis.riskSummary.total)} detail="Structured clause-level issues" />
+                <PrimarySummaryCard
+                  label="Sections Flagged"
+                  value={
+                    <span className="font-semibold tabular-nums text-slate-950">
+                      <span className="text-2xl leading-none">{flaggedSectionCount}</span>
+                      <span className="ml-2 text-sm font-medium text-slate-400">/ {totalAnalyzedSectionCount ?? "--"}</span>
+                    </span>
+                  }
+                />
+                <PrimarySummaryCard
+                  label="Severity"
+                  value={<span className="text-base font-semibold tabular-nums text-slate-950">{severitySnapshot}</span>}
+                />
               </div>
-            </CardContent>
-          </Card>
 
-          <Card className="border-slate-200 bg-slate-950 text-white shadow-sm">
-            <CardContent className="space-y-5 p-6">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Decision support</p>
-                <h2 className="mt-2 text-xl font-semibold">Why this recommendation stands</h2>
-                <p className="mt-3 text-sm leading-7 text-slate-300">{analysis.decisionRationale}</p>
-              </div>
+              {isLayerSummaryExpanded ? (
+                <>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
+                    <div className="text-sm font-medium leading-6 text-slate-900">{summaryInsight.primary}</div>
+                    <div className="text-sm leading-6 text-slate-500">{summaryInsight.secondary}</div>
+                  </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                  <ShieldCheck className="h-4 w-4 text-emerald-300" />
-                  Next actions
-                </div>
-                <div className="mt-3 space-y-3">
-                  {analysis.nextActions.map((action, index) => (
-                    <div key={action} className="flex gap-3 text-sm leading-6 text-slate-200">
-                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold text-white">
-                        {index + 1}
-                      </span>
-                      <span>{action}</span>
+                  {nonZeroCategoryBreakdown.length ? (
+                    <div className="flex flex-wrap gap-2.5">
+                      {nonZeroCategoryBreakdown.map((item) => (
+                        <SecondaryCategoryCard key={item.name} label={item.name} count={item.count} />
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  ) : null}
+
+                  <div className="space-y-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsDetailedSummaryExpanded((current) => !current)}
+                      className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
+                    >
+                      {isDetailedSummaryExpanded ? "Hide detailed summary \u2190" : "View detailed summary \u2192"}
+                    </button>
+
+                    {isDetailedSummaryExpanded ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                        <div className="text-sm font-semibold text-slate-950">Executive Summary</div>
+                        <div className="mt-3 space-y-3">
+                          <ExecutiveSummaryItem label="Overall Position" value={executiveSummaryDetails.overallPosition} />
+                          <ExecutiveSummaryItem label="Key Drivers" value={executiveSummaryDetails.keyDrivers} clampLines={2} />
+                          <ExecutiveSummaryItem label="Business Impact" value={executiveSummaryDetails.businessImpact} clampLines={2} />
+                          <ExecutiveSummaryItem label="Recommended Action" value={executiveSummaryDetails.recommendedAction} />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
             </CardContent>
           </Card>
         </section>
@@ -773,6 +802,47 @@ function MetricCard({
   );
 }
 
+function PrimarySummaryCard({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex min-h-[4.5rem] items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
+      <div className="min-w-0 shrink-0 text-right">{value}</div>
+    </div>
+  );
+}
+
+function SecondaryCategoryCard({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-2 text-sm text-slate-700">
+      <span className="font-medium">{label}</span>
+      <span className="font-semibold tabular-nums text-slate-950">{count}</span>
+    </div>
+  );
+}
+
+function ExecutiveSummaryItem({ label, value, clampLines }: { label: string; value: string; clampLines?: number }) {
+  return (
+    <div className="grid gap-1.5 md:grid-cols-[9rem_1fr] md:gap-3">
+      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
+      <div
+        className="text-sm leading-6 text-slate-700"
+        style={
+          clampLines
+            ? {
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp: clampLines,
+                overflow: "hidden"
+              }
+            : undefined
+        }
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function WorkspacePanel({
   title,
   description,
@@ -868,4 +938,141 @@ function getDocumentName(sourceLabel?: string) {
   const normalizedName = rawName?.trim();
 
   return normalizedName || "Uploaded Document";
+}
+
+function getUniqueClauseCount(risks: ContractAnalysis["risks"], severity?: Severity) {
+  const relevantRisks = severity ? risks.filter((risk) => risk.severity === severity) : risks;
+  const clauseRefs = new Set(
+    relevantRisks
+      .map((risk) => normalizeWhitespace(risk.clauseRef))
+      .filter(Boolean)
+  );
+
+  return clauseRefs.size || relevantRisks.length;
+}
+
+function getTotalAnalyzedSectionCount(_analysis: ContractAnalysis) {
+  return null;
+}
+
+function buildSummaryInsight(
+  analysis: ContractAnalysis,
+  categoryBreakdown: { name: RiskCategory; count: number }[],
+  highRiskSectionCount: number,
+  mediumRiskSectionCount: number
+) {
+  return {
+    primary: buildPrimaryInsightLine(categoryBreakdown),
+    secondary: buildSecondaryInsightLine(analysis, highRiskSectionCount, mediumRiskSectionCount)
+  };
+}
+
+function buildPrimaryInsightLine(categoryBreakdown: { name: RiskCategory; count: number }[]) {
+  if (!categoryBreakdown.length) {
+    return "Risk concentration details are not available for this document.";
+  }
+
+  const categoryLabels = categoryBreakdown.slice(0, 3).map((item) => item.name.toLowerCase());
+
+  if (categoryLabels.length === 1) {
+    return `${capitalize(categoryLabels[0])} issues are driving most of the current exposure.`;
+  }
+
+  if (categoryLabels.length === 2) {
+    return `${capitalize(categoryLabels[0])} and ${categoryLabels[1]} issues are driving most of the current exposure.`;
+  }
+
+  return `${capitalize(categoryLabels[0])}, ${categoryLabels[1]}, and ${categoryLabels[2]} issues are driving most of the current exposure.`;
+}
+
+function buildSecondaryInsightLine(
+  analysis: ContractAnalysis,
+  highRiskSectionCount: number,
+  mediumRiskSectionCount: number
+) {
+  if (highRiskSectionCount > 0) {
+    return `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"} require attention before approval.`;
+  }
+
+  if (mediumRiskSectionCount > 0 || analysis.riskSummary.medium > 0) {
+    const reviewCount = mediumRiskSectionCount || analysis.riskSummary.medium;
+    return `${reviewCount} section${reviewCount === 1 ? "" : "s"} require review before approval.`;
+  }
+
+  return "No critical risks are present and the document appears largely acceptable.";
+}
+
+function buildExecutiveSummaryDetails(
+  analysis: ContractAnalysis,
+  categoryBreakdown: { name: RiskCategory; count: number }[]
+) {
+  const prioritizedRisks = [...analysis.risks].sort((a, b) => {
+    return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+  });
+
+  const impactSummary = truncate(
+    uniqueStrings(prioritizedRisks.map((risk) => normalizeWhitespace(risk.impactIfIgnored))).slice(0, 2).join(" "),
+    170
+  );
+  const driverSummary = truncate(
+    uniqueStrings(analysis.topCriticalRisks.map((risk) => normalizeWhitespace(risk))).slice(0, 2).join(" "),
+    150
+  );
+  const fallbackDriverSummary = buildPrimaryInsightLine(categoryBreakdown);
+
+  return {
+    overallPosition: getOverallPositionSentence(analysis),
+    keyDrivers: ensureSentence(driverSummary || fallbackDriverSummary),
+    businessImpact: ensureSentence(impactSummary || normalizeWhitespace(analysis.decisionRationale)),
+    recommendedAction: ensureSentence(normalizeWhitespace(analysis.nextActions[0] ?? getRecommendedActionFallback(analysis)))
+  };
+}
+
+function getOverallPositionSentence(analysis: ContractAnalysis) {
+  const firstSentence = extractFirstSentence(analysis.executiveSummary);
+  if (firstSentence) return firstSentence;
+
+  return `${analysis.contractTitle} currently presents a ${analysis.overallRiskLevel.toLowerCase()} risk profile based on the flagged findings.`;
+}
+
+function getRecommendedActionFallback(analysis: ContractAnalysis) {
+  if (analysis.riskSummary.high > 0) {
+    return "Resolve the highest-risk sections before approval";
+  }
+
+  if (analysis.riskSummary.medium > 0) {
+    return "Review the flagged sections before approval";
+  }
+
+  return "Proceed after confirming the remaining low-risk items";
+}
+
+function extractFirstSentence(value: string) {
+  const normalized = normalizeWhitespace(value);
+  const match = normalized.match(/^.*?[.!?](?=\s|$)/);
+
+  if (match?.[0]) return match[0];
+  if (!normalized) return "";
+
+  return ensureSentence(normalized);
+}
+
+function ensureSentence(value: string) {
+  const normalized = normalizeWhitespace(value).replace(/[.!?]+$/, "");
+  if (!normalized) return "Unavailable.";
+
+  return `${normalized}.`;
+}
+
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function capitalize(value: string) {
+  if (!value) return value;
+  return `${value[0].toUpperCase()}${value.slice(1)}`;
 }
