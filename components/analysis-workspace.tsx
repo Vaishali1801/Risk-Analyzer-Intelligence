@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   FileSearch,
@@ -25,6 +25,7 @@ import type { ContractAnalysis, RiskCategory, Severity } from "@/types/contract"
 
 type SortKey = "severity" | "confidence" | "category";
 type ReviewLens = "safer" | "simplify" | "hidden" | "standard";
+type SectionId = "summary" | "risks" | "final-review";
 
 const sortLabels: Record<SortKey, string> = {
   severity: "Severity",
@@ -39,6 +40,12 @@ const reviewLenses: { key: ReviewLens; label: string }[] = [
   { key: "standard", label: "Standard position" }
 ];
 
+const sectionTabs: { id: SectionId; label: string }[] = [
+  { id: "summary", label: "Summary" },
+  { id: "risks", label: "Risks" },
+  { id: "final-review", label: "Final Review" }
+];
+
 export function AnalysisWorkspace() {
   const [session, setSession] = useState<StoredAnalysisSession | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -50,7 +57,9 @@ export function AnalysisWorkspace() {
   const [reviewLens, setReviewLens] = useState<ReviewLens>("safer");
   const [draftText, setDraftText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const deferredSearch = useDeferredValue(search);
+  const headerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const storedSession = readAnalysisSession();
@@ -127,6 +136,44 @@ export function AnalysisWorkspace() {
     setDraftText(selectedRisk?.suggestedImprovement ?? "");
   }, [selectedRisk?.id, selectedRisk?.suggestedImprovement]);
 
+  useEffect(() => {
+    if (!analysis) return;
+
+    let frameId = 0;
+
+    const updateActiveSection = () => {
+      const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
+      const anchorLine = headerHeight + 24;
+      let nextSection: SectionId = sectionTabs[0].id;
+
+      for (const section of sectionTabs) {
+        const element = document.getElementById(section.id);
+        if (!element) continue;
+
+        if (element.getBoundingClientRect().top - anchorLine <= 0) {
+          nextSection = section.id;
+        }
+      }
+
+      setActiveSection((current) => (current === nextSection ? current : nextSection));
+    };
+
+    const queueSectionUpdate = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(updateActiveSection);
+    };
+
+    queueSectionUpdate();
+    window.addEventListener("scroll", queueSectionUpdate, { passive: true });
+    window.addEventListener("resize", queueSectionUpdate);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", queueSectionUpdate);
+      window.removeEventListener("resize", queueSectionUpdate);
+    };
+  }, [analysis]);
+
   if (!loaded) {
     return (
       <main className="min-h-screen px-5 py-10">
@@ -172,51 +219,95 @@ export function AnalysisWorkspace() {
 
   const documentName = getDocumentName(session.sourceLabel);
   const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
+  const finalReviewChecks = [
+    {
+      label: "Escalate high-severity findings before signature",
+      done: analysis.riskSummary.high === 0
+    },
+    {
+      label: "Align liability and commercial protections with business value",
+      done: analysis.decisionRecommendation === "Accept"
+    },
+    {
+      label: "Validate the selected clause against fallback wording",
+      done: Boolean(draftText.trim())
+    },
+    {
+      label: "Confirm next actions have an owner and negotiation sequence",
+      done: analysis.nextActions.length >= 3
+    }
+  ];
+  const reviewCompletionCount = finalReviewChecks.filter((item) => item.done).length;
 
   return (
     <main className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-5 py-2.5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-[1.6rem] font-semibold tracking-tight text-slate-950">Risk Analysis Results</h1>
-          </div>
-
-          <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
-            <div className="min-w-0 max-w-full lg:max-w-[22rem]">
-              <p className="truncate text-sm font-medium text-slate-500" title={documentName}>
-                {documentName}
-              </p>
+      <header ref={headerRef} className="sticky top-0 z-40 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
+        <div className="border-b border-slate-200/70">
+          <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-5 py-2.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-[1.6rem] font-semibold tracking-tight text-slate-950">Risk Analysis Results</h1>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} className="h-8.5 px-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
-                Preview
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => downloadReportPdf(analysis)}
-                className="h-8.5 border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-100"
-              >
-                Download
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
-                onClick={() => setIsSubmitted(true)}
-                disabled={isSubmitted}
-              >
-                {isSubmitted ? "Submitted" : "Submit"}
-              </Button>
+            <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
+              <div className="min-w-0 max-w-full lg:max-w-[22rem]">
+                <p className="truncate text-sm font-medium text-slate-500" title={documentName}>
+                  {documentName}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} className="h-8.5 px-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
+                  Preview
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => downloadReportPdf(analysis)}
+                  className="h-8.5 border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-100"
+                >
+                  Download
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
+                  onClick={() => setIsSubmitted(true)}
+                  disabled={isSubmitted}
+                >
+                  {isSubmitted ? "Submitted" : "Submit"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
+
+        <nav aria-label="Analysis sections" className="border-b border-slate-200/70">
+          <div className="mx-auto max-w-7xl px-5">
+            <div className="flex items-center gap-6 overflow-x-auto">
+              {sectionTabs.map((tab) => (
+                <a
+                  key={tab.id}
+                  href={`#${tab.id}`}
+                  onClick={() => setActiveSection(tab.id)}
+                  aria-current={activeSection === tab.id ? "page" : undefined}
+                  className={cn(
+                    "inline-flex h-11 items-center border-b-2 text-sm font-medium whitespace-nowrap transition-colors",
+                    activeSection === tab.id
+                      ? "border-slate-950 text-slate-950"
+                      : "border-transparent text-slate-500 hover:text-slate-700"
+                  )}
+                >
+                  {tab.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        </nav>
       </header>
 
       <div className="mx-auto max-w-7xl space-y-5 px-5 py-5">
-        <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <section id="summary" className="scroll-mt-40 grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <Card className="border-slate-200 bg-white/95 shadow-sm">
             <CardContent className="space-y-5 p-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -271,7 +362,7 @@ export function AnalysisWorkspace() {
           </Card>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
+        <section id="risks" className="scroll-mt-40 grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
           <Card className="border-slate-200 bg-white/95 shadow-sm">
             <CardContent className="space-y-4 p-5">
               <div className="flex items-start justify-between gap-3">
@@ -525,6 +616,34 @@ export function AnalysisWorkspace() {
               </CardContent>
             </Card>
 
+          </div>
+        </section>
+
+        <section id="final-review" className="scroll-mt-40">
+          <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+            <Card className="border-slate-200 bg-white/95 shadow-sm">
+              <CardContent className="space-y-5 p-6">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Final review</p>
+                  <h2 className="text-xl font-semibold text-slate-950">Close-out status</h2>
+                  <p className="max-w-2xl text-sm leading-7 text-slate-600">
+                    Confirm the recommendation, open risk load, and submission state before circulating this analysis.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <MetricCard
+                    label="Recommended action"
+                    value={analysis.decisionRecommendation}
+                    badgeClass={decisionStyles[analysis.decisionRecommendation]}
+                  />
+                  <MetricCard label="Checks complete" value={`${reviewCompletionCount} / ${finalReviewChecks.length}`} detail="Completion across final review steps" />
+                  <MetricCard label="High severity open" value={String(analysis.riskSummary.high)} detail="Items still requiring escalation" />
+                  <MetricCard label="Submission" value={isSubmitted ? "Submitted" : "Pending"} detail={isSubmitted ? "Workflow handoff recorded" : "Awaiting final submission"} />
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="border-slate-200 bg-white/95 shadow-sm">
               <CardContent className="space-y-4 p-5">
                 <div>
@@ -533,22 +652,9 @@ export function AnalysisWorkspace() {
                 </div>
 
                 <div className="space-y-3">
-                  <ChecklistItem
-                    label="Escalate high-severity findings before signature"
-                    done={analysis.riskSummary.high === 0}
-                  />
-                  <ChecklistItem
-                    label="Align liability and commercial protections with business value"
-                    done={analysis.decisionRecommendation === "Accept"}
-                  />
-                  <ChecklistItem
-                    label="Validate the selected clause against fallback wording"
-                    done={Boolean(draftText.trim())}
-                  />
-                  <ChecklistItem
-                    label="Confirm next actions have an owner and negotiation sequence"
-                    done={analysis.nextActions.length >= 3}
-                  />
+                  {finalReviewChecks.map((item) => (
+                    <ChecklistItem key={item.label} label={item.label} done={item.done} />
+                  ))}
                 </div>
               </CardContent>
             </Card>
