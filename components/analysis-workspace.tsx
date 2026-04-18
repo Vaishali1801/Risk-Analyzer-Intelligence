@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   FileSearch,
@@ -164,6 +164,29 @@ export function AnalysisWorkspace() {
     schedulePendingNavigationSync(sectionId);
   };
 
+  const handleTopCriticalRiskClick = (riskId: string) => {
+    const targetRisk = analysis?.risks.find((risk) => risk.id === riskId);
+    if (!targetRisk) return;
+
+    setSearch("");
+    setSeverity("All");
+    setCategory("All");
+    setSelectedRiskId(riskId);
+
+    const scrollTarget = getScrollTarget("risks");
+    if (scrollTarget !== null) {
+      pendingSectionRef.current = "risks";
+      setActiveSection("risks");
+      window.history.replaceState(null, "", "#risks");
+      window.scrollTo({ top: scrollTarget, behavior: "smooth" });
+      schedulePendingNavigationSync("risks");
+    }
+
+    window.setTimeout(() => {
+      document.getElementById(`risk-row-${riskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 220);
+  };
+
   useEffect(() => {
     const storedSession = readAnalysisSession();
     setSession(storedSession);
@@ -307,10 +330,10 @@ export function AnalysisWorkspace() {
   const flaggedSectionsDisplay = formatFlaggedSectionSummary(flaggedSectionCount, totalAnalyzedSectionCount);
   const highRiskSectionCount = getUniqueClauseCount(analysis.risks, "High");
   const mediumRiskSectionCount = getUniqueClauseCount(analysis.risks, "Medium");
-  const severitySnapshot = `${analysis.riskSummary.high}H / ${analysis.riskSummary.medium}M / ${analysis.riskSummary.low}L`;
   const summaryInsight = buildSummaryInsight(analysis, nonZeroCategoryBreakdown, highRiskSectionCount, mediumRiskSectionCount);
   const executiveSummaryDetails = buildExecutiveSummaryDetails(analysis, nonZeroCategoryBreakdown);
-  const riskMixItems = nonZeroCategoryBreakdown.slice(0, 3);
+  const riskMixSummary = buildRiskMixSummary(nonZeroCategoryBreakdown);
+  const topCriticalRiskItems = buildTopCriticalRiskItems(analysis);
   const finalReviewChecks = [
     {
       label: "Escalate high-severity findings before signature",
@@ -415,9 +438,10 @@ export function AnalysisWorkspace() {
               </div>
 
               <div className="overflow-x-auto pb-1">
-                <div className="grid min-w-[58rem] grid-cols-4 gap-3">
+                <div className="grid min-w-[56rem] grid-cols-4 gap-2.5">
                   <PrimarySummaryCard
                     label="Risk Level"
+                    valueClassName="flex min-h-[2rem] items-center"
                     value={
                       <Badge className={cn(severityStyles[analysis.overallRiskLevel], "px-2.5 py-1 text-[0.78rem] font-semibold tracking-[0.14em]")}>
                         {analysis.overallRiskLevel || "Unavailable"}
@@ -427,22 +451,23 @@ export function AnalysisWorkspace() {
                   <PrimarySummaryCard
                     label="Sections Flagged"
                     value={
-                      <div className="flex min-w-0 items-end gap-2">
-                        <span className="text-[1.7rem] font-semibold leading-none tabular-nums text-slate-950">
+                      <div className="flex min-w-0 flex-wrap items-end gap-x-2 gap-y-1">
+                        <span className="text-[1.65rem] font-semibold leading-none tabular-nums text-slate-950">
                           {flaggedSectionsDisplay.flaggedCount}
                         </span>
+                        <span className="pb-0.5 text-[0.92rem] font-medium text-slate-700">{flaggedSectionsDisplay.flaggedLabel}</span>
                         {flaggedSectionsDisplay.totalCount ? (
-                          <span className="pb-0.5 text-sm font-medium tabular-nums text-slate-500">/ {flaggedSectionsDisplay.totalCount}</span>
-                        ) : (
-                          <span className="pb-0.5 text-sm font-medium text-slate-500">{flaggedSectionsDisplay.label}</span>
-                        )}
+                          <span className="pb-0.5 text-[0.86rem] font-medium tabular-nums text-slate-500">
+                            / {flaggedSectionsDisplay.totalCount} {flaggedSectionsDisplay.totalLabel}
+                          </span>
+                        ) : null}
                       </div>
                     }
                   />
                   <PrimarySummaryCard
                     label="Severity"
                     value={
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-slate-700">
+                      <div className="flex min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap text-[0.92rem] text-slate-700">
                         <InlineSeverityStat tone="high" count={analysis.riskSummary.high} label="High" />
                         <InlineSeverityStat tone="medium" count={analysis.riskSummary.medium} label="Medium" />
                         <InlineSeverityStat tone="low" count={analysis.riskSummary.low} label="Low" />
@@ -452,17 +477,14 @@ export function AnalysisWorkspace() {
                   <PrimarySummaryCard
                     label="Risk Mix"
                     value={
-                      riskMixItems.length ? (
-                        <div className="flex flex-wrap items-center gap-y-1 text-sm text-slate-600">
-                          {riskMixItems.map((item, index) => (
-                            <Fragment key={item.name}>
-                              {index > 0 ? <span className="px-2 text-slate-300">•</span> : null}
-                              <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
-                                <span>{item.name}</span>
-                                <span className="font-semibold tabular-nums text-slate-950">{item.count}</span>
-                              </span>
-                            </Fragment>
-                          ))}
+                      riskMixSummary ? (
+                        <div className="min-w-0 overflow-hidden" title={riskMixSummary.fullText}>
+                          <div className="2xl:hidden">
+                            <RiskMixLine items={riskMixSummary.compactItems} remainingCount={riskMixSummary.compactRemainingCount} />
+                          </div>
+                          <div className="hidden 2xl:block">
+                            <RiskMixLine items={riskMixSummary.expandedItems} remainingCount={riskMixSummary.expandedRemainingCount} />
+                          </div>
                         </div>
                       ) : (
                         <span className="text-sm text-slate-500">No flagged categories</span>
@@ -474,16 +496,27 @@ export function AnalysisWorkspace() {
 
               {isLayerSummaryExpanded ? (
                 <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-2.5">
-                    <div className="text-sm font-semibold leading-[1.35rem] text-slate-900">{summaryInsight.primary}</div>
-                    <div className="mt-0.5 text-sm leading-[1.35rem] text-slate-500">{summaryInsight.secondary}</div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-slate-600">AI Insights</div>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm font-semibold leading-5 text-slate-900">{summaryInsight.primary}</p>
+                      <p className="text-sm leading-5 text-slate-600">{summaryInsight.secondary}</p>
+                    </div>
                   </div>
 
-                  {nonZeroCategoryBreakdown.length ? (
-                    <div className="flex flex-wrap gap-2.5">
-                      {nonZeroCategoryBreakdown.map((item) => (
-                        <SecondaryCategoryCard key={item.name} label={item.name} count={item.count} />
-                      ))}
+                  {topCriticalRiskItems.length ? (
+                    <div className="space-y-2">
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Top Critical Risks</div>
+                      <div className="flex flex-wrap items-start gap-2.5">
+                        {topCriticalRiskItems.map((risk) => (
+                          <TopCriticalRiskPill
+                            key={risk.id}
+                            label={risk.label}
+                            active={selectedRiskId === risk.id}
+                            onClick={() => handleTopCriticalRiskClick(risk.id)}
+                          />
+                        ))}
+                      </div>
                     </div>
                   ) : null}
 
@@ -576,6 +609,7 @@ export function AnalysisWorkspace() {
                   filteredRisks.map((risk) => (
                     <button
                       key={risk.id}
+                      id={`risk-row-${risk.id}`}
                       type="button"
                       onClick={() => setSelectedRiskId(risk.id)}
                       className={cn(
@@ -839,18 +873,26 @@ function MetricCard({
   );
 }
 
-function PrimarySummaryCard({ label, value }: { label: string; value: ReactNode }) {
+function PrimarySummaryCard({
+  label,
+  value,
+  valueClassName
+}: {
+  label: string;
+  value: ReactNode;
+  valueClassName?: string;
+}) {
   return (
-    <div className="flex min-h-[5.75rem] flex-col justify-between rounded-[1.25rem] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
-      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</span>
-      <div className="min-w-0 text-left">{value}</div>
+    <div className="flex min-h-[4.75rem] flex-col justify-between rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-2 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
+      <span className="text-[0.74rem] font-semibold uppercase tracking-[0.18em] text-slate-600">{label}</span>
+      <div className={cn("min-w-0 text-left", valueClassName)}>{value}</div>
     </div>
   );
 }
 
 function InlineSeverityStat({ tone, count, label }: { tone: "high" | "medium" | "low"; count: number; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap">
       <span
         aria-hidden="true"
         className={cn(
@@ -864,12 +906,48 @@ function InlineSeverityStat({ tone, count, label }: { tone: "high" | "medium" | 
   );
 }
 
-function SecondaryCategoryCard({ label, count }: { label: string; count: number }) {
+function RiskMixLine({
+  items,
+  remainingCount
+}: {
+  items: { name: RiskCategory; count: number }[];
+  remainingCount: number;
+}) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-1.5 text-sm text-slate-700">
-      <span className="font-medium text-slate-600">{label}</span>
-      <span className="font-semibold tabular-nums text-[0.95rem] leading-none text-slate-950">{count}</span>
+    <div className="flex min-w-0 items-center overflow-hidden whitespace-nowrap text-[0.92rem] text-slate-600">
+      {items.map((item, index) => (
+        <span key={item.name} className="inline-flex items-baseline whitespace-nowrap">
+          {index > 0 ? <span className="px-2 text-slate-300">{"\u2022"}</span> : null}
+          <span>{item.name}</span>
+          <span className="ml-1 font-semibold tabular-nums text-slate-950">{item.count}</span>
+        </span>
+      ))}
+      {remainingCount ? <span className="pl-2 whitespace-nowrap text-slate-500">+{remainingCount} more</span> : null}
     </div>
+  );
+}
+
+function TopCriticalRiskPill({
+  label,
+  active,
+  onClick
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex w-auto min-w-0 max-w-full items-start rounded-xl border px-3 py-2 text-left text-[0.92rem] font-medium leading-5 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50 sm:max-w-[18rem]",
+        active ? "border-slate-900 bg-slate-950 text-white shadow-sm" : "border-slate-300/90 bg-white"
+      )}
+      title={label}
+    >
+      <span className="whitespace-normal">{label}</span>
+    </button>
   );
 }
 
@@ -979,9 +1057,13 @@ function ChecklistItem({ label, done }: { label: string; done: boolean }) {
 }
 
 function getPriorityRisk(analysis: ContractAnalysis) {
+  return getPrioritizedRisks(analysis)[0];
+}
+
+function getPrioritizedRisks(analysis: ContractAnalysis) {
   return [...analysis.risks].sort((a, b) => {
     return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
-  })[0];
+  });
 }
 
 function getDocumentName(sourceLabel?: string) {
@@ -1012,15 +1094,17 @@ function formatFlaggedSectionSummary(flaggedCount: number, totalCount: number | 
   if (typeof totalCount === "number" && Number.isFinite(totalCount)) {
     return {
       flaggedCount: String(flaggedCount),
+      flaggedLabel: "Flagged",
       totalCount: String(totalCount),
-      label: ""
+      totalLabel: "Sections"
     };
   }
 
   return {
     flaggedCount: String(flaggedCount),
+    flaggedLabel: "Flagged",
     totalCount: "",
-    label: flaggedCount === 1 ? "section flagged" : "sections flagged"
+    totalLabel: ""
   };
 }
 
@@ -1031,27 +1115,34 @@ function buildSummaryInsight(
   mediumRiskSectionCount: number
 ) {
   return {
-    primary: buildPrimaryInsightLine(categoryBreakdown),
+    primary: buildPrimaryInsightLine(analysis, categoryBreakdown),
     secondary: buildSecondaryInsightLine(analysis, highRiskSectionCount, mediumRiskSectionCount)
   };
 }
 
-function buildPrimaryInsightLine(categoryBreakdown: { name: RiskCategory; count: number }[]) {
+function buildPrimaryInsightLine(
+  analysis: ContractAnalysis,
+  categoryBreakdown: { name: RiskCategory; count: number }[]
+) {
+  const riskDrivers = buildTopCriticalRiskItems(analysis)
+    .slice(0, 2)
+    .map((item) => item.label.toLowerCase());
+
+  if (riskDrivers.length) {
+    const riskLedSummary = `Primary exposure centers on ${joinWithAnd(riskDrivers)}.`;
+    if (riskLedSummary.length <= 110) {
+      return riskLedSummary;
+    }
+  }
+
   if (!categoryBreakdown.length) {
-    return "Risk concentration details are not available for this document.";
+    return "Primary exposure drivers are not available for this document.";
   }
 
-  const categoryLabels = categoryBreakdown.slice(0, 3).map((item) => item.name.toLowerCase());
+  const categoryLabels = categoryBreakdown.slice(0, 2).map((item) => item.name.toLowerCase());
+  const categorySummary = buildCategoryDriverSummary(categoryLabels);
 
-  if (categoryLabels.length === 1) {
-    return `${capitalize(categoryLabels[0])} issues are driving most of the current exposure.`;
-  }
-
-  if (categoryLabels.length === 2) {
-    return `${capitalize(categoryLabels[0])} and ${categoryLabels[1]} issues are driving most of the current exposure.`;
-  }
-
-  return `${capitalize(categoryLabels[0])}, ${categoryLabels[1]}, and ${categoryLabels[2]} issues are driving most of the current exposure.`;
+  return `${categorySummary}.`;
 }
 
 function buildSecondaryInsightLine(
@@ -1060,15 +1151,183 @@ function buildSecondaryInsightLine(
   mediumRiskSectionCount: number
 ) {
   if (highRiskSectionCount > 0) {
-    return `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"} require attention before approval.`;
+    return highRiskSectionCount === 1
+      ? "1 high-risk section sets the immediate review priority."
+      : `${highRiskSectionCount} high-risk sections drive most of the current review priority.`;
   }
 
   if (mediumRiskSectionCount > 0 || analysis.riskSummary.medium > 0) {
     const reviewCount = mediumRiskSectionCount || analysis.riskSummary.medium;
-    return `${reviewCount} section${reviewCount === 1 ? "" : "s"} require review before approval.`;
+    return reviewCount === 1
+      ? "1 medium-risk section carries most of the remaining review priority."
+      : `${reviewCount} medium-risk sections carry most of the remaining review priority.`;
   }
 
-  return "No critical risks are present and the document appears largely acceptable.";
+  if (analysis.riskSummary.low > 0) {
+    return "Open exposure is narrower now, with only low-risk findings still in scope.";
+  }
+
+  return "No material risk concentration is visible in the current analysis.";
+}
+
+function buildRiskMixSummary(categoryBreakdown: { name: RiskCategory; count: number }[]) {
+  if (!categoryBreakdown.length) return null;
+
+  const compactItems = categoryBreakdown.slice(0, 2);
+  const expandedItems = categoryBreakdown.slice(0, 3);
+  const compactRemainingCount = Math.max(categoryBreakdown.length - compactItems.length, 0);
+  const expandedRemainingCount = Math.max(categoryBreakdown.length - expandedItems.length, 0);
+  const fullText = buildRiskMixSummaryText(expandedItems, expandedRemainingCount);
+
+  return {
+    compactItems,
+    expandedItems,
+    compactRemainingCount,
+    expandedRemainingCount,
+    fullText
+  };
+}
+
+function buildTopCriticalRiskItems(analysis: ContractAnalysis) {
+  const prioritizedRisks = getPrioritizedRisks(analysis);
+  const matchedRiskIds = new Set<string>();
+  const items: { id: string; label: string }[] = [];
+
+  for (const summaryRisk of uniqueStrings(analysis.topCriticalRisks.map((risk) => normalizeWhitespace(risk)))) {
+    const matchedRisk = findBestMatchingRisk(summaryRisk, prioritizedRisks, matchedRiskIds);
+    if (!matchedRisk) continue;
+
+    matchedRiskIds.add(matchedRisk.id);
+    items.push({
+      id: matchedRisk.id,
+      label: buildTopCriticalRiskLabel(matchedRisk.title)
+    });
+
+    if (items.length === 3) return items;
+  }
+
+  for (const risk of prioritizedRisks) {
+    if (matchedRiskIds.has(risk.id)) continue;
+
+    matchedRiskIds.add(risk.id);
+    items.push({
+      id: risk.id,
+      label: buildTopCriticalRiskLabel(risk.title)
+    });
+
+    if (items.length === 3) break;
+  }
+
+  return items;
+}
+
+function buildCategoryDriverSummary(categoryLabels: string[]) {
+  if (categoryLabels.length === 1) {
+    return `${capitalize(categoryLabels[0])} terms drive the current exposure`;
+  }
+
+  if (categoryLabels.length === 2) {
+    return `Primary exposure is concentrated in ${categoryLabels[0]} and ${categoryLabels[1]} terms`;
+  }
+
+  return `${capitalize(categoryLabels[0])}, ${categoryLabels[1]}, and ${categoryLabels[2]} terms drive the current exposure`;
+}
+
+function joinWithAnd(values: string[]) {
+  if (!values.length) return "";
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function buildRiskMixSummaryText(items: { name: RiskCategory; count: number }[], remainingCount: number) {
+  const separator = " \u2022 ";
+  return `${items.map((item) => `${item.name} ${item.count}`).join(separator)}${remainingCount ? ` ${separator.trim()} +${remainingCount} more` : ""}`;
+}
+
+function findBestMatchingRisk(
+  summaryRisk: string,
+  prioritizedRisks: ContractAnalysis["risks"],
+  matchedRiskIds: Set<string>
+) {
+  const normalizedSummaryRisk = normalizeWhitespace(summaryRisk).toLowerCase();
+  let bestRisk: ContractAnalysis["risks"][number] | undefined;
+  let bestScore = 0;
+
+  for (const risk of prioritizedRisks) {
+    if (matchedRiskIds.has(risk.id)) continue;
+
+    const normalizedTitle = normalizeWhitespace(risk.title).toLowerCase();
+    if (normalizedTitle === normalizedSummaryRisk) {
+      return risk;
+    }
+
+    const score = scoreRiskMatch(summaryRisk, risk);
+    if (score > bestScore) {
+      bestRisk = risk;
+      bestScore = score;
+    }
+  }
+
+  return bestScore > 0 ? bestRisk : undefined;
+}
+
+function scoreRiskMatch(summaryRisk: string, risk: ContractAnalysis["risks"][number]) {
+  const sourceTokens = new Set(getMeaningfulTokens(summaryRisk));
+  const candidateTokens = new Set([
+    ...getMeaningfulTokens(risk.title),
+    ...getMeaningfulTokens(risk.whyRisky),
+    ...getMeaningfulTokens(risk.highlightedText)
+  ]);
+
+  let score = 0;
+  sourceTokens.forEach((token) => {
+    if (candidateTokens.has(token)) score += 1;
+  });
+
+  return score;
+}
+
+function getMeaningfulTokens(value: string) {
+  const stopWords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "into",
+    "that",
+    "this",
+    "will",
+    "shall",
+    "must",
+    "does",
+    "have",
+    "has",
+    "are",
+    "too"
+  ]);
+
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !stopWords.has(token));
+}
+
+function buildTopCriticalRiskLabel(value: string) {
+  const normalized = normalizeWhitespace(value).replace(/[.!?]+$/, "");
+  if (normalized.length <= 42) return normalized;
+
+  for (const separator of [" with ", " due to ", " because ", " without ", ": ", "; "]) {
+    const separatorIndex = normalized.toLowerCase().indexOf(separator.trim().toLowerCase());
+    if (separatorIndex > 18) {
+      return normalized.slice(0, separatorIndex).trim();
+    }
+  }
+
+  return normalized;
 }
 
 function buildExecutiveSummaryDetails(
@@ -1087,7 +1346,7 @@ function buildExecutiveSummaryDetails(
     uniqueStrings(analysis.topCriticalRisks.map((risk) => normalizeWhitespace(risk))).slice(0, 2).join(" "),
     150
   );
-  const fallbackDriverSummary = buildPrimaryInsightLine(categoryBreakdown);
+  const fallbackDriverSummary = buildPrimaryInsightLine(analysis, categoryBreakdown);
 
   return {
     overallPosition: getOverallPositionSentence(analysis),
