@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronRight,
   FileSearch,
@@ -304,11 +304,13 @@ export function AnalysisWorkspace() {
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
   const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
   const totalAnalyzedSectionCount = getTotalAnalyzedSectionCount(analysis);
+  const flaggedSectionsDisplay = formatFlaggedSectionSummary(flaggedSectionCount, totalAnalyzedSectionCount);
   const highRiskSectionCount = getUniqueClauseCount(analysis.risks, "High");
   const mediumRiskSectionCount = getUniqueClauseCount(analysis.risks, "Medium");
   const severitySnapshot = `${analysis.riskSummary.high}H / ${analysis.riskSummary.medium}M / ${analysis.riskSummary.low}L`;
   const summaryInsight = buildSummaryInsight(analysis, nonZeroCategoryBreakdown, highRiskSectionCount, mediumRiskSectionCount);
   const executiveSummaryDetails = buildExecutiveSummaryDetails(analysis, nonZeroCategoryBreakdown);
+  const riskMixItems = nonZeroCategoryBreakdown.slice(0, 3);
   const finalReviewChecks = [
     {
       label: "Escalate high-severity findings before signature",
@@ -401,45 +403,80 @@ export function AnalysisWorkspace() {
           <Card className="border-slate-200 bg-white/95 shadow-sm">
             <CardContent className="space-y-4 p-5">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Layer 1 Risk Summary</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-950">Decision snapshot</h2>
-                </div>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-950">Decision snapshot</h2>
 
                 <button
                   type="button"
                   onClick={() => setIsLayerSummaryExpanded((current) => !current)}
-                  className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
+                  className="inline-flex items-center text-sm font-medium text-slate-500 transition hover:text-slate-950"
                 >
                   {isLayerSummaryExpanded ? "Collapse summary \u2190" : "Expand summary \u2192"}
                 </button>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-3">
-                <PrimarySummaryCard
-                  label="Risk Level"
-                  value={<Badge className={severityStyles[analysis.overallRiskLevel]}>{analysis.overallRiskLevel || "Unavailable"}</Badge>}
-                />
-                <PrimarySummaryCard
-                  label="Sections Flagged"
-                  value={
-                    <span className="font-semibold tabular-nums text-slate-950">
-                      <span className="text-2xl leading-none">{flaggedSectionCount}</span>
-                      <span className="ml-2 text-sm font-medium text-slate-400">/ {totalAnalyzedSectionCount ?? "--"}</span>
-                    </span>
-                  }
-                />
-                <PrimarySummaryCard
-                  label="Severity"
-                  value={<span className="text-base font-semibold tabular-nums text-slate-950">{severitySnapshot}</span>}
-                />
+              <div className="overflow-x-auto pb-1">
+                <div className="grid min-w-[58rem] grid-cols-4 gap-3">
+                  <PrimarySummaryCard
+                    label="Risk Level"
+                    value={
+                      <Badge className={cn(severityStyles[analysis.overallRiskLevel], "px-2.5 py-1 text-[0.78rem] font-semibold tracking-[0.14em]")}>
+                        {analysis.overallRiskLevel || "Unavailable"}
+                      </Badge>
+                    }
+                  />
+                  <PrimarySummaryCard
+                    label="Sections Flagged"
+                    value={
+                      <div className="flex min-w-0 items-end gap-2">
+                        <span className="text-[1.7rem] font-semibold leading-none tabular-nums text-slate-950">
+                          {flaggedSectionsDisplay.flaggedCount}
+                        </span>
+                        {flaggedSectionsDisplay.totalCount ? (
+                          <span className="pb-0.5 text-sm font-medium tabular-nums text-slate-500">/ {flaggedSectionsDisplay.totalCount}</span>
+                        ) : (
+                          <span className="pb-0.5 text-sm font-medium text-slate-500">{flaggedSectionsDisplay.label}</span>
+                        )}
+                      </div>
+                    }
+                  />
+                  <PrimarySummaryCard
+                    label="Severity"
+                    value={
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-slate-700">
+                        <InlineSeverityStat tone="high" count={analysis.riskSummary.high} label="High" />
+                        <InlineSeverityStat tone="medium" count={analysis.riskSummary.medium} label="Medium" />
+                        <InlineSeverityStat tone="low" count={analysis.riskSummary.low} label="Low" />
+                      </div>
+                    }
+                  />
+                  <PrimarySummaryCard
+                    label="Risk Mix"
+                    value={
+                      riskMixItems.length ? (
+                        <div className="flex flex-wrap items-center gap-y-1 text-sm text-slate-600">
+                          {riskMixItems.map((item, index) => (
+                            <Fragment key={item.name}>
+                              {index > 0 ? <span className="px-2 text-slate-300">•</span> : null}
+                              <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+                                <span>{item.name}</span>
+                                <span className="font-semibold tabular-nums text-slate-950">{item.count}</span>
+                              </span>
+                            </Fragment>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-slate-500">No flagged categories</span>
+                      )
+                    }
+                  />
+                </div>
               </div>
 
               {isLayerSummaryExpanded ? (
                 <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
-                    <div className="text-sm font-medium leading-6 text-slate-900">{summaryInsight.primary}</div>
-                    <div className="text-sm leading-6 text-slate-500">{summaryInsight.secondary}</div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-2.5">
+                    <div className="text-sm font-semibold leading-[1.35rem] text-slate-900">{summaryInsight.primary}</div>
+                    <div className="mt-0.5 text-sm leading-[1.35rem] text-slate-500">{summaryInsight.secondary}</div>
                   </div>
 
                   {nonZeroCategoryBreakdown.length ? (
@@ -462,7 +499,7 @@ export function AnalysisWorkspace() {
                     {isDetailedSummaryExpanded ? (
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                         <div className="text-sm font-semibold text-slate-950">Executive Summary</div>
-                        <div className="mt-3 space-y-3">
+                        <div className="mt-3 space-y-3.5">
                           <ExecutiveSummaryItem label="Overall Position" value={executiveSummaryDetails.overallPosition} />
                           <ExecutiveSummaryItem label="Key Drivers" value={executiveSummaryDetails.keyDrivers} clampLines={2} />
                           <ExecutiveSummaryItem label="Business Impact" value={executiveSummaryDetails.businessImpact} clampLines={2} />
@@ -804,28 +841,44 @@ function MetricCard({
 
 function PrimarySummaryCard({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex min-h-[4.5rem] items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
-      <div className="min-w-0 shrink-0 text-right">{value}</div>
+    <div className="flex min-h-[5.75rem] flex-col justify-between rounded-[1.25rem] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
+      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</span>
+      <div className="min-w-0 text-left">{value}</div>
     </div>
+  );
+}
+
+function InlineSeverityStat({ tone, count, label }: { tone: "high" | "medium" | "low"; count: number; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-2.5 w-2.5 rounded-full",
+          tone === "high" ? "bg-rose-500" : tone === "medium" ? "bg-amber-400" : "bg-emerald-500"
+        )}
+      />
+      <span className="font-semibold tabular-nums text-slate-950">{count}</span>
+      <span>{label}</span>
+    </span>
   );
 }
 
 function SecondaryCategoryCard({ label, count }: { label: string; count: number }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-2 text-sm text-slate-700">
-      <span className="font-medium">{label}</span>
-      <span className="font-semibold tabular-nums text-slate-950">{count}</span>
+    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-3 py-1.5 text-sm text-slate-700">
+      <span className="font-medium text-slate-600">{label}</span>
+      <span className="font-semibold tabular-nums text-[0.95rem] leading-none text-slate-950">{count}</span>
     </div>
   );
 }
 
 function ExecutiveSummaryItem({ label, value, clampLines }: { label: string; value: string; clampLines?: number }) {
   return (
-    <div className="grid gap-1.5 md:grid-cols-[9rem_1fr] md:gap-3">
-      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
+    <div className="grid gap-2 md:grid-cols-[10rem_minmax(0,38rem)] md:items-start md:gap-5">
+      <div className="pt-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</div>
       <div
-        className="text-sm leading-6 text-slate-700"
+        className="max-w-[38rem] text-sm leading-[1.65rem] text-slate-700"
         style={
           clampLines
             ? {
@@ -953,6 +1006,22 @@ function getUniqueClauseCount(risks: ContractAnalysis["risks"], severity?: Sever
 
 function getTotalAnalyzedSectionCount(_analysis: ContractAnalysis) {
   return null;
+}
+
+function formatFlaggedSectionSummary(flaggedCount: number, totalCount: number | null) {
+  if (typeof totalCount === "number" && Number.isFinite(totalCount)) {
+    return {
+      flaggedCount: String(flaggedCount),
+      totalCount: String(totalCount),
+      label: ""
+    };
+  }
+
+  return {
+    flaggedCount: String(flaggedCount),
+    totalCount: "",
+    label: flaggedCount === 1 ? "section flagged" : "sections flagged"
+  };
 }
 
 function buildSummaryInsight(
