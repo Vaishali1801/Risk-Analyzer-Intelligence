@@ -625,7 +625,7 @@ export function AnalysisWorkspace() {
                     {isDetailedSummaryExpanded ? (
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                         <div className="text-sm font-semibold text-slate-950">Executive Summary</div>
-                        <div className="mt-3 space-y-4">
+                        <div className="mt-3 space-y-3">
                           <ExecutiveSummaryItem label="Overall Position" value={executiveSummaryDetails.overallPosition} />
                           <ExecutiveSummaryItem label="Key Drivers" value={executiveSummaryDetails.keyDrivers} />
                           <ExecutiveSummaryItem label="Business Impact" value={executiveSummaryDetails.businessImpact} />
@@ -1085,9 +1085,9 @@ function TopCriticalRiskPill({ label, onClick }: { label: string; onClick: () =>
 
 function ExecutiveSummaryItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-2.5 md:grid-cols-[8rem_minmax(0,1fr)] md:items-start md:gap-6">
+    <div className="grid gap-2 md:grid-cols-[8rem_minmax(0,1fr)] md:items-start md:gap-5">
       <div className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</div>
-      <div className="min-w-0 text-sm leading-[1.7rem] text-slate-700">{value}</div>
+      <div className="min-w-0 text-sm leading-[1.52rem] text-slate-700">{value}</div>
     </div>
   );
 }
