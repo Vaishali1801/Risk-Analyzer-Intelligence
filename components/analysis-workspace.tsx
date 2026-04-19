@@ -64,9 +64,11 @@ export function AnalysisWorkspace() {
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
+  const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const mainHeaderRowRef = useRef<HTMLDivElement | null>(null);
   const tabRowRef = useRef<HTMLElement | null>(null);
+  const riskMixPopoverRef = useRef<HTMLDivElement | null>(null);
   const pendingSectionRef = useRef<SectionId | null>(null);
   const settleTimeoutRef = useRef<number | null>(null);
 
@@ -204,6 +206,30 @@ export function AnalysisWorkspace() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isRiskMixPopoverOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!riskMixPopoverRef.current?.contains(event.target as Node)) {
+        setIsRiskMixPopoverOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsRiskMixPopoverOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isRiskMixPopoverOpen]);
+
   const analysis = session?.analysis;
 
   const selectedRisk = useMemo(() => {
@@ -337,6 +363,7 @@ export function AnalysisWorkspace() {
   const summaryInsight = buildSummaryInsight(analysis, nonZeroCategoryBreakdown);
   const executiveSummaryDetails = buildExecutiveSummaryDetails(analysis, nonZeroCategoryBreakdown);
   const riskMixSummary = buildRiskMixSummary(nonZeroCategoryBreakdown);
+  const riskMixBreakdown = buildRiskMixBreakdown(analysis);
   const topCriticalRiskItems = buildTopCriticalRiskItems(analysis);
   const finalReviewChecks = [
     {
@@ -480,13 +507,32 @@ export function AnalysisWorkspace() {
                     label="Risk Mix"
                     headerAccessory={
                       riskMixSummary?.hasHiddenCategories ? (
-                        <button
-                          type="button"
-                          onClick={() => navigateToSection("risks")}
-                          className="shrink-0 text-[0.72rem] font-medium text-slate-500 transition hover:text-slate-800"
-                        >
-                          View all &rarr;
-                        </button>
+                        <div ref={riskMixPopoverRef} className="relative shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setIsRiskMixPopoverOpen((current) => !current)}
+                            aria-expanded={isRiskMixPopoverOpen}
+                            className="text-[0.72rem] font-medium text-slate-500 transition hover:text-slate-800"
+                          >
+                            View all &rarr;
+                          </button>
+
+                          {isRiskMixPopoverOpen ? (
+                            <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
+                              <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Category Breakdown
+                              </div>
+                              <div className="space-y-1.5">
+                                {riskMixBreakdown.map((item) => (
+                                  <div key={item.name} className="flex items-center justify-between gap-3 text-[0.83rem] text-slate-700">
+                                    <span>{item.name}</span>
+                                    <span className="font-semibold tabular-nums text-slate-950">{item.count}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
                       ) : null
                     }
                     value={
@@ -510,25 +556,19 @@ export function AnalysisWorkspace() {
               {isLayerSummaryExpanded ? (
                 <>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
-                    <p className="text-[0.97rem] leading-6 text-slate-800">
-                      <span className="mr-2 inline-flex text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                    <p className="text-[0.97rem] leading-6 text-slate-700">
+                      <span className="mr-2 inline-flex text-[0.74rem] font-semibold uppercase tracking-[0.15em] text-slate-800">
                         AI Insight:
                       </span>
-                      <span className="font-semibold text-slate-900">{summaryInsight}</span>
+                      <span>{summaryInsight}</span>
                     </p>
                   </div>
 
                   {topCriticalRiskItems.length ? (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
                         <div className="text-[0.76rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Top Critical Risks</div>
-                        <button
-                          type="button"
-                          onClick={() => navigateToSection("risks")}
-                          className="shrink-0 text-[0.72rem] font-medium text-slate-500 transition hover:text-slate-800"
-                        >
-                          View details &rarr;
-                        </button>
+                        <div className="text-[0.72rem] font-medium text-slate-500">(click a risk to view)</div>
                       </div>
                       <div className="overflow-x-auto pb-1">
                         <div className="grid min-w-full grid-flow-col auto-cols-[minmax(12rem,1fr)] items-stretch gap-2.5">
@@ -536,7 +576,6 @@ export function AnalysisWorkspace() {
                           <TopCriticalRiskPill
                             key={risk.id}
                             label={risk.label}
-                            active={selectedRiskId === risk.id}
                             onClick={() => handleTopCriticalRiskClick(risk.id)}
                           />
                         ))}
@@ -557,11 +596,10 @@ export function AnalysisWorkspace() {
                     {isDetailedSummaryExpanded ? (
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                         <div className="text-sm font-semibold text-slate-950">Executive Summary</div>
-                        <div className="mt-3 space-y-3.5">
+                        <div className="mt-3 space-y-4">
                           <ExecutiveSummaryItem label="Overall Position" value={executiveSummaryDetails.overallPosition} />
-                          <ExecutiveSummaryItem label="Key Drivers" value={executiveSummaryDetails.keyDrivers} clampLines={2} />
-                          <ExecutiveSummaryItem label="Business Impact" value={executiveSummaryDetails.businessImpact} clampLines={2} />
-                          <ExecutiveSummaryItem label="Recommended Action" value={executiveSummaryDetails.recommendedAction} />
+                          <ExecutiveSummaryItem label="Key Drivers" value={executiveSummaryDetails.keyDrivers} />
+                          <ExecutiveSummaryItem label="Business Impact" value={executiveSummaryDetails.businessImpact} />
                         </div>
                       </div>
                     ) : null}
@@ -974,22 +1012,13 @@ function RiskMixLine({
   );
 }
 
-function TopCriticalRiskPill({
-  label,
-  active,
-  onClick
-}: {
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
+function TopCriticalRiskPill({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex w-full min-w-0 items-center rounded-[1.05rem] border px-3.5 py-2.5 text-left text-[0.92rem] font-medium leading-5 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50",
-        active ? "border-slate-900 bg-slate-950 text-white shadow-sm" : "border-slate-300/90 bg-white"
+        "inline-flex w-full min-w-0 cursor-pointer items-center rounded-[1.05rem] border border-slate-300/90 bg-white px-3.5 py-2.5 text-left text-[0.92rem] font-medium leading-5 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px active:border-slate-500"
       )}
       title={label}
     >
@@ -998,25 +1027,11 @@ function TopCriticalRiskPill({
   );
 }
 
-function ExecutiveSummaryItem({ label, value, clampLines }: { label: string; value: string; clampLines?: number }) {
+function ExecutiveSummaryItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-2.5 md:grid-cols-[8.75rem_minmax(0,1fr)] md:items-start md:gap-6">
+    <div className="grid gap-2.5 md:grid-cols-[8rem_minmax(0,1fr)] md:items-start md:gap-6">
       <div className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</div>
-      <div
-        className="min-w-0 text-sm leading-[1.65rem] text-slate-700"
-        style={
-          clampLines
-            ? {
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical",
-                WebkitLineClamp: clampLines,
-                overflow: "hidden"
-              }
-            : undefined
-        }
-      >
-        {value}
-      </div>
+      <div className="min-w-0 text-sm leading-[1.7rem] text-slate-700">{value}</div>
     </div>
   );
 }
@@ -1211,6 +1226,13 @@ function buildRiskMixSummary(categoryBreakdown: { name: RiskCategory; count: num
   };
 }
 
+function buildRiskMixBreakdown(analysis: ContractAnalysis) {
+  return RISK_CATEGORIES.map((name) => ({
+    name,
+    count: analysis.riskSummary.byCategory[name] ?? 0
+  }));
+}
+
 function buildTopCriticalRiskItems(analysis: ContractAnalysis) {
   const prioritizedRisks = getPrioritizedRisks(analysis);
   const matchedRiskIds = new Set<string>();
@@ -1400,22 +1422,61 @@ function buildExecutiveSummaryDetails(
     return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
   });
 
-  const impactSummary = truncate(
-    uniqueStrings(prioritizedRisks.map((risk) => normalizeWhitespace(risk.impactIfIgnored))).slice(0, 2).join(" "),
-    170
-  );
-  const driverSummary = truncate(
-    uniqueStrings(analysis.topCriticalRisks.map((risk) => normalizeWhitespace(risk))).slice(0, 2).join(" "),
-    150
-  );
-  const fallbackDriverSummary = buildPrimaryInsightLine(analysis, categoryBreakdown);
-
   return {
     overallPosition: getOverallPositionSentence(analysis),
-    keyDrivers: ensureSentence(driverSummary || fallbackDriverSummary),
-    businessImpact: ensureSentence(impactSummary || normalizeWhitespace(analysis.decisionRationale)),
-    recommendedAction: ensureSentence(normalizeWhitespace(analysis.nextActions[0] ?? getRecommendedActionFallback(analysis)))
+    keyDrivers: buildExecutiveKeyDrivers(analysis, categoryBreakdown),
+    businessImpact: buildExecutiveBusinessImpact(prioritizedRisks, analysis)
   };
+}
+
+function buildExecutiveKeyDrivers(
+  analysis: ContractAnalysis,
+  categoryBreakdown: { name: RiskCategory; count: number }[]
+) {
+  const driverLabels = buildTopCriticalRiskItems(analysis)
+    .slice(0, 2)
+    .map((item) => item.label.toLowerCase());
+
+  if (driverLabels.length) {
+    return ensureSentence(`Primary drivers are ${joinWithAnd(driverLabels)}`);
+  }
+
+  return ensureSentence(buildPrimaryInsightLine(analysis, categoryBreakdown));
+}
+
+function buildExecutiveBusinessImpact(
+  prioritizedRisks: ContractAnalysis["risks"],
+  analysis: ContractAnalysis
+) {
+  const impactSentences = collectCompleteSummarySentences(
+    prioritizedRisks.map((risk) => risk.impactIfIgnored),
+    2
+  );
+
+  if (impactSentences.length) {
+    return impactSentences.join(" ");
+  }
+
+  const rationaleSentence = extractFirstSentence(analysis.decisionRationale);
+  if (rationaleSentence) {
+    return rationaleSentence;
+  }
+
+  return "Business impact details are not available.";
+}
+
+function collectCompleteSummarySentences(values: string[], maxCount: number) {
+  const sentences: string[] = [];
+
+  for (const value of uniqueStrings(values.map((item) => normalizeWhitespace(item)).filter(Boolean))) {
+    const sentence = extractFirstSentence(value);
+    if (!sentence || sentences.includes(sentence)) continue;
+
+    sentences.push(sentence);
+    if (sentences.length === maxCount) break;
+  }
+
+  return sentences;
 }
 
 function getOverallPositionSentence(analysis: ContractAnalysis) {
