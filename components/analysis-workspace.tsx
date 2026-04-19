@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CircleAlert,
   ChevronRight,
@@ -65,9 +66,15 @@ export function AnalysisWorkspace() {
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
+  const [riskMixPopoverPosition, setRiskMixPopoverPosition] = useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
   const deferredSearch = useDeferredValue(search);
   const mainHeaderRowRef = useRef<HTMLDivElement | null>(null);
   const tabRowRef = useRef<HTMLElement | null>(null);
+  const riskMixTriggerRef = useRef<HTMLButtonElement | null>(null);
   const riskMixPopoverRef = useRef<HTMLDivElement | null>(null);
   const pendingSectionRef = useRef<SectionId | null>(null);
   const settleTimeoutRef = useRef<number | null>(null);
@@ -172,6 +179,29 @@ export function AnalysisWorkspace() {
     schedulePendingNavigationSync(sectionId);
   };
 
+  const updateRiskMixPopoverPosition = () => {
+    const trigger = riskMixTriggerRef.current;
+    if (!trigger) return;
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const viewportPadding = 12;
+    const popoverWidth = 224;
+    const desiredHeight = 240;
+    const spaceBelow = window.innerHeight - triggerRect.bottom - viewportPadding;
+    const spaceAbove = triggerRect.top - viewportPadding;
+    const openBelow = spaceBelow >= 160 || spaceBelow >= spaceAbove;
+    const maxHeight = Math.max(112, Math.min(280, (openBelow ? spaceBelow : spaceAbove) - 8));
+    const left = Math.min(
+      Math.max(viewportPadding, triggerRect.right - popoverWidth),
+      window.innerWidth - popoverWidth - viewportPadding
+    );
+    const top = openBelow
+      ? Math.min(triggerRect.bottom + 8, window.innerHeight - maxHeight - viewportPadding)
+      : Math.max(viewportPadding, triggerRect.top - maxHeight - 8);
+
+    setRiskMixPopoverPosition({ top, left, maxHeight });
+  };
+
   const handleTopCriticalRiskClick = (riskId: string) => {
     const targetRisk = analysis?.risks.find((risk) => risk.id === riskId);
     if (!targetRisk) return;
@@ -209,8 +239,14 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     if (!isRiskMixPopoverOpen) return;
 
+    updateRiskMixPopoverPosition();
+
     const handlePointerDown = (event: PointerEvent) => {
-      if (!riskMixPopoverRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !riskMixTriggerRef.current?.contains(target) &&
+        !riskMixPopoverRef.current?.contains(target)
+      ) {
         setIsRiskMixPopoverOpen(false);
       }
     };
@@ -221,12 +257,20 @@ export function AnalysisWorkspace() {
       }
     };
 
+    const handleViewportChange = () => {
+      updateRiskMixPopoverPosition();
+    };
+
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
 
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
     };
   }, [isRiskMixPopoverOpen]);
 
@@ -507,8 +551,9 @@ export function AnalysisWorkspace() {
                     label="Risk Mix"
                     headerAccessory={
                       riskMixSummary?.hasHiddenCategories ? (
-                        <div ref={riskMixPopoverRef} className="relative shrink-0">
+                        <div className="shrink-0">
                           <button
+                            ref={riskMixTriggerRef}
                             type="button"
                             onClick={() => setIsRiskMixPopoverOpen((current) => !current)}
                             aria-expanded={isRiskMixPopoverOpen}
@@ -516,22 +561,6 @@ export function AnalysisWorkspace() {
                           >
                             View all &rarr;
                           </button>
-
-                          {isRiskMixPopoverOpen ? (
-                            <div className="absolute right-0 top-full z-20 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
-                              <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Category Breakdown
-                              </div>
-                              <div className="space-y-1.5">
-                                {riskMixBreakdown.map((item) => (
-                                  <div key={item.name} className="flex items-center justify-between gap-3 text-[0.83rem] text-slate-700">
-                                    <span>{item.name}</span>
-                                    <span className="font-semibold tabular-nums text-slate-950">{item.count}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
                         </div>
                       ) : null
                     }
@@ -910,6 +939,33 @@ export function AnalysisWorkspace() {
           </div>
         </section>
       </div>
+
+      {isRiskMixPopoverOpen && riskMixPopoverPosition
+        ? createPortal(
+            <div
+              ref={riskMixPopoverRef}
+              className="fixed z-[120] w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.12)]"
+              style={{
+                top: riskMixPopoverPosition.top,
+                left: riskMixPopoverPosition.left,
+                maxHeight: riskMixPopoverPosition.maxHeight
+              }}
+            >
+              <div className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Category Breakdown
+              </div>
+              <div className="space-y-1.5 overflow-y-auto pr-1" style={{ maxHeight: riskMixPopoverPosition.maxHeight - 36 }}>
+                {riskMixBreakdown.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between gap-3 text-[0.83rem] text-slate-700">
+                    <span>{item.name}</span>
+                    <span className="font-semibold tabular-nums text-slate-950">{item.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </main>
   );
 }
