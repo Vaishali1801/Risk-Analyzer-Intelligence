@@ -8,7 +8,6 @@ import {
   FileSearch,
   Filter,
   LayoutPanelLeft,
-  MoreHorizontal,
   Search,
   ShieldCheck,
   TriangleAlert
@@ -157,6 +156,10 @@ export function AnalysisWorkspace() {
   const handleTabClick = (event: MouseEvent<HTMLAnchorElement>, sectionId: SectionId) => {
     event.preventDefault();
 
+    navigateToSection(sectionId);
+  };
+
+  const navigateToSection = (sectionId: SectionId) => {
     const scrollTarget = getScrollTarget(sectionId);
     if (scrollTarget === null) return;
 
@@ -475,14 +478,25 @@ export function AnalysisWorkspace() {
                   />
                   <PrimarySummaryCard
                     label="Risk Mix"
+                    headerAccessory={
+                      riskMixSummary?.hasHiddenCategories ? (
+                        <button
+                          type="button"
+                          onClick={() => navigateToSection("risks")}
+                          className="shrink-0 text-[0.72rem] font-medium text-slate-500 transition hover:text-slate-800"
+                        >
+                          View all &rarr;
+                        </button>
+                      ) : null
+                    }
                     value={
                       riskMixSummary ? (
                         <div className="min-w-0 overflow-hidden" title={riskMixSummary.fullText}>
                           <div className="xl:hidden">
-                            <RiskMixLine items={riskMixSummary.compactItems} hasOverflow={riskMixSummary.compactHasOverflow} overflowLabel={riskMixSummary.fullText} />
+                            <RiskMixLine items={riskMixSummary.compactItems} />
                           </div>
                           <div className="hidden xl:block">
-                            <RiskMixLine items={riskMixSummary.expandedItems} hasOverflow={riskMixSummary.expandedHasOverflow} overflowLabel={riskMixSummary.fullText} />
+                            <RiskMixLine items={riskMixSummary.expandedItems} />
                           </div>
                         </div>
                       ) : (
@@ -495,16 +509,29 @@ export function AnalysisWorkspace() {
 
               {isLayerSummaryExpanded ? (
                 <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-2.5">
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-slate-600">AI Insights</div>
-                    <p className="mt-1.5 text-[0.97rem] font-semibold leading-5 text-slate-900">{summaryInsight}</p>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
+                    <p className="text-[0.97rem] leading-6 text-slate-800">
+                      <span className="mr-2 inline-flex text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                        AI Insight:
+                      </span>
+                      <span className="font-semibold text-slate-900">{summaryInsight}</span>
+                    </p>
                   </div>
 
                   {topCriticalRiskItems.length ? (
                     <div className="space-y-2">
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-slate-500">Top Critical Risks</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[0.76rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Top Critical Risks</div>
+                        <button
+                          type="button"
+                          onClick={() => navigateToSection("risks")}
+                          className="shrink-0 text-[0.72rem] font-medium text-slate-500 transition hover:text-slate-800"
+                        >
+                          View details &rarr;
+                        </button>
+                      </div>
                       <div className="overflow-x-auto pb-1">
-                        <div className="flex min-w-max items-center gap-2.5">
+                        <div className="grid min-w-full grid-flow-col auto-cols-[minmax(12rem,1fr)] items-stretch gap-2.5">
                         {topCriticalRiskItems.map((risk) => (
                           <TopCriticalRiskPill
                             key={risk.id}
@@ -874,16 +901,21 @@ function MetricCard({
 function PrimarySummaryCard({
   label,
   value,
-  valueClassName
+  valueClassName,
+  headerAccessory
 }: {
   label: string;
   value: ReactNode;
   valueClassName?: string;
+  headerAccessory?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[4.35rem] flex-col gap-1 rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
-      <span className="text-[0.78rem] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</span>
-      <div className={cn("min-w-0 flex-1 text-left", valueClassName)}>{value}</div>
+    <div className="flex min-h-[4.85rem] flex-col justify-between rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-[0.8rem] font-medium uppercase tracking-[0.14em] text-slate-700">{label}</span>
+        {headerAccessory}
+      </div>
+      <div className={cn("min-w-0 flex min-h-[2.1rem] flex-1 items-center text-left", valueClassName)}>{value}</div>
     </div>
   );
 }
@@ -892,20 +924,18 @@ function RiskLevelValue({ level }: { level: Severity }) {
   const Icon = level === "High" ? TriangleAlert : level === "Medium" ? CircleAlert : ShieldCheck;
 
   return (
-    <div className="inline-flex items-center gap-2">
-      <span
-        className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded-full ring-1",
-          level === "High"
-            ? "bg-rose-50 text-rose-600 ring-rose-200"
-            : level === "Medium"
-              ? "bg-amber-50 text-amber-600 ring-amber-200"
-              : "bg-emerald-50 text-emerald-600 ring-emerald-200"
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" />
-      </span>
-      <Badge className={cn(severityStyles[level], "px-2.5 py-1 text-[0.78rem] font-semibold tracking-[0.14em]")}>{level || "Unavailable"}</Badge>
+    <div
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[0.95rem] font-semibold leading-none shadow-[0_6px_14px_rgba(15,23,42,0.04)]",
+        level === "High"
+          ? "border-rose-200 bg-rose-50 text-rose-700"
+          : level === "Medium"
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700"
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span>{level || "Unavailable"}</span>
     </div>
   );
 }
@@ -927,13 +957,9 @@ function InlineSeverityStat({ tone, count, label }: { tone: "high" | "medium" | 
 }
 
 function RiskMixLine({
-  items,
-  hasOverflow,
-  overflowLabel
+  items
 }: {
   items: { name: RiskCategory; count: number }[];
-  hasOverflow: boolean;
-  overflowLabel: string;
 }) {
   return (
     <div className="flex min-w-0 items-center overflow-hidden whitespace-nowrap text-[0.92rem] text-slate-600">
@@ -944,11 +970,6 @@ function RiskMixLine({
           <span className="ml-1 font-semibold tabular-nums text-slate-950">{item.count}</span>
         </span>
       ))}
-      {hasOverflow ? (
-        <span className="pl-1 text-slate-400" title={overflowLabel} aria-label={`More categories: ${overflowLabel}`}>
-          <MoreHorizontal className="h-3.5 w-3.5" />
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -967,22 +988,22 @@ function TopCriticalRiskPill({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex w-auto shrink-0 items-center rounded-xl border px-3 py-2 text-left text-[0.92rem] font-medium leading-none text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50",
+        "inline-flex w-full min-w-0 items-center rounded-[1.05rem] border px-3.5 py-2.5 text-left text-[0.92rem] font-medium leading-5 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50",
         active ? "border-slate-900 bg-slate-950 text-white shadow-sm" : "border-slate-300/90 bg-white"
       )}
       title={label}
     >
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="min-w-0">{label}</span>
     </button>
   );
 }
 
 function ExecutiveSummaryItem({ label, value, clampLines }: { label: string; value: string; clampLines?: number }) {
   return (
-    <div className="grid gap-2 md:grid-cols-[10rem_minmax(0,38rem)] md:items-start md:gap-5">
-      <div className="pt-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</div>
+    <div className="grid gap-2.5 md:grid-cols-[8.75rem_minmax(0,1fr)] md:items-start md:gap-6">
+      <div className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</div>
       <div
-        className="max-w-[38rem] text-sm leading-[1.65rem] text-slate-700"
+        className="min-w-0 text-sm leading-[1.65rem] text-slate-700"
         style={
           clampLines
             ? {
@@ -1152,15 +1173,13 @@ function buildPrimaryInsightLine(
   const mediumRiskSectionCount = getUniqueClauseCount(analysis.risks, "Medium");
 
   if (riskDrivers.length) {
-    const urgencyClause =
+    const concentrationBasis =
       highRiskSectionCount > 0
-        ? `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"} drive the current review load`
+        ? `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"}`
         : mediumRiskSectionCount > 0
-          ? `${mediumRiskSectionCount} medium-risk section${mediumRiskSectionCount === 1 ? "" : "s"} carry most remaining review weight`
-          : analysis.riskSummary.low > 0
-            ? "the remaining risk is concentrated in a narrow set of lower-severity findings"
-            : "material exposure is limited in the current review";
-    const riskLedSummary = `Primary exposure centers on ${joinWithAnd(riskDrivers)}; ${urgencyClause}.`;
+          ? `${mediumRiskSectionCount} medium-risk section${mediumRiskSectionCount === 1 ? "" : "s"}`
+          : `${analysis.riskSummary.total} flagged finding${analysis.riskSummary.total === 1 ? "" : "s"}`;
+    const riskLedSummary = `Primary exposure is concentrated in ${joinWithAnd(riskDrivers)} across ${concentrationBasis}.`;
     if (riskLedSummary.length <= 152) {
       return riskLedSummary;
     }
@@ -1182,15 +1201,12 @@ function buildRiskMixSummary(categoryBreakdown: { name: RiskCategory; count: num
 
   const compactItems = categoryBreakdown.slice(0, 2);
   const expandedItems = categoryBreakdown.slice(0, 3);
-  const compactHasOverflow = categoryBreakdown.length > compactItems.length;
-  const expandedHasOverflow = categoryBreakdown.length > expandedItems.length;
   const fullText = buildRiskMixSummaryText(categoryBreakdown);
 
   return {
     compactItems,
     expandedItems,
-    compactHasOverflow,
-    expandedHasOverflow,
+    hasHiddenCategories: categoryBreakdown.length > compactItems.length,
     fullText
   };
 }
@@ -1210,7 +1226,7 @@ function buildTopCriticalRiskItems(analysis: ContractAnalysis) {
       label: buildTopCriticalRiskLabel(matchedRisk.title)
     });
 
-    if (items.length === 3) return items;
+    if (items.length === 4) return items;
   }
 
   for (const risk of prioritizedRisks) {
@@ -1222,7 +1238,7 @@ function buildTopCriticalRiskItems(analysis: ContractAnalysis) {
       label: buildTopCriticalRiskLabel(risk.title)
     });
 
-    if (items.length === 3) break;
+    if (items.length === 4) break;
   }
 
   return items;
@@ -1324,24 +1340,56 @@ function getMeaningfulTokens(value: string) {
 }
 
 function buildTopCriticalRiskLabel(value: string) {
-  const normalized = normalizeWhitespace(value).replace(/[.!?]+$/, "");
-  if (normalized.length <= 40) return normalized;
+  const normalized = normalizeWhitespace(value)
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[.!?]+$/, "");
+  if (normalized.length <= 38) return normalized;
 
-  const separators = [" with ", " due to ", " because ", " without ", ": ", "; ", " rights", " obligations", " commitments"];
+  const separators = [
+    " because ",
+    " due to ",
+    " without ",
+    " with ",
+    " if ",
+    " when ",
+    " after ",
+    " before ",
+    " under ",
+    " allowing ",
+    " allow ",
+    " permits ",
+    " permit ",
+    " requires ",
+    " require ",
+    ": ",
+    "; ",
+    ", "
+  ];
   const normalizedLower = normalized.toLowerCase();
   for (const separator of separators) {
-    const separatorIndex = normalizedLower.indexOf(separator.trim().toLowerCase());
-    if (separatorIndex > 18) {
+    const separatorIndex = normalizedLower.indexOf(separator);
+    if (separatorIndex > 16) {
       return normalized.slice(0, separatorIndex).trim();
     }
   }
 
   const words = normalized.split(" ");
-  if (words.length > 4) {
-    return words.slice(0, 4).join(" ");
+  if (words.length > 5) {
+    return trimTrailingConnectorWords(words.slice(0, 5)).join(" ");
   }
 
   return normalized;
+}
+
+function trimTrailingConnectorWords(words: string[]) {
+  const trailingWords = new Set(["and", "or", "for", "with", "without", "to", "of", "the", "a", "an", "in", "on"]);
+  const trimmedWords = [...words];
+
+  while (trimmedWords.length > 2 && trailingWords.has(trimmedWords[trimmedWords.length - 1].toLowerCase())) {
+    trimmedWords.pop();
+  }
+
+  return trimmedWords;
 }
 
 function buildExecutiveSummaryDetails(
