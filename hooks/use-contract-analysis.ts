@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { demoAnalysis, demoContractText } from "@/data/demo-contract";
+import { preprocessContractText } from "@/lib/parsers/preprocess";
 import type { AnalysisSource, AnalyzeApiResponse, ContractAnalysis } from "@/types/contract";
 
 export function useContractAnalysis() {
@@ -86,14 +88,15 @@ export function useContractAnalysis() {
     setError(null);
 
     try {
-      const response = await fetch("/api/demo");
-      const payload = (await response.json()) as AnalyzeApiResponse;
-
-      if (!response.ok) {
-        throw new Error([payload.error, payload.recovery].filter(Boolean).join(" "));
-      }
-
-      applyAnalysisPayload(payload);
+      applyAnalysisPayload({
+        analysisId: null,
+        analysis: demoAnalysis,
+        source: {
+          sourceKind: "demo",
+          documentName: demoAnalysis.contractTitle,
+          extractedCharacters: preprocessContractText(demoContractText).length
+        }
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load the demo analysis.");
     } finally {

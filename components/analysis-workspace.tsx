@@ -61,7 +61,7 @@ export function AnalysisWorkspace() {
   const [selectedRiskId, setSelectedRiskId] = useState("");
   const [reviewLens, setReviewLens] = useState<ReviewLens>("safer");
   const [draftText, setDraftText] = useState("");
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitted] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
@@ -445,27 +445,24 @@ export function AnalysisWorkspace() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Button type="button" variant="ghost" size="sm" onClick={() => window.print()} className="h-8.5 px-2.5 text-slate-600 hover:bg-slate-100 hover:text-slate-950">
-                  Preview
-                </Button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={() => downloadReportPdf(analysis)}
-                  className="h-8.5 border-slate-200 bg-white px-3 text-slate-700 hover:bg-slate-100"
+                  onClick={() => window.print()}
+                  className="h-8.5 border-slate-200 bg-slate-50 px-3 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
                 >
-                  Download
+                  Preview
                 </Button>
                 <Button
                   type="button"
+                  variant="default"
                   size="sm"
+                  onClick={() => downloadReportPdf(analysis)}
                   className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
-                  onClick={() => setIsSubmitted(true)}
-                  disabled={isSubmitted}
                 >
-                  {isSubmitted ? "Submitted" : "Submit"}
+                  Download
                 </Button>
               </div>
             </div>
