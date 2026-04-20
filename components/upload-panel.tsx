@@ -28,19 +28,21 @@ const uploadSchema = z.object({
 type UploadForm = z.infer<typeof uploadSchema>;
 
 type UploadPanelProps = {
-  onAnalyze: (file: File) => Promise<void>;
-  onDemo: () => void;
+  onAnalyzeFile: (file: File) => Promise<void>;
+  onAnalyzeText: (text: string) => Promise<void>;
+  onDemo: () => Promise<void>;
+  activeFlow?: "analyze" | "demo" | null;
   loading: boolean;
-  demoLoading?: boolean;
   demoHref?: string;
 };
 
 export function UploadPanel({
-  onAnalyze,
+  onAnalyzeFile,
+  onAnalyzeText,
   onDemo,
+  activeFlow = null,
   loading,
-  demoLoading = false,
-  demoHref = "/sample-contract.pdf"
+  demoHref = "/api/demo/document"
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -57,39 +59,6 @@ export function UploadPanel({
     form.setValue("file", file, { shouldValidate: true, shouldDirty: true });
   }
 
-  async function createPdfFromText(text: string) {
-    const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const lines = doc.splitTextToSize(text, 500);
-    let y = 48;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-
-    lines.forEach((line: string, index: number) => {
-      if (index === 0) {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(14);
-        doc.text("Pasted Document for AI Risk Review", 48, y);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        y += 24;
-      }
-
-      if (y > pageHeight - 48) {
-        doc.addPage();
-        y = 48;
-      }
-
-      doc.text(line, 48, y);
-      y += 14;
-    });
-
-    const buffer = doc.output("arraybuffer");
-    return new File([buffer], "pasted-document.pdf", { type: "application/pdf" });
-  }
-
   async function submit() {
     setLocalError(null);
 
@@ -98,7 +67,7 @@ export function UploadPanel({
       if (!valid) return;
       const file = form.getValues("file");
       if (!file) return;
-      await onAnalyze(file);
+      await onAnalyzeFile(file);
       return;
     }
 
@@ -107,8 +76,7 @@ export function UploadPanel({
       return;
     }
 
-    const generatedPdf = await createPdfFromText(pastedText.trim());
-    await onAnalyze(generatedPdf);
+    await onAnalyzeText(pastedText.trim());
   }
 
   return (
@@ -124,7 +92,7 @@ export function UploadPanel({
           className={cn(
             "rounded-2xl border border-dashed border-slate-300 bg-white/80 p-4 transition",
             mode === "upload" && isDragging && "border-slate-900 bg-blue-50/60",
-            (loading || demoLoading) && "opacity-70"
+            loading && "opacity-70"
           )}
         >
           <div className="mb-2.5 flex justify-center">
@@ -161,7 +129,7 @@ export function UploadPanel({
                 className={cn(
                   "flex h-[96px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 text-center transition-all duration-200 hover:border-slate-400 hover:bg-slate-50/80",
                   isDragging && "border-slate-900 bg-blue-50/60",
-                  (loading || demoLoading) && "pointer-events-none"
+                  loading && "pointer-events-none"
                 )}
               >
                 <Input
@@ -246,24 +214,26 @@ export function UploadPanel({
         ) : null}
 
         <div className="flex flex-wrap items-center justify-center gap-2.5 sm:flex-nowrap">
-          <div title={!canAnalyze && !loading && !demoLoading ? "Upload or paste content to analyze" : undefined}>
+          <div title={!canAnalyze && !loading ? "Upload or paste content to analyze" : undefined}>
             <Button
               type="submit"
               className="h-10 rounded-xl px-4 sm:basis-[31%] disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
-              disabled={loading || demoLoading || !canAnalyze}
-              title={!canAnalyze && !loading && !demoLoading ? "Upload or paste content to analyze" : undefined}
+              disabled={loading || !canAnalyze}
+              title={!canAnalyze && !loading ? "Upload or paste content to analyze" : undefined}
             >
-              {loading ? "Analyzing..." : "Analyze Risks"}
+              {loading && activeFlow === "analyze" ? "Analyzing..." : "Analyze Risks"}
             </Button>
           </div>
           <Button
             type="button"
             variant="secondary"
             className="h-10 rounded-xl px-4 sm:basis-[28%]"
-            onClick={onDemo}
-            disabled={loading || demoLoading}
+            onClick={() => {
+              void onDemo();
+            }}
+            disabled={loading}
           >
-            {demoLoading ? "Reviewing demo..." : "Try Demo"}
+            {loading && activeFlow === "demo" ? "Loading demo..." : "Try Demo"}
           </Button>
           <a
             href={demoHref}

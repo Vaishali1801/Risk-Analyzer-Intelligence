@@ -398,7 +398,7 @@ export function AnalysisWorkspace() {
     );
   }
 
-  const documentName = getDocumentName(session.sourceLabel);
+  const documentName = getDocumentName(session.source.documentName);
   const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
   const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
@@ -1184,12 +1184,8 @@ function getPrioritizedRisks(analysis: ContractAnalysis) {
   });
 }
 
-function getDocumentName(sourceLabel?: string) {
-  if (!sourceLabel?.trim()) return "Uploaded Document";
-
-  const [rawName] = sourceLabel.split(" | ");
-  const normalizedName = rawName?.trim();
-
+function getDocumentName(documentName?: string) {
+  const normalizedName = documentName?.trim();
   return normalizedName || "Uploaded Document";
 }
 

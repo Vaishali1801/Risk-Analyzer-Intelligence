@@ -78,15 +78,16 @@ npm run build
 - `lib/ai/analyzeContract.ts`: chunking, prompt construction, OpenAI call, JSON repair, validation
 - `lib/ai/decision.ts`: explainable rule-based recommendation logic
 - `schemas/contract-analysis.ts`: Zod schema for all rendered AI output
-- `hooks/use-contract-analysis.ts`: client workflow state for uploads, demo mode, errors, and selected risk
+- `hooks/use-contract-analysis.ts`: client workflow state for uploads, pasted text, demo mode, and homepage handoff
 - `components`: landing page, upload flow, dashboard, risk table, deep dive, and report
-- `data/demo-contract.ts`: realistic demo analysis for no-API portfolio walkthrough
-- `public/sample-contract.txt`: sample contract text for reference
+- `data/demo-contract.ts`: authoritative demo contract text and fixture analysis
+- `app/api/demo/route.ts`: fixture-backed demo analysis endpoint for the homepage flow
+- `app/api/demo/document/route.ts`: authoritative demo document endpoint used by "View demo doc"
 
 ## Reliability Notes
 
 - Uploaded contracts require `OPENAI_API_KEY`.
-- Demo mode works without an API call.
+- Demo mode uses a centralized fixture-backed API route that returns the same contract shape as live analysis.
 - The UI never renders unvalidated OpenAI output.
 - Unsupported, empty, oversized, and low-text files return user-safe errors.
 - If model output cannot be validated after retry, the API returns a conservative validated fallback instead of malformed content.

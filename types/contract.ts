@@ -5,14 +5,21 @@ export type RiskCategory = "Legal" | "Financial" | "Operational" | "Compliance" 
 export type Severity = "High" | "Medium" | "Low";
 export type Mitigability = "High" | "Medium" | "Low";
 export type DecisionRecommendation = "Accept" | "Renegotiate" | "Reject";
+export type AnalysisSourceKind = "upload" | "paste" | "demo";
 
 export type ContractRisk = z.infer<typeof ContractRiskSchema>;
 export type ContractAnalysis = z.infer<typeof ContractAnalysisSchema>;
 
+export type AnalysisSource = {
+  sourceKind: AnalysisSourceKind;
+  documentName: string;
+  extractedCharacters: number;
+};
+
 export type AnalyzeApiResponse = {
   analysis?: ContractAnalysis;
-  extractedCharacters?: number;
-  fileName?: string;
+  analysisId?: string | null;
+  source?: AnalysisSource;
   error?: string;
   recovery?: string;
 };

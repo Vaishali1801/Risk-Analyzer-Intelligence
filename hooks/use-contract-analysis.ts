@@ -1,31 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { demoAnalysis } from "@/data/demo-contract";
-import type { AnalyzeApiResponse, ContractAnalysis, ContractRisk } from "@/types/contract";
+import { useState } from "react";
+import type { AnalysisSource, AnalyzeApiResponse, ContractAnalysis } from "@/types/contract";
 
 export function useContractAnalysis() {
   const [analysis, setAnalysis] = useState<ContractAnalysis | null>(null);
-  const [selectedRisk, setSelectedRisk] = useState<ContractRisk | undefined>();
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [source, setSource] = useState<AnalysisSource | null>(null);
+  const [activeFlow, setActiveFlow] = useState<"analyze" | "demo" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sourceLabel, setSourceLabel] = useState("No contract analyzed yet");
 
-  useEffect(() => {
-    if (analysis) setSelectedRisk(analysis.risks[0]);
-  }, [analysis]);
+  function applyAnalysisPayload(payload: AnalyzeApiResponse) {
+    if (!payload.analysis || !payload.source) {
+      throw new Error([payload.error, payload.recovery].filter(Boolean).join(" ") || "Unable to analyze this contract.");
+    }
 
-  const riskSignal = useMemo(() => {
-    if (!analysis) return "Upload a contract or use demo mode to generate a validated risk memo.";
-    return `${analysis.riskSummary.high} high, ${analysis.riskSummary.medium} medium, ${analysis.riskSummary.low} low risks detected.`;
-  }, [analysis]);
-
-  function scrollToDashboard() {
-    window.setTimeout(() => document.getElementById("dashboard")?.scrollIntoView({ behavior: "smooth" }), 80);
+    setAnalysis(payload.analysis);
+    setAnalysisId(payload.analysisId ?? null);
+    setSource(payload.source);
   }
 
   async function analyzeFile(file: File) {
     setLoading(true);
+    setActiveFlow("analyze");
     setError(null);
 
     try {
@@ -38,38 +36,81 @@ export function useContractAnalysis() {
       });
       const payload = (await response.json()) as AnalyzeApiResponse;
 
-      if (!response.ok || !payload.analysis) {
+      if (!response.ok) {
         throw new Error([payload.error, payload.recovery].filter(Boolean).join(" "));
       }
 
-      setAnalysis(payload.analysis);
-      setSourceLabel(
-        `${payload.fileName ?? file.name} | ${payload.extractedCharacters?.toLocaleString() ?? "0"} extracted characters`
-      );
-      scrollToDashboard();
+      applyAnalysisPayload(payload);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to analyze this contract.");
     } finally {
       setLoading(false);
+      setActiveFlow(null);
     }
   }
 
-  function loadDemo() {
+  async function analyzeText(text: string) {
+    setLoading(true);
+    setActiveFlow("analyze");
     setError(null);
-    setAnalysis(demoAnalysis);
-    setSourceLabel("Demo contract | no API call required");
-    scrollToDashboard();
+
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text,
+          documentName: "Pasted Document"
+        })
+      });
+      const payload = (await response.json()) as AnalyzeApiResponse;
+
+      if (!response.ok) {
+        throw new Error([payload.error, payload.recovery].filter(Boolean).join(" "));
+      }
+
+      applyAnalysisPayload(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to analyze this document text.");
+    } finally {
+      setLoading(false);
+      setActiveFlow(null);
+    }
+  }
+
+  async function loadDemo() {
+    setLoading(true);
+    setActiveFlow("demo");
+    setError(null);
+
+    try {
+      const response = await fetch("/api/demo");
+      const payload = (await response.json()) as AnalyzeApiResponse;
+
+      if (!response.ok) {
+        throw new Error([payload.error, payload.recovery].filter(Boolean).join(" "));
+      }
+
+      applyAnalysisPayload(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load the demo analysis.");
+    } finally {
+      setLoading(false);
+      setActiveFlow(null);
+    }
   }
 
   return {
+    analysisId,
     analysis,
-    selectedRisk,
-    setSelectedRisk,
+    source,
+    activeFlow,
     loading,
     error,
-    sourceLabel,
-    riskSignal,
     analyzeFile,
+    analyzeText,
     loadDemo
   };
 }

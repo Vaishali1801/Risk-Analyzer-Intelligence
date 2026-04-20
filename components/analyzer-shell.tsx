@@ -15,39 +15,31 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useContractAnalysis } from "@/hooks/use-contract-analysis";
 import { writeAnalysisSession } from "@/lib/analysis-session";
 
-const demoContractHref = "/sample-contract.pdf";
+const demoContractHref = "/api/demo/document";
 
 export function AnalyzerShell() {
-  const { analysis, loading, error, sourceLabel, analyzeFile, loadDemo } = useContractAnalysis();
+  const { analysisId, analysis, source, activeFlow, loading, error, analyzeFile, analyzeText, loadDemo } = useContractAnalysis();
   const router = useRouter();
-  const [demoLoading, setDemoLoading] = useState(false);
   const redirectedAnalysisKey = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!analysis) return;
+    if (!analysis || !source) return;
 
-    const analysisKey = `${analysis.contractTitle}:${analysis.riskSummary.total}:${sourceLabel}`;
+    const analysisKey = `${analysis.contractTitle}:${analysis.riskSummary.total}:${source.sourceKind}:${source.documentName}`;
     if (redirectedAnalysisKey.current === analysisKey) return;
 
     redirectedAnalysisKey.current = analysisKey;
     writeAnalysisSession({
+      analysisId,
       analysis,
-      sourceLabel,
+      source,
       savedAt: new Date().toISOString()
     });
 
     startTransition(() => {
       router.push("/analysis");
     });
-  }, [analysis, router, sourceLabel]);
-
-  function runDemoReview() {
-    setDemoLoading(true);
-    window.setTimeout(() => {
-      loadDemo();
-      setDemoLoading(false);
-    }, 1400);
-  }
+  }, [analysis, analysisId, router, source]);
 
   return (
     <main className="min-h-screen">
@@ -85,10 +77,11 @@ export function AnalyzerShell() {
 
         <div className="space-y-3">
           <UploadPanel
-            onAnalyze={analyzeFile}
-            onDemo={runDemoReview}
+            onAnalyzeFile={analyzeFile}
+            onAnalyzeText={analyzeText}
+            onDemo={loadDemo}
+            activeFlow={activeFlow}
             loading={loading}
-            demoLoading={demoLoading}
             demoHref={demoContractHref}
           />
           <SampleOutputCard />
@@ -155,7 +148,10 @@ function SampleOutputCard() {
             <div className="rounded-xl bg-slate-900 p-2 text-white">
               <WandSparkles className="h-3.5 w-3.5" />
             </div>
-            <div className="text-sm font-semibold text-slate-950">Sample AI-generated insight</div>
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Example analysis output</div>
+              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Static preview</div>
+            </div>
           </div>
           <Badge className="border-red-200 bg-red-50 text-red-700">High</Badge>
         </div>

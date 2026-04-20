@@ -1,11 +1,12 @@
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
-import type { ContractAnalysis } from "@/types/contract";
+import type { AnalysisSource, ContractAnalysis } from "@/types/contract";
 
 const STORAGE_KEY = "contract-risk-analysis-session";
 
 export type StoredAnalysisSession = {
+  analysisId: string | null;
   analysis: ContractAnalysis;
-  sourceLabel: string;
+  source: AnalysisSource;
   savedAt: string;
 };
 
@@ -23,15 +24,29 @@ export function readAnalysisSession() {
   try {
     const parsed = JSON.parse(rawSession) as Partial<StoredAnalysisSession>;
     const analysis = ContractAnalysisSchema.safeParse(parsed.analysis);
+    const source = parsed.source;
 
-    if (!analysis.success || typeof parsed.sourceLabel !== "string" || typeof parsed.savedAt !== "string") {
+    const validSource =
+      source &&
+      typeof source === "object" &&
+      (source.sourceKind === "upload" || source.sourceKind === "paste" || source.sourceKind === "demo") &&
+      typeof source.documentName === "string" &&
+      typeof source.extractedCharacters === "number";
+
+    if (
+      !analysis.success ||
+      !validSource ||
+      typeof parsed.savedAt !== "string" ||
+      (parsed.analysisId !== null && typeof parsed.analysisId !== "string" && typeof parsed.analysisId !== "undefined")
+    ) {
       window.sessionStorage.removeItem(STORAGE_KEY);
       return null;
     }
 
     return {
+      analysisId: parsed.analysisId ?? null,
       analysis: analysis.data,
-      sourceLabel: parsed.sourceLabel,
+      source: source as AnalysisSource,
       savedAt: parsed.savedAt
     } satisfies StoredAnalysisSession;
   } catch {
