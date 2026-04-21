@@ -3,45 +3,27 @@
 import Link from "next/link";
 import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  CircleAlert,
-  ChevronRight,
-  FileSearch,
-  Filter,
-  LayoutPanelLeft,
-  Search,
-  ShieldCheck,
-  TriangleAlert
-} from "lucide-react";
+import { CircleAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { RISK_CATEGORIES, SEVERITIES, decisionStyles, severityRank, severityStyles } from "@/constants/risk";
+import { RISK_CATEGORIES, decisionStyles, severityRank } from "@/constants/risk";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
-import { buildClauseAction } from "@/lib/reporting/actions";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
 import { cn, percent, truncate } from "@/lib/utils";
+import {
+  RISK_REVIEW_STATUSES,
+  RiskDecisionPanel,
+  RiskFindingsTable,
+  type RiskPanelFocusTarget,
+  type RiskReviewLens,
+  type RiskReviewStatus,
+  type RiskSortKey
+} from "@/components/risk-findings-ui";
 import type { ContractAnalysis, RiskCategory, Severity } from "@/types/contract";
 
-type SortKey = "severity" | "confidence" | "category";
-type ReviewLens = "safer" | "simplify" | "hidden" | "standard";
 type SectionId = "summary" | "risks" | "final-review";
-
-const sortLabels: Record<SortKey, string> = {
-  severity: "Severity",
-  confidence: "Confidence",
-  category: "Category"
-};
-
-const reviewLenses: { key: ReviewLens; label: string }[] = [
-  { key: "safer", label: "Safer wording" },
-  { key: "simplify", label: "Simplify" },
-  { key: "hidden", label: "Hidden risk" },
-  { key: "standard", label: "Standard position" }
-];
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -62,10 +44,14 @@ export function AnalysisWorkspace() {
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<Severity | "All">("All");
   const [category, setCategory] = useState<RiskCategory | "All">("All");
-  const [sortKey, setSortKey] = useState<SortKey>("severity");
+  const [statusFilter, setStatusFilter] = useState<RiskReviewStatus | "All">("All");
+  const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
-  const [reviewLens, setReviewLens] = useState<ReviewLens>("safer");
+  const [reviewLens, setReviewLens] = useState<RiskReviewLens>("safer");
   const [draftText, setDraftText] = useState("");
+  const [riskStatuses, setRiskStatuses] = useState<Record<string, RiskReviewStatus>>({});
+  const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
+  const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
   const [isSubmitted] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
@@ -230,7 +216,10 @@ export function AnalysisWorkspace() {
     setSearch("");
     setSeverity("All");
     setCategory("All");
+    setStatusFilter("All");
     setSelectedRiskId(riskId);
+    setPanelFocusTarget("summary");
+    setIsDecisionPanelOpen(true);
 
     const scrollTarget = getScrollTarget("risks");
     if (scrollTarget !== null) {
@@ -244,6 +233,19 @@ export function AnalysisWorkspace() {
     window.setTimeout(() => {
       document.getElementById(`risk-row-${riskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, RISK_FOCUS_SCROLL_DELAY_MS);
+  };
+
+  const openRiskPanel = (riskId: string, options?: { focusTarget?: RiskPanelFocusTarget }) => {
+    setSelectedRiskId(riskId);
+    setPanelFocusTarget(options?.focusTarget ?? "summary");
+    setIsDecisionPanelOpen(true);
+  };
+
+  const updateRiskStatus = (riskId: string, nextStatus: RiskReviewStatus) => {
+    setRiskStatuses((current) => {
+      if (current[riskId] === nextStatus) return current;
+      return { ...current, [riskId]: nextStatus };
+    });
   };
 
   useEffect(() => {
@@ -332,26 +334,44 @@ export function AnalysisWorkspace() {
     return [...analysis.risks]
       .filter((risk) => severity === "All" || risk.severity === severity)
       .filter((risk) => category === "All" || risk.category === category)
+      .filter((risk) => statusFilter === "All" || (riskStatuses[risk.id] ?? "Pending Review") === statusFilter)
       .filter((risk) => {
         if (!query) return true;
 
-        return [risk.title, risk.clauseRef, risk.highlightedText, risk.whyRisky, risk.impactIfIgnored]
+        return [risk.title, risk.highlightedText, risk.category]
           .join(" ")
           .toLowerCase()
           .includes(query);
       })
       .sort((a, b) => {
-        if (sortKey === "severity") {
-          return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+        switch (sortKey) {
+          case "severity-desc":
+            return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+          case "severity-asc":
+            return severityRank[a.severity] - severityRank[b.severity] || a.confidence - b.confidence;
+          case "confidence-desc":
+            return b.confidence - a.confidence || severityRank[b.severity] - severityRank[a.severity];
+          case "confidence-asc":
+            return a.confidence - b.confidence || severityRank[a.severity] - severityRank[b.severity];
+          case "title-asc":
+            return a.title.localeCompare(b.title) || severityRank[b.severity] - severityRank[a.severity];
+          case "title-desc":
+            return b.title.localeCompare(a.title) || severityRank[b.severity] - severityRank[a.severity];
+          case "category-asc":
+            return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);
+          case "category-desc":
+            return b.category.localeCompare(a.category) || a.title.localeCompare(b.title);
+          default:
+            return 0;
         }
-
-        if (sortKey === "confidence") {
-          return b.confidence - a.confidence || severityRank[b.severity] - severityRank[a.severity];
-        }
-
-        return a.category.localeCompare(b.category) || severityRank[b.severity] - severityRank[a.severity];
       });
-  }, [analysis, category, deferredSearch, severity, sortKey]);
+  }, [analysis, category, deferredSearch, riskStatuses, severity, sortKey, statusFilter]);
+
+  const categoryOptions = useMemo(() => {
+    if (!analysis) return [];
+
+    return Array.from(new Set(analysis.risks.map((risk) => risk.category))).sort((a, b) => a.localeCompare(b));
+  }, [analysis]);
 
   const categoryBreakdown = useMemo(() => {
     if (!analysis) return [];
@@ -359,6 +379,23 @@ export function AnalysisWorkspace() {
     return Object.entries(analysis.riskSummary.byCategory)
       .map(([name, count]) => ({ name: name as RiskCategory, count }))
       .sort((a, b) => b.count - a.count);
+  }, [analysis]);
+
+  useEffect(() => {
+    if (!analysis || !analysis.risks.length) return;
+
+    setRiskStatuses((current) => {
+      const nextStatuses = analysis.risks.reduce<Record<string, RiskReviewStatus>>((accumulator, risk) => {
+        accumulator[risk.id] = current[risk.id] ?? "Pending Review";
+        return accumulator;
+      }, {});
+
+      const isUnchanged =
+        Object.keys(nextStatuses).length === Object.keys(current).length &&
+        Object.entries(nextStatuses).every(([riskId, riskStatus]) => current[riskId] === riskStatus);
+
+      return isUnchanged ? current : nextStatuses;
+    });
   }, [analysis]);
 
   useEffect(() => {
@@ -375,6 +412,11 @@ export function AnalysisWorkspace() {
       setSelectedRiskId(filteredRisks[0].id);
     }
   }, [analysis, filteredRisks, selectedRiskId]);
+
+  useEffect(() => {
+    if (filteredRisks.length > 0) return;
+    setIsDecisionPanelOpen(false);
+  }, [filteredRisks.length]);
 
   useEffect(() => {
     setReviewLens("safer");
@@ -692,262 +734,29 @@ export function AnalysisWorkspace() {
           </Card>
         </section>
 
-        <section id="risks" className="grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
-          <Card className="border-slate-200 bg-white/95 shadow-sm">
-            <CardContent className="space-y-4 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Risk register</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Explore findings</h2>
-                  <p className="mt-1 text-sm text-slate-600">{filteredRisks.length} results in current view</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2 text-slate-500">
-                  <LayoutPanelLeft className="h-5 w-5" />
-                </div>
-              </div>
-
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search clause, title, or rationale"
-                  className="pl-10"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <SelectField
-                  label="Severity"
-                  value={severity}
-                  onChange={(value) => setSeverity(value as Severity | "All")}
-                  options={["All", ...SEVERITIES]}
-                />
-                <SelectField
-                  label="Category"
-                  value={category}
-                  onChange={(value) => setCategory(value as RiskCategory | "All")}
-                  options={["All", ...RISK_CATEGORIES]}
-                />
-              </div>
-
-              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                <div className="flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  Sort by
-                </div>
-                <select
-                  value={sortKey}
-                  onChange={(event) => setSortKey(event.target.value as SortKey)}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700 outline-none"
-                >
-                  {Object.entries(sortLabels).map(([key, label]) => (
-                    <option key={key} value={key}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                {filteredRisks.length ? (
-                  filteredRisks.map((risk) => (
-                    <button
-                      key={risk.id}
-                      id={`risk-row-${risk.id}`}
-                      type="button"
-                      onClick={() => setSelectedRiskId(risk.id)}
-                      className={cn(
-                        "w-full rounded-2xl border px-4 py-4 text-left transition",
-                        selectedRiskId === risk.id
-                          ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge className={cn("border", selectedRiskId === risk.id ? "border-white/20 bg-white/10 text-white" : severityStyles[risk.severity])}>
-                              {risk.severity}
-                            </Badge>
-                            <Badge
-                              className={cn(
-                                "border",
-                                selectedRiskId === risk.id
-                                  ? "border-white/20 bg-white/10 text-white"
-                                  : "border-slate-200 bg-slate-50 text-slate-700"
-                              )}
-                            >
-                              {risk.category}
-                            </Badge>
-                            <span className={cn("text-xs", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-500")}>
-                              {risk.clauseRef}
-                            </span>
-                          </div>
-                          <div>
-                            <div className={cn("text-sm font-semibold", selectedRiskId === risk.id ? "text-white" : "text-slate-950")}>
-                              {risk.title}
-                            </div>
-                            <p className={cn("mt-1 text-sm leading-6", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-600")}>
-                              {truncate(risk.whyRisky, 120)}
-                            </p>
-                          </div>
-                        </div>
-                        <ChevronRight className={cn("mt-1 h-4 w-4 shrink-0", selectedRiskId === risk.id ? "text-slate-300" : "text-slate-400")} />
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-slate-700">No findings match the current filters.</p>
-                    <p className="mt-1 text-sm text-slate-500">Broaden the search or reset severity and category filters.</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 bg-white/95 shadow-sm">
-            <CardContent className="space-y-5 p-6">
-              {selectedRisk ? (
-                <>
-                  <div className="flex flex-col gap-4 border-b border-slate-200 pb-5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={severityStyles[selectedRisk.severity]}>{selectedRisk.severity}</Badge>
-                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">{selectedRisk.category}</Badge>
-                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">{selectedRisk.mitigability} mitigability</Badge>
-                      <Badge className="border-slate-200 bg-slate-50 text-slate-700">
-                        {Math.round(selectedRisk.confidence * 100)}% confidence
-                      </Badge>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Clause review</p>
-                      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{selectedRisk.title}</h2>
-                      <p className="mt-1 text-sm text-slate-600">{selectedRisk.clauseRef}</p>
-                    </div>
-                  </div>
-
-                  <WorkspacePanel
-                    title="Flagged language"
-                    description="The excerpt driving the current risk finding."
-                    tone="alert"
-                  >
-                    {selectedRisk.highlightedText}
-                  </WorkspacePanel>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <WorkspacePanel title="Why this matters" description="Negotiation and legal posture">
-                      {selectedRisk.whyRisky}
-                    </WorkspacePanel>
-                    <WorkspacePanel title="Impact if accepted" description="Operational or commercial downside">
-                      {selectedRisk.impactIfIgnored}
-                    </WorkspacePanel>
-                  </div>
-
-                  <WorkspacePanel title="Full clause text" description="Source language for reviewer validation">
-                    {selectedRisk.clauseText}
-                  </WorkspacePanel>
-
-                  <div className="space-y-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Review lens</p>
-                      <h3 className="mt-2 text-lg font-semibold text-slate-950">Pressure-test the clause</h3>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {reviewLenses.map((lens) => (
-                        <button
-                          key={lens.key}
-                          type="button"
-                          onClick={() => setReviewLens(lens.key)}
-                          className={cn(
-                            "rounded-xl border px-3 py-2 text-sm font-medium transition",
-                            reviewLens === lens.key
-                              ? "border-slate-950 bg-slate-950 text-white"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                          )}
-                        >
-                          {lens.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700">
-                      {buildClauseAction(reviewLens, selectedRisk)}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Draft safer position</p>
-                        <h3 className="mt-1 text-lg font-semibold text-slate-950">Editable fallback language</h3>
-                      </div>
-                      <Button type="button" variant="secondary" size="sm" onClick={() => setDraftText(selectedRisk.suggestedImprovement)}>
-                        Reset draft
-                      </Button>
-                    </div>
-                    <Textarea value={draftText} onChange={(event) => setDraftText(event.target.value)} className="min-h-40 bg-white" />
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-500">
-                  Select a finding from the register to open clause-level review.
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-5">
-            <Card className="border-slate-200 bg-white/95 shadow-sm">
-              <CardContent className="space-y-4 p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Portfolio view</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Risk concentration</h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {dominantCategory
-                      ? `${percent(dominantCategory.count, analysis.riskSummary.total)} of findings sit in ${dominantCategory.name.toLowerCase()}.`
-                      : "No category concentration detected."}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {categoryBreakdown.map((item) => (
-                    <div key={item.name} className="space-y-2">
-                      <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="font-medium text-slate-700">{item.name}</span>
-                        <span className="text-slate-500">
-                          {item.count} / {analysis.riskSummary.total}
-                        </span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-100">
-                        <div
-                          className="h-2 rounded-full bg-slate-900"
-                          style={{ width: `${analysis.riskSummary.total ? (item.count / analysis.riskSummary.total) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-slate-200 bg-white/95 shadow-sm">
-              <CardContent className="space-y-4 p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Critical watchlist</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Priority items to resolve</h2>
-                </div>
-
-                <div className="space-y-3">
-                  {analysis.topCriticalRisks.map((risk) => (
-                    <div key={risk} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">
-                      {risk}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-          </div>
+        <section id="risks" className="space-y-5">
+          <RiskFindingsTable
+            risks={filteredRisks}
+            totalRiskCount={analysis.risks.length}
+            search={search}
+            severity={severity}
+            category={category}
+            status={statusFilter}
+            categoryOptions={categoryOptions}
+            sortKey={sortKey}
+            selectedRiskId={selectedRiskId}
+            riskStatuses={riskStatuses}
+            onSearchChange={setSearch}
+            onSeverityChange={setSeverity}
+            onCategoryChange={setCategory}
+            onStatusChange={setStatusFilter}
+            onSortChange={setSortKey}
+            onReviewRisk={(risk) => openRiskPanel(risk.id)}
+            onAskAi={(risk) => {
+              setReviewLens("safer");
+              openRiskPanel(risk.id, { focusTarget: "ask-ai" });
+            }}
+          />
         </section>
 
         <section id="final-review">
@@ -992,6 +801,23 @@ export function AnalysisWorkspace() {
           </div>
         </section>
       </div>
+
+      <RiskDecisionPanel
+        open={isDecisionPanelOpen}
+        risk={selectedRisk}
+        status={selectedRisk ? riskStatuses[selectedRisk.id] ?? "Pending Review" : RISK_REVIEW_STATUSES[0]}
+        reviewLens={reviewLens}
+        draftText={draftText}
+        focusTarget={panelFocusTarget}
+        onClose={() => setIsDecisionPanelOpen(false)}
+        onReviewLensChange={setReviewLens}
+        onDraftTextChange={setDraftText}
+        onResetDraft={() => setDraftText(selectedRisk?.suggestedImprovement ?? "")}
+        onStatusChange={(value) => {
+          if (!selectedRisk) return;
+          updateRiskStatus(selectedRisk.id, value);
+        }}
+      />
 
       {isRiskMixPopoverOpen && riskMixPopoverPosition
         ? createPortal(
@@ -1142,72 +968,6 @@ function ExecutiveSummaryItem({ label, value }: { label: string; value: string }
       <div className="pt-0.5 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">{label}</div>
       <div className="min-w-0 text-sm leading-[1.52rem] text-slate-700">{value}</div>
     </div>
-  );
-}
-
-function WorkspacePanel({
-  title,
-  description,
-  tone = "default",
-  children
-}: {
-  title: string;
-  description: string;
-  tone?: "default" | "alert";
-  children: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "rounded-3xl border p-4",
-        tone === "alert" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "mt-0.5 rounded-2xl p-2",
-            tone === "alert" ? "bg-amber-100 text-amber-700" : "bg-white text-slate-500 ring-1 ring-slate-200"
-          )}
-        >
-          {tone === "alert" ? <TriangleAlert className="h-4 w-4" /> : <FileSearch className="h-4 w-4" />}
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{title}</p>
-          <p className="mt-1 text-sm text-slate-500">{description}</p>
-          <p className="mt-3 text-sm leading-7 text-slate-700">{children}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-}) {
-  return (
-    <label className="space-y-2 text-sm">
-      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-slate-900"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 
