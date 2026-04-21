@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { demoAnalysis, demoContractText } from "@/data/demo-contract";
 import { preprocessContractText } from "@/lib/parsers/preprocess";
 import type { AnalysisSource, AnalyzeApiResponse, ContractAnalysis } from "@/types/contract";
@@ -13,6 +13,18 @@ export function useContractAnalysis() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function beginFlow(flow: "analyze" | "demo") {
+    setLoading(true);
+    setActiveFlow(flow);
+    setError(null);
+  }
+
+  function failFlow(message: string) {
+    setError(message);
+    setLoading(false);
+    setActiveFlow(null);
+  }
+
   function applyAnalysisPayload(payload: AnalyzeApiResponse) {
     if (!payload.analysis || !payload.source) {
       throw new Error([payload.error, payload.recovery].filter(Boolean).join(" ") || "Unable to analyze this contract.");
@@ -23,10 +35,14 @@ export function useContractAnalysis() {
     setSource(payload.source);
   }
 
-  async function analyzeFile(file: File) {
+  useEffect(() => {
+    if (!analysis || !source) return;
+
     setLoading(true);
-    setActiveFlow("analyze");
-    setError(null);
+  }, [analysis, source]);
+
+  async function analyzeFile(file: File) {
+    beginFlow("analyze");
 
     try {
       const formData = new FormData();
@@ -44,17 +60,12 @@ export function useContractAnalysis() {
 
       applyAnalysisPayload(payload);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to analyze this contract.");
-    } finally {
-      setLoading(false);
-      setActiveFlow(null);
+      failFlow(caught instanceof Error ? caught.message : "Unable to analyze this contract.");
     }
   }
 
   async function analyzeText(text: string) {
-    setLoading(true);
-    setActiveFlow("analyze");
-    setError(null);
+    beginFlow("analyze");
 
     try {
       const response = await fetch("/api/analyze", {
@@ -75,17 +86,12 @@ export function useContractAnalysis() {
 
       applyAnalysisPayload(payload);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to analyze this document text.");
-    } finally {
-      setLoading(false);
-      setActiveFlow(null);
+      failFlow(caught instanceof Error ? caught.message : "Unable to analyze this document text.");
     }
   }
 
   async function loadDemo() {
-    setLoading(true);
-    setActiveFlow("demo");
-    setError(null);
+    beginFlow("demo");
 
     try {
       applyAnalysisPayload({
@@ -98,10 +104,7 @@ export function useContractAnalysis() {
         }
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load the demo analysis.");
-    } finally {
-      setLoading(false);
-      setActiveFlow(null);
+      failFlow(caught instanceof Error ? caught.message : "Unable to load the demo analysis.");
     }
   }
 

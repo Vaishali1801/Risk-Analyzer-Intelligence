@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, FileText, UploadCloud } from "lucide-react";
+import { ArrowRight, FileText, LoaderCircle, UploadCloud } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,14 @@ export function UploadPanel({
   const form = useForm<UploadForm>({ resolver: zodResolver(uploadSchema) });
   const selectedFile = form.watch("file");
   const canAnalyze = mode === "upload" ? Boolean(selectedFile) : Boolean(pastedText.trim());
+  const statusMessage =
+    loading && activeFlow === "demo"
+      ? "Preparing demo analysis..."
+      : loading && mode === "upload"
+        ? "Uploading and analyzing document..."
+        : loading && mode === "paste"
+          ? "Analyzing pasted content..."
+          : null;
 
   function setFile(file?: File) {
     if (!file) return;
@@ -148,6 +156,7 @@ export function UploadPanel({
                     <button
                       type="button"
                       className="text-xs font-medium text-slate-600 transition hover:text-slate-800 hover:underline"
+                      disabled={loading}
                       onClick={(event) => {
                         event.stopPropagation();
                         setLocalError(null);
@@ -166,6 +175,7 @@ export function UploadPanel({
                     <button
                       type="button"
                       className="mt-1 text-xs font-medium text-slate-600 transition-colors duration-200 hover:text-slate-800 hover:underline"
+                      disabled={loading}
                       onClick={(event) => {
                         event.stopPropagation();
                         setLocalError(null);
@@ -184,12 +194,14 @@ export function UploadPanel({
                   onChange={(event) => setPastedText(event.target.value)}
                   placeholder={"Paste your contract, RFP, or any document text here\u2026"}
                   className="h-[102px] min-h-[102px] resize-none border-slate-200 bg-white/75"
+                  disabled={loading}
                 />
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">You can paste full documents or specific clauses</p>
                   <button
                     type="button"
                     className="text-xs font-medium text-slate-500 transition hover:text-slate-700 hover:underline"
+                    disabled={loading}
                     onClick={() => {
                       setLocalError(null);
                       setMode("upload");
@@ -221,7 +233,13 @@ export function UploadPanel({
               disabled={loading || !canAnalyze}
               title={!canAnalyze && !loading ? "Upload or paste content to analyze" : undefined}
             >
-              {loading && activeFlow === "analyze" ? "Analyzing..." : "Analyze Risks"}
+              <span className="inline-flex items-center gap-2">
+                <LoaderCircle
+                  className={cn("h-4 w-4 shrink-0", loading && activeFlow === "analyze" ? "animate-spin opacity-100" : "opacity-0")}
+                  aria-hidden="true"
+                />
+                <span>Analyze Risks</span>
+              </span>
             </Button>
           </div>
           <Button
@@ -233,18 +251,32 @@ export function UploadPanel({
             }}
             disabled={loading}
           >
-            {loading && activeFlow === "demo" ? "Loading demo..." : "Try Demo"}
+            <span className="inline-flex items-center gap-2">
+              <LoaderCircle
+                className={cn("h-4 w-4 shrink-0", loading && activeFlow === "demo" ? "animate-spin opacity-100" : "opacity-0")}
+                aria-hidden="true"
+              />
+              <span>Try Demo</span>
+            </span>
           </Button>
           <a
             href={demoHref}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center text-sm font-normal text-red-500 transition-colors duration-200 hover:text-red-600 hover:underline"
+            aria-disabled={loading}
+            className={cn(
+              "inline-flex items-center text-sm font-normal text-red-500 transition-colors duration-200 hover:text-red-600 hover:underline",
+              loading && "pointer-events-none opacity-50"
+            )}
           >
             <FileText className="mr-1.5 h-3.5 w-3.5" />
             View demo doc
             <ArrowRight className="ml-1 h-3 w-3" />
           </a>
+        </div>
+
+        <div aria-live="polite" className="min-h-[1.25rem] text-center">
+          {statusMessage ? <p className="text-sm font-medium text-slate-500">{statusMessage}</p> : null}
         </div>
       </form>
     </Card>

@@ -23,6 +23,10 @@ export function AnalyzerShell() {
   const redirectedAnalysisKey = useRef<string | null>(null);
 
   useEffect(() => {
+    router.prefetch("/analysis");
+  }, [router]);
+
+  useEffect(() => {
     if (!analysis || !source) return;
 
     const analysisKey = `${analysis.contractTitle}:${analysis.riskSummary.total}:${source.sourceKind}:${source.documentName}`;
