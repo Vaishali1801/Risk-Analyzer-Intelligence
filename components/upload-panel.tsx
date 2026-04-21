@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, FileText, LoaderCircle, UploadCloud } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -36,6 +36,8 @@ type UploadPanelProps = {
   demoHref?: string;
 };
 
+const STATUS_MESSAGE_DELAY_MS = 400;
+
 export function UploadPanel({
   onAnalyzeFile,
   onAnalyzeText,
@@ -49,6 +51,7 @@ export function UploadPanel({
   const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [pastedText, setPastedText] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [showStatusMessage, setShowStatusMessage] = useState(false);
   const form = useForm<UploadForm>({ resolver: zodResolver(uploadSchema) });
   const selectedFile = form.watch("file");
   const canAnalyze = mode === "upload" ? Boolean(selectedFile) : Boolean(pastedText.trim());
@@ -60,6 +63,21 @@ export function UploadPanel({
         : loading && mode === "paste"
           ? "Analyzing pasted content..."
           : null;
+
+  useEffect(() => {
+    if (!loading) {
+      setShowStatusMessage(false);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setShowStatusMessage(true);
+    }, STATUS_MESSAGE_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loading]);
 
   function setFile(file?: File) {
     if (!file) return;
@@ -275,9 +293,11 @@ export function UploadPanel({
           </a>
         </div>
 
-        <div aria-live="polite" className="min-h-[1.25rem] text-center">
-          {statusMessage ? <p className="text-sm font-medium text-slate-500">{statusMessage}</p> : null}
-        </div>
+        {showStatusMessage && statusMessage ? (
+          <div aria-live="polite" className="text-center">
+            <p className="text-sm font-medium text-slate-500">{statusMessage}</p>
+          </div>
+        ) : null}
       </form>
     </Card>
   );
