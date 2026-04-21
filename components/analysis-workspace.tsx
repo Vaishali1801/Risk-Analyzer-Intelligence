@@ -449,10 +449,10 @@ export function AnalysisWorkspace() {
 
             <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
               <div className="min-w-0 max-w-full lg:max-w-[22rem]">
-                <p className="truncate text-sm font-medium text-slate-700" title={documentName}>
-                  {documentName}
+                <p className="flex min-w-0 items-baseline gap-1.5 text-sm" title={`${documentName} · ${sourceLabel}`}>
+                  <span className="truncate font-medium text-slate-700">{documentName}</span>
+                  <span className="shrink-0 text-xs font-medium text-slate-500">&#183; {sourceLabel}</span>
                 </p>
-                <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{sourceLabel}</p>
               </div>
 
               <div className="flex items-center justify-end">
