@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Contract Risk Analyzer",
+  title: "AI Risk Analyzer",
   description: "AI-assisted enterprise contract review with structured risk analysis and executive-ready reporting."
 };
 

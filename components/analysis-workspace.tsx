@@ -19,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RISK_CATEGORIES, SEVERITIES, decisionStyles, severityRank, severityStyles } from "@/constants/risk";
-import { getReportDocumentName, getSourceLabel } from "@/lib/reporting/metadata";
+import { getReportDocumentName } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { buildClauseAction } from "@/lib/reporting/actions";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
@@ -407,7 +407,6 @@ export function AnalysisWorkspace() {
   }
 
   const documentName = getReportDocumentName(session.source.documentName);
-  const sourceLabel = getSourceLabel(session.source.sourceKind);
   const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
   const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
@@ -449,10 +448,7 @@ export function AnalysisWorkspace() {
 
             <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
               <div className="min-w-0 max-w-full lg:max-w-[22rem]">
-                <p className="flex min-w-0 items-baseline gap-1.5 text-sm" title={`${documentName} · ${sourceLabel}`}>
-                  <span className="truncate font-medium text-slate-700">{documentName}</span>
-                  <span className="shrink-0 text-xs font-medium text-slate-500">&#183; {sourceLabel}</span>
-                </p>
+                <p className="truncate text-sm font-medium text-slate-700" title={documentName}>{documentName}</p>
               </div>
 
               <div className="flex items-center justify-end">
