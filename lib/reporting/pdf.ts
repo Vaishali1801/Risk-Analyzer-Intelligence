@@ -1,6 +1,8 @@
 "use client";
 
 import jsPDF from "jspdf";
+import { getReportDocumentName, getReportFileName, getSourceLabel } from "@/lib/reporting/metadata";
+import type { AnalysisSource } from "@/types/contract";
 import type { ContractAnalysis } from "@/types/contract";
 
 function writeWrapped(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 6) {
@@ -9,20 +11,28 @@ function writeWrapped(doc: jsPDF, text: string, x: number, y: number, maxWidth: 
   return y + lines.length * lineHeight;
 }
 
-export function downloadReportPdf(analysis: ContractAnalysis) {
+type ReportExportSource = Pick<AnalysisSource, "documentName" | "sourceKind">;
+
+export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExportSource) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 16;
   const width = 180;
+  const documentName = getReportDocumentName(source?.documentName ?? analysis.contractTitle);
+  const sourceLabel = getSourceLabel(source?.sourceKind);
   let y = 18;
 
   doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Risk Analysis Results", margin, y);
+  y += 6;
+
   doc.setFontSize(18);
-  doc.text("Contract Risk Analyzer Report", margin, y);
-  y += 10;
+  y = writeWrapped(doc, documentName, margin, y, width, 8);
+  y += 2;
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text(`Contract: ${analysis.contractTitle}`, margin, y);
+  doc.text(`Source: ${sourceLabel}`, margin, y);
   y += 7;
   doc.text(`Recommendation: ${analysis.decisionRecommendation} | Overall Risk: ${analysis.overallRiskLevel}`, margin, y);
   y += 10;
@@ -67,5 +77,5 @@ export function downloadReportPdf(analysis: ContractAnalysis) {
     y = writeWrapped(doc, `Suggested improvement: ${risk.suggestedImprovement}`, margin, y + 2, width);
   });
 
-  doc.save(`${analysis.contractTitle.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-risk-report.pdf`);
+  doc.save(getReportFileName(documentName));
 }

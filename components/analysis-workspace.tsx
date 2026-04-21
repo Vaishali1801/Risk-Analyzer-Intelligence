@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RISK_CATEGORIES, SEVERITIES, decisionStyles, severityRank, severityStyles } from "@/constants/risk";
+import { getReportDocumentName, getSourceLabel } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { buildClauseAction } from "@/lib/reporting/actions";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
@@ -360,6 +361,13 @@ export function AnalysisWorkspace() {
     };
   }, [analysis]);
 
+  useEffect(() => {
+    if (!loaded) return;
+
+    const nextTitle = session ? `Risk Analysis Results | ${getReportDocumentName(session.source.documentName)}` : "Risk Analysis Results";
+    document.title = nextTitle;
+  }, [loaded, session]);
+
   if (!loaded) {
     return (
       <main className="min-h-screen px-5 py-10">
@@ -398,7 +406,8 @@ export function AnalysisWorkspace() {
     );
   }
 
-  const documentName = getDocumentName(session.source.documentName);
+  const documentName = getReportDocumentName(session.source.documentName);
+  const sourceLabel = getSourceLabel(session.source.sourceKind);
   const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
   const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
@@ -440,26 +449,18 @@ export function AnalysisWorkspace() {
 
             <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
               <div className="min-w-0 max-w-full lg:max-w-[22rem]">
-                <p className="truncate text-sm font-medium text-slate-500" title={documentName}>
+                <p className="truncate text-sm font-medium text-slate-700" title={documentName}>
                   {documentName}
                 </p>
+                <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">{sourceLabel}</p>
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => window.print()}
-                  className="h-8.5 border-slate-200 bg-slate-50 px-3 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
-                >
-                  Preview
-                </Button>
+              <div className="flex items-center justify-end">
                 <Button
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => downloadReportPdf(analysis)}
+                  onClick={() => downloadReportPdf(analysis, session.source)}
                   className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
                 >
                   Download
@@ -1179,11 +1180,6 @@ function getPrioritizedRisks(analysis: ContractAnalysis) {
   return [...analysis.risks].sort((a, b) => {
     return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
   });
-}
-
-function getDocumentName(documentName?: string) {
-  const normalizedName = documentName?.trim();
-  return normalizedName || "Uploaded Document";
 }
 
 function getUniqueClauseCount(risks: ContractAnalysis["risks"], severity?: Severity) {
