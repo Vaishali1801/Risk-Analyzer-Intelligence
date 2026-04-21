@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CircleAlert,
@@ -49,8 +49,12 @@ const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "final-review", label: "Final Review" }
 ];
 
-const SECTION_SCROLL_BUFFER = 16;
-const SECTION_SETTLE_TOLERANCE = 12;
+const SECTION_OFFSET_PADDING_PX = 16;
+const SECTION_ACTIVE_TOLERANCE_PX = 12;
+const SECTION_NAVIGATION_SETTLE_DELAY_MS = 450;
+const RISK_FOCUS_SCROLL_DELAY_MS = 220;
+const SECTION_HASH_PREFIX = "#";
+const knownSectionIds = sectionTabs.map((tab) => tab.id);
 
 export function AnalysisWorkspace() {
   const [session, setSession] = useState<StoredAnalysisSession | null>(null);
@@ -79,6 +83,7 @@ export function AnalysisWorkspace() {
   const riskMixPopoverRef = useRef<HTMLDivElement | null>(null);
   const pendingSectionRef = useRef<SectionId | null>(null);
   const settleTimeoutRef = useRef<number | null>(null);
+  const initialHashHandledRef = useRef(false);
 
   const clearPendingNavigationTimeout = () => {
     if (settleTimeoutRef.current === null) return;
@@ -86,15 +91,24 @@ export function AnalysisWorkspace() {
     settleTimeoutRef.current = null;
   };
 
+  const getSectionIdFromHash = (hash: string) => {
+    const normalizedHash = hash.startsWith(SECTION_HASH_PREFIX) ? hash.slice(1) : hash;
+    return knownSectionIds.includes(normalizedHash as SectionId) ? (normalizedHash as SectionId) : null;
+  };
+
+  const getSectionElement = (sectionId: SectionId) => {
+    return document.getElementById(sectionId);
+  };
+
   const getSharedScrollOffset = () => {
     const headerHeight = mainHeaderRowRef.current?.getBoundingClientRect().height ?? 0;
     const tabHeight = tabRowRef.current?.getBoundingClientRect().height ?? 0;
 
-    return headerHeight + tabHeight + SECTION_SCROLL_BUFFER;
+    return headerHeight + tabHeight + SECTION_OFFSET_PADDING_PX;
   };
 
   const getSectionTop = (sectionId: SectionId) => {
-    const element = document.getElementById(sectionId);
+    const element = getSectionElement(sectionId);
     if (!element) return null;
 
     return window.scrollY + element.getBoundingClientRect().top;
@@ -115,7 +129,7 @@ export function AnalysisWorkspace() {
       const sectionTop = getSectionTop(section.id);
       if (sectionTop === null) continue;
 
-      if (sectionTop - SECTION_SETTLE_TOLERANCE <= threshold) {
+      if (sectionTop - SECTION_ACTIVE_TOLERANCE_PX <= threshold) {
         nextSection = section.id;
       }
     }
@@ -138,8 +152,8 @@ export function AnalysisWorkspace() {
     const pendingSettled =
       pendingScrollTarget === null ||
       pendingSectionTop === null ||
-      Math.abs(window.scrollY - pendingScrollTarget) <= SECTION_SETTLE_TOLERANCE ||
-      Math.abs(pendingSectionTop - threshold) <= SECTION_SETTLE_TOLERANCE;
+      Math.abs(window.scrollY - pendingScrollTarget) <= SECTION_ACTIVE_TOLERANCE_PX ||
+      Math.abs(pendingSectionTop - threshold) <= SECTION_ACTIVE_TOLERANCE_PX;
 
     if (pendingSettled) {
       pendingSectionRef.current = null;
@@ -160,7 +174,7 @@ export function AnalysisWorkspace() {
       settleTimeoutRef.current = null;
       const detectedSection = detectActiveSection();
       setActiveSection((current) => (current === detectedSection ? current : detectedSection));
-    }, 450);
+    }, SECTION_NAVIGATION_SETTLE_DELAY_MS);
   };
 
   const handleTabClick = (event: MouseEvent<HTMLAnchorElement>, sectionId: SectionId) => {
@@ -171,11 +185,17 @@ export function AnalysisWorkspace() {
 
   const navigateToSection = (sectionId: SectionId) => {
     const scrollTarget = getScrollTarget(sectionId);
-    if (scrollTarget === null) return;
+    if (scrollTarget === null || !getSectionElement(sectionId)) {
+      pendingSectionRef.current = null;
+      clearPendingNavigationTimeout();
+      const detectedSection = detectActiveSection();
+      setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+      return;
+    }
 
     pendingSectionRef.current = sectionId;
     setActiveSection(sectionId);
-    window.history.replaceState(null, "", `#${sectionId}`);
+    window.history.replaceState(null, "", `${SECTION_HASH_PREFIX}${sectionId}`);
     window.scrollTo({ top: scrollTarget, behavior: "smooth" });
     schedulePendingNavigationSync(sectionId);
   };
@@ -223,7 +243,7 @@ export function AnalysisWorkspace() {
 
     window.setTimeout(() => {
       document.getElementById(`risk-row-${riskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 220);
+    }, RISK_FOCUS_SCROLL_DELAY_MS);
   };
 
   useEffect(() => {
@@ -276,6 +296,28 @@ export function AnalysisWorkspace() {
   }, [isRiskMixPopoverOpen]);
 
   const analysis = session?.analysis;
+
+  useLayoutEffect(() => {
+    if (!analysis || initialHashHandledRef.current) return;
+
+    initialHashHandledRef.current = true;
+    const targetSection = getSectionIdFromHash(window.location.hash);
+    if (!targetSection) return;
+
+    const scrollTarget = getScrollTarget(targetSection);
+    if (scrollTarget === null || !getSectionElement(targetSection)) {
+      const detectedSection = detectActiveSection();
+      setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+      return;
+    }
+
+    pendingSectionRef.current = null;
+    clearPendingNavigationTimeout();
+    setActiveSection(targetSection);
+    window.scrollTo({ top: scrollTarget, behavior: "auto" });
+    const detectedSection = detectActiveSection();
+    setActiveSection((current) => (current === detectedSection ? current : detectedSection));
+  }, [analysis]);
 
   const selectedRisk = useMemo(() => {
     if (!analysis) return undefined;
@@ -360,6 +402,23 @@ export function AnalysisWorkspace() {
       window.removeEventListener("resize", queueSectionUpdate);
     };
   }, [analysis]);
+
+  useEffect(() => {
+    if (!analysis) return;
+
+    let firstFrame = 0;
+    let secondFrame = 0;
+
+    firstFrame = window.requestAnimationFrame(() => {
+      syncActiveSection();
+      secondFrame = window.requestAnimationFrame(syncActiveSection);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [analysis, isLayerSummaryExpanded, isDetailedSummaryExpanded, filteredRisks.length, selectedRiskId]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -491,7 +550,7 @@ export function AnalysisWorkspace() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-5 px-5 py-5">
-        <section id="summary" className="scroll-mt-40">
+        <section id="summary">
           <Card className="border-slate-200 bg-white/95 shadow-sm">
             <CardContent className="space-y-4 p-5">
               <div className="flex items-center justify-between gap-3">
@@ -633,7 +692,7 @@ export function AnalysisWorkspace() {
           </Card>
         </section>
 
-        <section id="risks" className="scroll-mt-40 grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
+        <section id="risks" className="grid gap-5 xl:grid-cols-[0.9fr_1.2fr_0.8fr]">
           <Card className="border-slate-200 bg-white/95 shadow-sm">
             <CardContent className="space-y-4 p-5">
               <div className="flex items-start justify-between gap-3">
@@ -891,7 +950,7 @@ export function AnalysisWorkspace() {
           </div>
         </section>
 
-        <section id="final-review" className="scroll-mt-40">
+        <section id="final-review">
           <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
             <Card className="border-slate-200 bg-white/95 shadow-sm">
               <CardContent className="space-y-5 p-6">
