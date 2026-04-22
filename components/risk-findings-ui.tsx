@@ -168,16 +168,16 @@ export function RiskFindingsTable({
             </div>
           </div>
 
-          <div className="relative flex items-center justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isSearchOpen ? (
-              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-[17rem] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_16px_36px_rgba(15,23,42,0.12)]">
+              <div className="relative w-full sm:w-[18rem]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <Input
                   ref={searchInputRef}
                   id="risk-search"
                   value={search}
                   onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search risk title or clause snippet"
+                  placeholder="Search risk title, clause snippet, or category"
                   className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-[0.8rem] placeholder:text-slate-400 focus-visible:ring-slate-900/10"
                 />
                 <button
@@ -186,7 +186,7 @@ export function RiskFindingsTable({
                     onSearchChange("");
                     setIsSearchOpen(false);
                   }}
-                  className="absolute right-4 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Close search"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -194,32 +194,30 @@ export function RiskFindingsTable({
               </div>
             ) : null}
 
-            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-1 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]">
-              <button
-                type="button"
-                onClick={() => {
-                  if (isSearchOpen) {
-                    searchInputRef.current?.focus();
-                    return;
-                  }
+            <button
+              type="button"
+              onClick={() => {
+                if (isSearchOpen) {
+                  searchInputRef.current?.focus();
+                  return;
+                }
 
-                  setIsSearchOpen(true);
-                }}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
-                aria-label="Search findings"
-              >
-                <Search className="h-3.5 w-3.5" />
-              </button>
+                setIsSearchOpen(true);
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
+              aria-label="Search findings"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
 
-              <div className="w-[11rem]">
-                <SelectControl
-                  value={sortKey}
-                  onChange={(value) => onSortChange(value as RiskSortKey)}
-                  options={SORT_OPTIONS}
-                  ariaLabel="Sort findings"
-                  selectClassName={toolbarSelectClassName}
-                />
-              </div>
+            <div className="w-[11.25rem]">
+              <SelectControl
+                value={sortKey}
+                onChange={(value) => onSortChange(value as RiskSortKey)}
+                options={SORT_OPTIONS}
+                ariaLabel="Sort findings"
+                selectClassName={toolbarSelectClassName}
+              />
             </div>
           </div>
         </div>
@@ -315,7 +313,7 @@ export function RiskFindingsTable({
           <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[880px] w-full table-fixed border-separate border-spacing-0">
               <colgroup>
-                <col className="w-10" />
+                <col className="w-8" />
                 <col className="w-[20%]" />
                 <col className="w-[12%]" />
                 <col className="w-[9%]" />
@@ -394,7 +392,7 @@ export function RiskFindingsTable({
                             : "bg-white hover:bg-slate-50/90"
                         )}
                       >
-                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-[0.76rem] font-semibold text-slate-400">
+                        <td className="border-b border-slate-200/90 px-2.5 py-2.5 align-middle text-[0.76rem] font-semibold text-slate-400">
                           {index + 1}
                         </td>
                         <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
@@ -418,7 +416,7 @@ export function RiskFindingsTable({
                         </td>
                         <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
                           <p
-                            className="overflow-hidden text-[0.78rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                            className="overflow-hidden text-[0.78rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                             title={risk.highlightedText}
                           >
                             {risk.highlightedText}
@@ -773,7 +771,12 @@ function HeaderFilter({
         <span className="text-[0.84rem] font-bold tracking-[0.01em] text-slate-900">{label}</span>
         {isActive ? <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-slate-400" /> : null}
         <ChevronDown className="pointer-events-none h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600" />
-        <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={ariaLabel} className="absolute inset-0 cursor-pointer opacity-0">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label={ariaLabel}
+          className="absolute inset-0 cursor-pointer text-[0.84rem] font-bold opacity-0"
+        >
           {options.map((option) => {
             if (typeof option === "string") {
               return (
