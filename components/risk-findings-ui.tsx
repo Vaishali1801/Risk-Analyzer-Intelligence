@@ -565,7 +565,7 @@ export function RiskDecisionPanel({
         type="button"
         aria-label="Close decision panel"
         onClick={onClose}
-        className={cn("absolute inset-0 bg-slate-950/8 backdrop-blur-[0.5px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
+        className={cn("absolute inset-0 bg-slate-950/6 backdrop-blur-[0.5px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
       />
 
       <aside
@@ -930,14 +930,14 @@ function buildClauseExcerpt(clauseText: string, highlightedText: string, maxLeng
   const normalizedClause = clauseText.trim();
   if (normalizedClause.length <= maxLength || !highlightedText.trim()) return normalizedClause;
 
-  const highlightIndex = normalizedClause.toLowerCase().indexOf(highlightedText.trim().toLowerCase());
-  if (highlightIndex < 0) {
+  const highlightMatch = findClauseHighlightMatch(normalizedClause, highlightedText);
+  if (!highlightMatch) {
     return `${normalizedClause.slice(0, maxLength).trimEnd()}...`;
   }
 
-  const excerptPadding = Math.max(80, Math.floor((maxLength - highlightedText.length) / 2));
-  const start = Math.max(0, highlightIndex - excerptPadding);
-  const end = Math.min(normalizedClause.length, highlightIndex + highlightedText.length + excerptPadding);
+  const excerptPadding = Math.max(80, Math.floor((maxLength - (highlightMatch.end - highlightMatch.start)) / 2));
+  const start = Math.max(0, highlightMatch.start - excerptPadding);
+  const end = Math.min(normalizedClause.length, highlightMatch.end + excerptPadding);
   const prefix = start > 0 ? "..." : "";
   const suffix = end < normalizedClause.length ? "..." : "";
 
@@ -945,23 +945,187 @@ function buildClauseExcerpt(clauseText: string, highlightedText: string, maxLeng
 }
 
 function renderHighlightedClauseText(clauseText: string, highlightedText: string) {
-  const needle = highlightedText.trim();
+  const needle = normalizeInlineText(highlightedText);
   if (!needle) return clauseText;
 
-  const matchIndex = clauseText.toLowerCase().indexOf(needle.toLowerCase());
-  if (matchIndex < 0) return clauseText;
+  const match = findClauseHighlightMatch(clauseText, needle);
+  if (!match) {
+    return (
+      <>
+        {clauseText}
+        <span className="mt-3 block">
+          <span className="inline-flex max-w-full items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[0.72rem] font-medium leading-5 text-amber-900">
+            <span className="shrink-0">Flagged language:</span>
+            <span className="ml-1 truncate">{truncate(needle, 120)}</span>
+          </span>
+        </span>
+      </>
+    );
+  }
 
-  const before = clauseText.slice(0, matchIndex);
-  const match = clauseText.slice(matchIndex, matchIndex + needle.length);
-  const after = clauseText.slice(matchIndex + needle.length);
+  const before = clauseText.slice(0, match.start);
+  const after = clauseText.slice(match.end);
 
   return (
     <>
       {before}
-      <mark className="rounded-md bg-amber-100 px-1 py-0.5 font-medium text-amber-950">{match}</mark>
+      <mark className="rounded-md bg-amber-100 px-1 py-0.5 font-medium text-amber-950">{clauseText.slice(match.start, match.end)}</mark>
       {after}
     </>
   );
+}
+
+type ClauseHighlightMatch = {
+  start: number;
+  end: number;
+};
+
+type ComparableToken = {
+  value: string;
+  start: number;
+  end: number;
+};
+
+type ComparableText = {
+  text: string;
+  map: number[];
+  tokens: ComparableToken[];
+};
+
+function findClauseHighlightMatch(clauseText: string, highlightedText: string): ClauseHighlightMatch | null {
+  const clause = clauseText.trim();
+  const needle = normalizeInlineText(highlightedText);
+  if (!clause || !needle) return null;
+
+  const directIndex = clause.toLowerCase().indexOf(needle.toLowerCase());
+  if (directIndex >= 0) {
+    return { start: directIndex, end: directIndex + needle.length };
+  }
+
+  const comparableClause = buildComparableText(clause);
+  const comparableNeedle = buildComparableText(needle);
+  if (!comparableClause.text || !comparableNeedle.text) return null;
+
+  const normalizedIndex = comparableClause.text.indexOf(comparableNeedle.text);
+  if (normalizedIndex >= 0) {
+    return mapComparableRangeToOriginal(comparableClause, normalizedIndex, normalizedIndex + comparableNeedle.text.length);
+  }
+
+  const partialMatch = findBestPartialComparableMatch(comparableClause, comparableNeedle);
+  if (!partialMatch) return null;
+
+  return mapComparableRangeToOriginal(comparableClause, partialMatch.start, partialMatch.end);
+}
+
+function buildComparableText(value: string): ComparableText {
+  let text = "";
+  const map: number[] = [];
+  let previousWasSeparator = true;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (isComparableCharacter(character)) {
+      text += character.toLowerCase();
+      map.push(index);
+      previousWasSeparator = false;
+      continue;
+    }
+
+    if (!previousWasSeparator && text.length > 0) {
+      text += " ";
+      map.push(index);
+      previousWasSeparator = true;
+    }
+  }
+
+  while (text.endsWith(" ")) {
+    text = text.slice(0, -1);
+    map.pop();
+  }
+
+  return { text, map, tokens: buildComparableTokens(text) };
+}
+
+function buildComparableTokens(value: string) {
+  const tokens: ComparableToken[] = [];
+  let tokenStart = -1;
+
+  for (let index = 0; index <= value.length; index += 1) {
+    const character = value[index] ?? " ";
+    if (character !== " " && tokenStart === -1) {
+      tokenStart = index;
+      continue;
+    }
+
+    if ((character === " " || index === value.length) && tokenStart !== -1) {
+      tokens.push({
+        value: value.slice(tokenStart, index),
+        start: tokenStart,
+        end: index
+      });
+      tokenStart = -1;
+    }
+  }
+
+  return tokens;
+}
+
+function findBestPartialComparableMatch(clause: ComparableText, needle: ComparableText): ClauseHighlightMatch | null {
+  if (!clause.tokens.length || !needle.tokens.length) return null;
+
+  let bestLength = 0;
+  let bestClauseTokenIndex = -1;
+  const previousRow = Array.from({ length: needle.tokens.length }, () => 0);
+
+  for (let clauseIndex = 0; clauseIndex < clause.tokens.length; clauseIndex += 1) {
+    const currentRow = Array.from({ length: needle.tokens.length }, () => 0);
+
+    for (let needleIndex = 0; needleIndex < needle.tokens.length; needleIndex += 1) {
+      if (clause.tokens[clauseIndex].value !== needle.tokens[needleIndex].value) continue;
+
+      currentRow[needleIndex] = (clauseIndex > 0 && needleIndex > 0 ? previousRow[needleIndex - 1] : 0) + 1;
+
+      if (currentRow[needleIndex] > bestLength) {
+        bestLength = currentRow[needleIndex];
+        bestClauseTokenIndex = clauseIndex;
+      }
+    }
+
+    for (let rowIndex = 0; rowIndex < currentRow.length; rowIndex += 1) {
+      previousRow[rowIndex] = currentRow[rowIndex];
+    }
+  }
+
+  if (bestLength <= 0 || bestClauseTokenIndex < 0) return null;
+
+  const startToken = clause.tokens[bestClauseTokenIndex - bestLength + 1];
+  const endToken = clause.tokens[bestClauseTokenIndex];
+  const matchedText = clause.text.slice(startToken.start, endToken.end);
+  const tokenCount = matchedText.split(" ").filter(Boolean).length;
+
+  if (tokenCount < 2 && matchedText.length < 6) return null;
+
+  return { start: startToken.start, end: endToken.end };
+}
+
+function mapComparableRangeToOriginal(comparable: ComparableText, start: number, end: number): ClauseHighlightMatch | null {
+  if (start < 0 || end <= start || end > comparable.map.length) return null;
+
+  const originalStart = comparable.map[start];
+  const originalEnd = comparable.map[end - 1] + 1;
+
+  if (originalStart == null || originalEnd == null || originalEnd <= originalStart) return null;
+
+  return { start: originalStart, end: originalEnd };
+}
+
+function normalizeInlineText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function isComparableCharacter(character: string) {
+  return (character >= "0" && character <= "9") || character.toLowerCase() !== character.toUpperCase();
 }
 
 function buildWhyItMattersBullets(whyRisky: string, category: RiskCategory, severity: Severity, clauseRef: string) {
