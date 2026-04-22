@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Search, Sparkles, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, Search, Sparkles, TriangleAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -79,16 +79,14 @@ const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
 export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["Pending Review", "Accepted Risk", "Action Required"];
 
 const riskReviewStatusStyles: Record<RiskReviewStatus, string> = {
-  "Pending Review": "border-slate-200 bg-slate-100 text-slate-700",
-  "Accepted Risk": "border-emerald-200 bg-emerald-50 text-emerald-700",
-  "Action Required": "border-rose-200 bg-rose-50 text-rose-700"
+  "Pending Review": "border-slate-300 bg-slate-100 text-slate-700",
+  "Accepted Risk": "border-emerald-300 bg-emerald-50 text-emerald-700",
+  "Action Required": "border-amber-300 bg-amber-50 text-amber-700"
 };
 
 const toolbarSelectClassName =
-  "h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[0.82rem] font-medium text-slate-700 shadow-sm outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10";
-const headerFilterSelectClassName =
-  "h-7 w-full appearance-none rounded-md border border-slate-200 bg-white/95 pl-2.5 pr-7 text-[0.72rem] font-medium text-slate-600 shadow-sm outline-none transition hover:border-slate-300 focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10";
-const compactBadgeClassName = "px-2 py-[0.22rem] text-[0.68rem] font-semibold";
+  "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[0.81rem] font-medium text-slate-700 shadow-sm outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10";
+const compactBadgeClassName = "gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold";
 
 const STATUS_FILTER_OPTIONS: { value: RiskReviewStatus | "All"; label: string }[] = [
   { value: "All", label: "All" },
@@ -116,72 +114,110 @@ export function RiskFindingsTable({
   onReviewRisk,
   onAskAi
 }: RiskFindingsTableProps) {
+  const [isSearchOpen, setIsSearchOpen] = useState(Boolean(search));
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const emptyStateMessage =
     totalRiskCount === 0 ? "No risks detected for this document." : "No risks match the current filters.";
 
-  return (
-    <Card className="border-slate-200 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
-      <CardContent className="space-y-4 p-5">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold tracking-tight text-slate-950">Risk Register</h2>
-          <div className="text-sm font-medium text-slate-500">{formatFindingsCount(risks.length)}</div>
-        </div>
+  useEffect(() => {
+    if (search) {
+      setIsSearchOpen(true);
+    }
+  }, [search]);
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="w-full sm:w-[24rem] sm:max-w-[24rem]">
-            <label className="sr-only" htmlFor="risk-search">
-              Search findings
-            </label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                id="risk-search"
-                value={search}
-                onChange={(event) => onSearchChange(event.target.value)}
-                placeholder="Search risk title, clause snippet, or category"
-                className="h-9 rounded-lg border-slate-200 pl-9 pr-3 text-[0.82rem] placeholder:text-slate-400 focus-visible:ring-slate-900/10"
-              />
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onSearchChange("");
+      setIsSearchOpen(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isSearchOpen, onSearchChange]);
+
+  return (
+    <Card className="border-slate-300/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-950">Risk Register</h2>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.72rem] font-medium text-slate-500">
+              {formatFindingsCount(risks.length)}
             </div>
           </div>
 
-          <div className="w-full sm:w-[12.5rem] sm:max-w-[12.5rem]">
-            <SelectControl
-              value={sortKey}
-              onChange={(value) => onSortChange(value as RiskSortKey)}
-              options={SORT_OPTIONS}
-              ariaLabel="Sort findings"
-              selectClassName={toolbarSelectClassName}
-            />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isSearchOpen ? (
+              <div className="relative w-full sm:w-[18rem]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  ref={searchInputRef}
+                  id="risk-search"
+                  value={search}
+                  onChange={(event) => onSearchChange(event.target.value)}
+                  placeholder="Search risk title, clause snippet, or category"
+                  className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-[0.8rem] placeholder:text-slate-400 focus-visible:ring-slate-900/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSearchChange("");
+                    setIsSearchOpen(false);
+                  }}
+                  className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Close search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (isSearchOpen) {
+                  searchInputRef.current?.focus();
+                  return;
+                }
+
+                setIsSearchOpen(true);
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
+              aria-label="Search findings"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="w-[11.25rem]">
+              <SelectControl
+                value={sortKey}
+                onChange={(value) => onSortChange(value as RiskSortKey)}
+                options={SORT_OPTIONS}
+                ariaLabel="Sort findings"
+                selectClassName={toolbarSelectClassName}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-2 md:hidden">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <SelectControl
-              value={category}
-              onChange={(value) => onCategoryChange(value as RiskCategory | "All")}
-              options={["All", ...categoryOptions]}
-              ariaLabel="Filter findings by category"
-              selectClassName={headerFilterSelectClassName}
-            />
-            <SelectControl
-              value={severity}
-              onChange={(value) => onSeverityChange(value as Severity | "All")}
-              options={["All", ...SEVERITIES]}
-              ariaLabel="Filter findings by severity"
-              selectClassName={headerFilterSelectClassName}
-            />
-            <SelectControl
-              value={status}
-              onChange={(value) => onStatusChange(value as RiskReviewStatus | "All")}
-              options={STATUS_FILTER_OPTIONS}
-              ariaLabel="Filter findings by status"
-              selectClassName={headerFilterSelectClassName}
-            />
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-[1.15rem] border border-slate-200 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.04)]">
+        <div className="overflow-hidden rounded-[1.05rem] border border-slate-300/80 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.04)]">
           <div className="space-y-2.5 p-3 md:hidden">
             {risks.length ? (
               risks.map((risk, index) => {
@@ -212,11 +248,19 @@ export function RiskFindingsTable({
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[0.72rem] font-semibold text-slate-400">#{index + 1}</span>
                           <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity])}>{risk.severity}</Badge>
-                          <Badge className={cn(compactBadgeClassName, riskReviewStatusStyles[rowStatus])}>{getRiskStatusLabel(rowStatus)}</Badge>
+                          <StatusBadge status={rowStatus} />
                         </div>
-                        <div className="mt-1.5 text-[0.86rem] font-semibold leading-5 text-slate-950">{risk.title}</div>
+                        <div
+                          className="mt-1.5 overflow-hidden text-[0.84rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                          title={risk.title}
+                        >
+                          {risk.title}
+                        </div>
                         <div className="mt-0.5 text-[0.72rem] leading-4 text-slate-500">{risk.category} / {risk.clauseRef}</div>
-                        <p className="mt-1.5 truncate text-[0.78rem] leading-5 text-slate-500" title={risk.highlightedText}>
+                        <p
+                          className="mt-1.5 overflow-hidden text-[0.77rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                          title={risk.highlightedText}
+                        >
                           {risk.highlightedText}
                         </p>
                       </div>
@@ -224,11 +268,17 @@ export function RiskFindingsTable({
                         <div className="text-[0.82rem] font-semibold text-slate-950">{Math.round(risk.confidence * 100)}%</div>
                       </div>
                     </div>
-                    <div className="mt-2.5 flex items-center gap-2.5 text-[0.78rem] font-medium">
-                      <span className="font-semibold text-slate-700">Review</span>
-                      <span aria-hidden="true" className="text-slate-300">
-                        &middot;
-                      </span>
+                    <div className="mt-2.5 flex items-center gap-2 text-[0.78rem] font-medium">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onReviewRisk(risk);
+                        }}
+                        className="font-semibold text-slate-700 transition hover:text-slate-950"
+                      >
+                        Review
+                      </button>
                       <button
                         type="button"
                         onClick={(event) => {
@@ -241,7 +291,7 @@ export function RiskFindingsTable({
                           event.stopPropagation();
                           onAskAi(risk);
                         }}
-                        className="inline-flex items-center gap-1 font-semibold text-slate-700 transition hover:text-slate-950"
+                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
                       >
                         <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                         Ask AI
@@ -256,26 +306,26 @@ export function RiskFindingsTable({
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-[1060px] w-full table-fixed border-separate border-spacing-0">
+            <table className="min-w-[940px] w-full table-fixed border-separate border-spacing-0">
               <colgroup>
-                <col className="w-12" />
-                <col className="w-[22%]" />
-                <col className="w-[14%]" />
-                <col className="w-[11%]" />
+                <col className="w-11" />
                 <col className="w-[24%]" />
-                <col className="w-[8%]" />
+                <col className="w-[12%]" />
+                <col className="w-[9%]" />
+                <col className="w-[26%]" />
+                <col className="w-[7%]" />
                 <col className="w-[10%]" />
-                <col className="w-[11%]" />
+                <col className="w-[12%]" />
               </colgroup>
               <thead>
-                <tr className="bg-slate-50/90 text-left align-bottom backdrop-blur">
-                  <th className="border-b border-slate-200 px-4 py-2.5">
+                <tr className="bg-slate-100/90 text-left align-middle backdrop-blur">
+                  <th className="border-b border-slate-300/80 px-3.5 py-3">
                     <TableHeaderLabel>#</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3.5 py-3">
                     <TableHeaderLabel>Risk</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
                     <HeaderFilter
                       label="Category"
                       value={category}
@@ -284,7 +334,7 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by category"
                     />
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
                     <HeaderFilter
                       label="Severity"
                       value={severity}
@@ -293,13 +343,13 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by severity"
                     />
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
-                    <TableHeaderLabel>Clause snippet</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3.5 py-3">
+                    <TableHeaderLabel>Clause Snippet</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
-                    <TableHeaderLabel>Confidence</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                    <TableHeaderLabel align="center">Confidence</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
                     <HeaderFilter
                       label="Status"
                       value={status}
@@ -308,8 +358,8 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by status"
                     />
                   </th>
-                  <th className="border-b border-slate-200 px-4 py-2.5">
-                    <TableHeaderLabel>Actions</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                    <TableHeaderLabel align="center">Actions</TableHeaderLabel>
                   </th>
                 </tr>
               </thead>
@@ -337,58 +387,63 @@ export function RiskFindingsTable({
                             : "bg-white hover:bg-slate-50/90"
                         )}
                       >
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top text-[0.76rem] font-semibold text-slate-400">
+                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle text-[0.76rem] font-semibold text-slate-400">
                           {index + 1}
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
+                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle">
                           <div className="space-y-0.5">
-                            <div className="text-[0.85rem] font-semibold leading-5 text-slate-950" title={risk.title}>
+                            <div
+                              className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                              title={risk.title}
+                            >
                               {risk.title}
                             </div>
                             <div className="text-[0.72rem] leading-4 text-slate-500">{risk.clauseRef}</div>
                           </div>
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top text-[0.8rem] font-medium text-slate-700">
+                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle text-center text-[0.78rem] font-medium text-slate-700">
                           {risk.category}
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
-                          <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity])}>{risk.severity}</Badge>
+                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
+                          <div className="flex justify-center">
+                            <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity])}>{risk.severity}</Badge>
+                          </div>
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
-                          <p className="truncate text-[0.8rem] leading-5 text-slate-500" title={risk.highlightedText}>
+                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle">
+                          <p
+                            className="overflow-hidden text-[0.78rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                            title={risk.highlightedText}
+                          >
                             {risk.highlightedText}
                           </p>
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
-                          <div className="text-[0.82rem] font-semibold text-slate-950">{Math.round(risk.confidence * 100)}%</div>
+                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle text-center">
+                          <div className="text-[0.81rem] font-semibold text-slate-900">{Math.round(risk.confidence * 100)}%</div>
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
-                          <Badge className={cn(compactBadgeClassName, riskReviewStatusStyles[rowStatus])} title={rowStatus}>
-                            {getRiskStatusLabel(rowStatus)}
-                          </Badge>
+                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
+                          <div className="flex justify-center">
+                            <StatusBadge status={rowStatus} />
+                          </div>
                         </td>
-                        <td className="border-b border-slate-200 px-4 py-2.5 align-top">
-                          <div className="flex items-center gap-2 whitespace-nowrap text-[0.78rem] font-medium leading-none">
+                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
+                          <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[0.76rem] font-medium leading-none">
                             <button
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 onReviewRisk(risk);
                               }}
-                              className="font-semibold text-slate-700 transition hover:text-slate-950"
+                              className="rounded-full px-1.5 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
                             >
                               Review
                             </button>
-                            <span aria-hidden="true" className="text-slate-300">
-                              &middot;
-                            </span>
                             <button
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 onAskAi(risk);
                               }}
-                              className="inline-flex items-center gap-1 font-semibold text-slate-700 transition hover:text-slate-950"
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
                             >
                               <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                               Ask AI
@@ -676,11 +731,13 @@ function SelectControl({
 }
 
 function TableHeaderLabel({
-  children
+  children,
+  align = "left"
 }: {
   children: ReactNode;
+  align?: "left" | "center";
 }) {
-  return <div className="text-[0.78rem] font-semibold tracking-[0.01em] text-slate-700">{children}</div>;
+  return <div className={cn("text-[0.84rem] font-bold tracking-[0.01em] text-slate-900", align === "center" && "text-center")}>{children}</div>;
 }
 
 function HeaderFilter({
@@ -696,11 +753,50 @@ function HeaderFilter({
   options: (string | { value: string; label: string })[];
   ariaLabel: string;
 }) {
+  const isActive = value !== "All";
+
   return (
-    <div className="space-y-1">
-      <TableHeaderLabel>{label}</TableHeaderLabel>
-      <SelectControl value={value} onChange={onChange} options={options} ariaLabel={ariaLabel} selectClassName={headerFilterSelectClassName} />
+    <div className="flex justify-center">
+      <div
+        className={cn(
+          "group relative inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition hover:bg-slate-100/90 focus-within:bg-white focus-within:shadow-sm",
+          isActive && "bg-slate-100 text-slate-950"
+        )}
+      >
+        <span className="text-[0.84rem] font-bold tracking-[0.01em] text-slate-900">{label}</span>
+        {isActive ? <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-slate-400" /> : null}
+        <ChevronDown className="pointer-events-none h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600" />
+        <select value={value} onChange={(event) => onChange(event.target.value)} aria-label={ariaLabel} className="absolute inset-0 cursor-pointer opacity-0">
+          {options.map((option) => {
+            if (typeof option === "string") {
+              return (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              );
+            }
+
+            return (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            );
+          })}
+        </select>
+      </div>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: RiskReviewStatus }) {
+  const label = getRiskStatusLabel(status);
+  const Icon = getRiskStatusIcon(status);
+
+  return (
+    <Badge className={cn(compactBadgeClassName, riskReviewStatusStyles[status])} title={status}>
+      <Icon className="h-3 w-3 opacity-80" />
+      {label}
+    </Badge>
   );
 }
 
@@ -775,6 +871,19 @@ function getRiskStatusLabel(status: RiskReviewStatus) {
       return "Action Req.";
     default:
       return status;
+  }
+}
+
+function getRiskStatusIcon(status: RiskReviewStatus) {
+  switch (status) {
+    case "Pending Review":
+      return Clock3;
+    case "Accepted Risk":
+      return Check;
+    case "Action Required":
+      return TriangleAlert;
+    default:
+      return Clock3;
   }
 }
 
