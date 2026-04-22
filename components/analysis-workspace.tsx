@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { RISK_CATEGORIES, decisionStyles, severityRank } from "@/constants/risk";
+import { buildClauseAction } from "@/lib/reporting/actions";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
@@ -21,7 +22,7 @@ import {
   type RiskReviewStatus,
   type RiskSortKey
 } from "@/components/risk-findings-ui";
-import type { ContractAnalysis, RiskCategory, Severity } from "@/types/contract";
+import type { ContractAnalysis, ContractRisk, RiskCategory, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "risks" | "final-review";
 
@@ -48,7 +49,8 @@ export function AnalysisWorkspace() {
   const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
   const [reviewLens, setReviewLens] = useState<RiskReviewLens>("safer");
-  const [draftText, setDraftText] = useState("");
+  const [riskDrafts, setRiskDrafts] = useState<Record<string, string>>({});
+  const [savedRecommendations, setSavedRecommendations] = useState<Record<string, string>>({});
   const [riskStatuses, setRiskStatuses] = useState<Record<string, RiskReviewStatus>>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
@@ -248,6 +250,32 @@ export function AnalysisWorkspace() {
     });
   };
 
+  const updateRiskDraft = (riskId: string, nextDraft: string) => {
+    setRiskDrafts((current) => {
+      if (current[riskId] === nextDraft) return current;
+      return { ...current, [riskId]: nextDraft };
+    });
+  };
+
+  const resetRiskDraft = (risk: ContractRisk) => {
+    updateRiskDraft(risk.id, risk.suggestedImprovement);
+  };
+
+  const saveRiskRecommendation = (risk: ContractRisk) => {
+    const nextDraft = (riskDrafts[risk.id] ?? savedRecommendations[risk.id] ?? risk.suggestedImprovement).trim() || risk.suggestedImprovement;
+    updateRiskDraft(risk.id, nextDraft);
+    setSavedRecommendations((current) => {
+      if (current[risk.id] === nextDraft) return current;
+      return { ...current, [risk.id]: nextDraft };
+    });
+    updateRiskStatus(risk.id, "Action Required");
+  };
+
+  const applyReviewLens = (risk: ContractRisk, nextLens: RiskReviewLens) => {
+    setReviewLens(nextLens);
+    updateRiskDraft(risk.id, buildClauseAction(nextLens, risk));
+  };
+
   useEffect(() => {
     const storedSession = readAnalysisSession();
     setSession(storedSession);
@@ -420,8 +448,7 @@ export function AnalysisWorkspace() {
 
   useEffect(() => {
     setReviewLens("safer");
-    setDraftText(selectedRisk?.suggestedImprovement ?? "");
-  }, [selectedRisk?.id, selectedRisk?.suggestedImprovement]);
+  }, [selectedRisk?.id]);
 
   useEffect(() => {
     if (!analysis) return;
@@ -518,6 +545,9 @@ export function AnalysisWorkspace() {
   const riskMixSummary = buildRiskMixSummary(nonZeroCategoryBreakdown);
   const riskMixBreakdown = buildRiskMixBreakdown(analysis);
   const topCriticalRiskItems = buildTopCriticalRiskItems(analysis);
+  const selectedRiskDraft = selectedRisk
+    ? riskDrafts[selectedRisk.id] ?? savedRecommendations[selectedRisk.id] ?? selectedRisk.suggestedImprovement
+    : "";
   const finalReviewChecks = [
     {
       label: "Escalate high-severity findings before signature",
@@ -529,7 +559,7 @@ export function AnalysisWorkspace() {
     },
     {
       label: "Validate the selected clause against fallback wording",
-      done: Boolean(draftText.trim())
+      done: Object.values(savedRecommendations).some((value) => value.trim().length > 0)
     },
     {
       label: "Confirm next actions have an owner and negotiation sequence",
@@ -807,12 +837,30 @@ export function AnalysisWorkspace() {
         risk={selectedRisk}
         status={selectedRisk ? riskStatuses[selectedRisk.id] ?? "Pending Review" : RISK_REVIEW_STATUSES[0]}
         reviewLens={reviewLens}
-        draftText={draftText}
+        draftText={selectedRiskDraft}
+        isRecommendationSaved={selectedRisk ? savedRecommendations[selectedRisk.id] === selectedRiskDraft : false}
         focusTarget={panelFocusTarget}
         onClose={() => setIsDecisionPanelOpen(false)}
-        onReviewLensChange={setReviewLens}
-        onDraftTextChange={setDraftText}
-        onResetDraft={() => setDraftText(selectedRisk?.suggestedImprovement ?? "")}
+        onReviewLensChange={(value) => {
+          if (!selectedRisk) return;
+          applyReviewLens(selectedRisk, value);
+        }}
+        onDraftTextChange={(value) => {
+          if (!selectedRisk) return;
+          updateRiskDraft(selectedRisk.id, value);
+        }}
+        onResetDraft={() => {
+          if (!selectedRisk) return;
+          resetRiskDraft(selectedRisk);
+        }}
+        onSaveRecommendation={() => {
+          if (!selectedRisk) return;
+          saveRiskRecommendation(selectedRisk);
+        }}
+        onAcceptRisk={() => {
+          if (!selectedRisk) return;
+          updateRiskStatus(selectedRisk.id, "Accepted Risk");
+        }}
         onStatusChange={(value) => {
           if (!selectedRisk) return;
           updateRiskStatus(selectedRisk.id, value);

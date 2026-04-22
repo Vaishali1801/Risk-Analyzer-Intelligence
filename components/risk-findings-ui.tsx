@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SEVERITIES, severityStyles } from "@/constants/risk";
-import { buildClauseAction } from "@/lib/reporting/actions";
 import { cn, truncate } from "@/lib/utils";
 import type { ContractRisk, RiskCategory, Severity } from "@/types/contract";
 
@@ -52,11 +51,14 @@ type RiskDecisionPanelProps = {
   status: RiskReviewStatus;
   reviewLens: RiskReviewLens;
   draftText: string;
+  isRecommendationSaved: boolean;
   focusTarget: RiskPanelFocusTarget;
   onClose: () => void;
   onReviewLensChange: (value: RiskReviewLens) => void;
   onDraftTextChange: (value: string) => void;
   onResetDraft: () => void;
+  onSaveRecommendation: () => void;
+  onAcceptRisk: () => void;
   onStatusChange: (value: RiskReviewStatus) => void;
 };
 
@@ -70,10 +72,10 @@ const SORT_OPTIONS: { value: RiskSortKey; label: string }[] = [
 ];
 
 const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
-  { key: "simplify", label: "Simplify clause" },
-  { key: "safer", label: "Suggest safer wording" },
-  { key: "hidden", label: "Identify hidden risks" },
-  { key: "standard", label: "Compare with industry standard" }
+  { key: "simplify", label: "Simplify" },
+  { key: "safer", label: "Safer Wording" },
+  { key: "hidden", label: "Hidden Risks" },
+  { key: "standard", label: "Compare Standard" }
 ];
 
 export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["Pending Review", "Accepted Risk", "Action Required"];
@@ -488,19 +490,23 @@ export function RiskDecisionPanel({
   status,
   reviewLens,
   draftText,
+  isRecommendationSaved,
   focusTarget,
   onClose,
   onReviewLensChange,
   onDraftTextChange,
   onResetDraft,
+  onSaveRecommendation,
+  onAcceptRisk,
   onStatusChange
 }: RiskDecisionPanelProps) {
   const askAiRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isClauseExpanded, setIsClauseExpanded] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "done">("idle");
   const clausePreviewText = useMemo(() => {
     if (!risk) return "";
-    return isClauseExpanded ? risk.clauseText : truncate(risk.clauseText, 260);
+    return isClauseExpanded ? risk.clauseText : buildClauseExcerpt(risk.clauseText, risk.highlightedText, 360);
   }, [isClauseExpanded, risk]);
   const whyItMattersBullets = useMemo(() => {
     if (!risk) return [];
@@ -546,6 +552,7 @@ export function RiskDecisionPanel({
 
   useEffect(() => {
     setIsClauseExpanded(false);
+    setCopyState("idle");
   }, [risk?.id]);
 
   if (!risk) return null;
@@ -556,7 +563,7 @@ export function RiskDecisionPanel({
         type="button"
         aria-label="Close decision panel"
         onClick={onClose}
-        className={cn("absolute inset-0 bg-slate-950/18 backdrop-blur-[2px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
+        className={cn("absolute inset-0 bg-slate-950/10 backdrop-blur-[1px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
       />
 
       <aside
@@ -571,37 +578,42 @@ export function RiskDecisionPanel({
       >
         <div className="flex h-full flex-col">
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-            <div className="min-w-0">
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-500">Decision panel</p>
-              <h2 className="mt-1.5 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{risk.title}</h2>
-              <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                <Badge className="border-slate-200 bg-slate-50 text-slate-700">{risk.clauseRef}</Badge>
-                <Badge className="border-slate-200 bg-slate-50 text-slate-700">{risk.category}</Badge>
-                <Badge className={severityStyles[risk.severity]}>{risk.severity}</Badge>
-                <Badge className="border-slate-200 bg-slate-50 text-slate-700">{Math.round(risk.confidence * 100)}% confidence</Badge>
-                <Badge className={riskReviewStatusStyles[status]}>{status}</Badge>
+            <div className="min-w-0 space-y-2">
+              <div className="text-[0.72rem] font-semibold tracking-[0.08em] text-slate-500">Decision Workspace</div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-[1.35rem] font-semibold tracking-tight text-slate-950 sm:text-[1.55rem]">{risk.title}</h2>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.78rem] font-medium text-slate-500">
+                    <span>{risk.clauseRef}</span>
+                    <span className="text-slate-300">/</span>
+                    <span>{risk.category}</span>
+                    <span className="text-slate-300">/</span>
+                    <span>{Math.round(risk.confidence * 100)}% confidence</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={severityStyles[risk.severity]}>{risk.severity}</Badge>
+                  <StatusBadge status={status} />
+                </div>
               </div>
             </div>
 
-            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
               <X className="h-4 w-4" />
             </Button>
           </div>
 
-          <div ref={scrollContainerRef} className="flex-1 space-y-3.5 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
+          <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
             <PanelSection title="Flagged Clause">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-sm leading-7 text-slate-700">{clausePreviewText}</p>
-                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm font-medium leading-6 text-amber-950">
-                  {risk.highlightedText}
-                </div>
-                {risk.clauseText.length > 260 ? (
+              <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3.5">
+                <p className="text-sm leading-7 text-slate-700">{renderHighlightedClauseText(clausePreviewText, risk.highlightedText)}</p>
+                {risk.clauseText.length > clausePreviewText.length ? (
                   <button
                     type="button"
                     onClick={() => setIsClauseExpanded((current) => !current)}
                     className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-900"
                   >
-                    {isClauseExpanded ? "Show less" : "Expand clause"}
+                    {isClauseExpanded ? "Show less" : "View full clause"}
                     <ChevronDown className={cn("h-4 w-4 transition", isClauseExpanded && "rotate-180")} />
                   </button>
                 ) : null}
@@ -620,19 +632,13 @@ export function RiskDecisionPanel({
             </PanelSection>
 
             <PanelSection title="Business Impact">
-              <div className="rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-sm font-medium leading-6 text-rose-950">
+              <div className="rounded-[1.1rem] border border-rose-200 bg-rose-50/80 px-4 py-3.5 text-sm font-medium leading-6 text-rose-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
                 {highlightedImpact}
               </div>
             </PanelSection>
 
-            <PanelSection title="Suggested Fix">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700">
-                {risk.suggestedImprovement}
-              </div>
-            </PanelSection>
-
             <PanelSection title="Ask AI">
-              <div ref={askAiRef} className="space-y-3">
+              <div ref={askAiRef} className="space-y-4">
                 <div className="flex flex-wrap gap-2">
                   {REVIEW_LENSES.map((lens) => (
                     <button
@@ -651,50 +657,80 @@ export function RiskDecisionPanel({
                   ))}
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-700 shadow-sm">
-                  {buildClauseAction(reviewLens, risk)}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">AI Suggested Revision</div>
+                      <div className="text-[0.78rem] text-slate-500">Edit the working draft directly, then save it for final review.</div>
+                    </div>
+                    {isRecommendationSaved ? (
+                      <div className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.72rem] font-semibold text-emerald-700">
+                        <Check className="h-3.5 w-3.5" />
+                        Saved
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <Textarea
+                    value={draftText}
+                    onChange={(event) => onDraftTextChange(event.target.value)}
+                    className="min-h-36 border-slate-200 text-sm leading-6 shadow-none"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <button type="button" onClick={onResetDraft} className="font-medium text-slate-500 transition hover:text-slate-900">
+                    Reset Draft
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(draftText);
+                        setCopyState("done");
+                        window.setTimeout(() => setCopyState("idle"), 1400);
+                      } catch {
+                        setCopyState("idle");
+                      }
+                    }}
+                    className="font-medium text-slate-500 transition hover:text-slate-900"
+                  >
+                    {copyState === "done" ? "Copied" : "Copy"}
+                  </button>
+                  <Button type="button" variant="secondary" size="sm" onClick={onSaveRecommendation} className="h-8 rounded-full px-3">
+                    Save Recommendation
+                  </Button>
+                </div>
+
+                <div className="rounded-[1rem] border border-slate-200 bg-white px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Accept Risk</div>
+                      <div className="text-[0.78rem] text-slate-500">Use this when the clause is accepted as-is for final review.</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {status !== "Pending Review" ? (
+                        <button
+                          type="button"
+                          onClick={() => onStatusChange("Pending Review")}
+                          className="text-[0.78rem] font-medium text-slate-500 transition hover:text-slate-900"
+                        >
+                          Mark Pending
+                        </button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant={status === "Accepted Risk" ? "default" : "secondary"}
+                        size="sm"
+                        onClick={onAcceptRisk}
+                        className="h-8 rounded-full px-3"
+                      >
+                        Accept Risk
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </PanelSection>
-
-            <PanelSection
-              title="Edit Clause"
-              action={
-                <Button type="button" variant="secondary" size="sm" onClick={onResetDraft}>
-                  Reset draft
-                </Button>
-              }
-            >
-              <Textarea
-                value={draftText}
-                onChange={(event) => onDraftTextChange(event.target.value)}
-                className="min-h-28 border-slate-200"
-              />
-            </PanelSection>
-
-            <PanelSection title="Final Decision Actions">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <DecisionActionButton
-                  label="Accept Risk"
-                  active={status === "Accepted Risk"}
-                  onClick={() => onStatusChange("Accepted Risk")}
-                />
-                <DecisionActionButton
-                  label="Action Required"
-                  active={status === "Action Required"}
-                  onClick={() => onStatusChange("Action Required")}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => onStatusChange("Pending Review")}
-                className={cn(
-                  "mt-3 inline-flex text-sm font-medium transition",
-                  status === "Pending Review" ? "text-slate-950" : "text-slate-500 hover:text-slate-800"
-                )}
-              >
-                Mark as Pending Review
-              </button>
             </PanelSection>
           </div>
         </div>
@@ -839,38 +875,13 @@ function PanelSection({
   action?: ReactNode;
 }) {
   return (
-    <section className="rounded-[1.45rem] border border-slate-200 bg-slate-50/70 p-4">
+    <section className="rounded-[1.25rem] border border-slate-200 bg-slate-50/70 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</h3>
+        <h3 className="text-[0.82rem] font-semibold tracking-[0.02em] text-slate-700">{title}</h3>
         {action}
       </div>
       {children}
     </section>
-  );
-}
-
-function DecisionActionButton({
-  label,
-  active,
-  onClick
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-2xl border px-4 py-3 text-left text-sm font-medium transition",
-        active
-          ? "border-slate-950 bg-slate-950 text-white"
-          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-      )}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -903,6 +914,44 @@ function getRiskStatusIcon(status: RiskReviewStatus) {
     default:
       return Clock3;
   }
+}
+
+function buildClauseExcerpt(clauseText: string, highlightedText: string, maxLength: number) {
+  const normalizedClause = clauseText.trim();
+  if (normalizedClause.length <= maxLength || !highlightedText.trim()) return normalizedClause;
+
+  const highlightIndex = normalizedClause.toLowerCase().indexOf(highlightedText.trim().toLowerCase());
+  if (highlightIndex < 0) {
+    return `${normalizedClause.slice(0, maxLength).trimEnd()}...`;
+  }
+
+  const excerptPadding = Math.max(80, Math.floor((maxLength - highlightedText.length) / 2));
+  const start = Math.max(0, highlightIndex - excerptPadding);
+  const end = Math.min(normalizedClause.length, highlightIndex + highlightedText.length + excerptPadding);
+  const prefix = start > 0 ? "..." : "";
+  const suffix = end < normalizedClause.length ? "..." : "";
+
+  return `${prefix}${normalizedClause.slice(start, end).trim()}${suffix}`;
+}
+
+function renderHighlightedClauseText(clauseText: string, highlightedText: string) {
+  const needle = highlightedText.trim();
+  if (!needle) return clauseText;
+
+  const matchIndex = clauseText.toLowerCase().indexOf(needle.toLowerCase());
+  if (matchIndex < 0) return clauseText;
+
+  const before = clauseText.slice(0, matchIndex);
+  const match = clauseText.slice(matchIndex, matchIndex + needle.length);
+  const after = clauseText.slice(matchIndex + needle.length);
+
+  return (
+    <>
+      {before}
+      <mark className="rounded-md bg-amber-100 px-1 py-0.5 font-medium text-amber-950">{match}</mark>
+      {after}
+    </>
+  );
 }
 
 function buildWhyItMattersBullets(whyRisky: string, category: RiskCategory, severity: Severity, clauseRef: string) {
