@@ -78,6 +78,8 @@ const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
 
 export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["Pending Review", "Accepted Risk", "Action Required"];
 
+const riskIndexColumnWidth = "1.75rem";
+
 const riskReviewStatusStyles: Record<RiskReviewStatus, string> = {
   "Pending Review": "border-slate-300 bg-slate-100 text-slate-700",
   "Accepted Risk": "border-emerald-300 bg-emerald-50 text-emerald-700",
@@ -313,7 +315,7 @@ export function RiskFindingsTable({
           <div className="hidden overflow-x-auto md:block">
             <table className="min-w-[880px] w-full table-fixed border-separate border-spacing-0">
               <colgroup>
-                <col className="w-8" />
+                <col style={{ width: riskIndexColumnWidth, minWidth: riskIndexColumnWidth, maxWidth: riskIndexColumnWidth }} />
                 <col className="w-[20%]" />
                 <col className="w-[12%]" />
                 <col className="w-[9%]" />
@@ -324,13 +326,16 @@ export function RiskFindingsTable({
               </colgroup>
               <thead>
                 <tr className="bg-slate-100/90 text-left align-middle backdrop-blur">
-                  <th className="border-b border-slate-300/80 px-3 py-2.5">
+                    <th
+                      style={{ width: riskIndexColumnWidth, minWidth: riskIndexColumnWidth, maxWidth: riskIndexColumnWidth }}
+                    className="border-b border-slate-300/80 px-0.5 py-1.5"
+                  >
                     <TableHeaderLabel align="center">#</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3.5 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5">
                     <TableHeaderLabel align="center">Risk</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <HeaderFilter
                       label="Category"
                       value={category}
@@ -339,7 +344,7 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by category"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <HeaderFilter
                       label="Severity"
                       value={severity}
@@ -348,13 +353,13 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by severity"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3.5 py-2.5">
+                  <th className="border-b border-slate-300/80 px-3.5 py-1.5">
                     <TableHeaderLabel align="center">Clause Snippet</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <TableHeaderLabel align="center">AI Confidence</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <HeaderFilter
                       label="Status"
                       value={status}
@@ -363,7 +368,7 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by status"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <TableHeaderLabel align="center">Actions</TableHeaderLabel>
                   </th>
                 </tr>
@@ -392,10 +397,13 @@ export function RiskFindingsTable({
                             : "bg-white hover:bg-slate-50/90"
                         )}
                       >
-                        <td className="border-b border-slate-200/90 px-2.5 py-2.5 align-middle text-[0.76rem] font-semibold text-slate-400">
+                        <td
+                          style={{ width: riskIndexColumnWidth, minWidth: riskIndexColumnWidth, maxWidth: riskIndexColumnWidth }}
+                          className="border-b border-slate-200/90 px-0.5 py-2.5 text-center align-middle text-[0.76rem] font-semibold text-slate-400"
+                        >
                           {index + 1}
                         </td>
-                        <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="space-y-[0.15rem]">
                             <div
                               className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
@@ -438,7 +446,7 @@ export function RiskFindingsTable({
                                 event.stopPropagation();
                                 onReviewRisk(risk);
                               }}
-                              className="min-h-0 rounded-full px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+                              className="inline-flex min-h-0 items-center justify-center rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
                             >
                               Review
                             </button>
