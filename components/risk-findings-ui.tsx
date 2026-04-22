@@ -577,23 +577,22 @@ export function RiskDecisionPanel({
         )}
       >
         <div className="flex h-full flex-col">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
-            <div className="min-w-0 space-y-2">
-              <div className="text-[0.72rem] font-semibold tracking-[0.08em] text-slate-500">Decision Workspace</div>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-[1.35rem] font-semibold tracking-tight text-slate-950 sm:text-[1.55rem]">{risk.title}</h2>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[0.78rem] font-medium text-slate-500">
-                    <span>{risk.clauseRef}</span>
-                    <span className="text-slate-300">/</span>
-                    <span>{risk.category}</span>
-                    <span className="text-slate-300">/</span>
-                    <span>{Math.round(risk.confidence * 100)}% confidence</span>
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3.5 sm:px-6">
+            <div className="min-w-0 space-y-2.5">
+              <div className="text-[0.72rem] font-bold tracking-[0.08em] text-slate-700">Risk Review</div>
+              <div className="min-w-0">
+                <h2 className="text-[1.22rem] font-semibold tracking-tight text-slate-950 sm:text-[1.38rem]">{risk.title}</h2>
+                <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-[0.72rem] font-semibold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                    Section {risk.clauseRef}
+                  </span>
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                    Category {risk.category}
+                  </span>
+                  <Badge className={cn(compactBadgeClassName, "shrink-0", severityStyles[risk.severity])}>{risk.severity}</Badge>
+                  <div className="shrink-0">
+                    <StatusBadge status={status} />
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className={severityStyles[risk.severity]}>{risk.severity}</Badge>
-                  <StatusBadge status={status} />
                 </div>
               </div>
             </div>
@@ -637,16 +636,20 @@ export function RiskDecisionPanel({
               </div>
             </PanelSection>
 
-            <PanelSection title="Ask AI">
-              <div ref={askAiRef} className="space-y-4">
-                <div className="flex flex-wrap gap-2">
+            <PanelSection
+              title="Ask AI"
+              className="border-slate-300 bg-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+              titleClassName="text-[0.92rem] font-bold tracking-[0.01em] text-slate-900"
+            >
+              <div ref={askAiRef} className="space-y-3.5">
+                <div className="flex flex-wrap gap-1.5">
                   {REVIEW_LENSES.map((lens) => (
                     <button
                       key={lens.key}
                       type="button"
                       onClick={() => onReviewLensChange(lens.key)}
                       className={cn(
-                        "rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                        "rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
                         reviewLens === lens.key
                           ? "border-slate-950 bg-slate-950 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
@@ -657,7 +660,7 @@ export function RiskDecisionPanel({
                   ))}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">AI Suggested Revision</div>
@@ -674,32 +677,34 @@ export function RiskDecisionPanel({
                   <Textarea
                     value={draftText}
                     onChange={(event) => onDraftTextChange(event.target.value)}
-                    className="min-h-36 border-slate-200 text-sm leading-6 shadow-none"
+                    className="min-h-28 border-slate-200 text-sm leading-6 shadow-none"
                   />
-                </div>
 
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <button type="button" onClick={onResetDraft} className="font-medium text-slate-500 transition hover:text-slate-900">
-                    Reset Draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(draftText);
-                        setCopyState("done");
-                        window.setTimeout(() => setCopyState("idle"), 1400);
-                      } catch {
-                        setCopyState("idle");
-                      }
-                    }}
-                    className="font-medium text-slate-500 transition hover:text-slate-900"
-                  >
-                    {copyState === "done" ? "Copied" : "Copy"}
-                  </button>
-                  <Button type="button" variant="secondary" size="sm" onClick={onSaveRecommendation} className="h-8 rounded-full px-3">
-                    Save Recommendation
-                  </Button>
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                    <Button type="button" variant="secondary" size="sm" onClick={onResetDraft} className="h-9 rounded-full px-3.5">
+                      Reset Draft
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(draftText);
+                          setCopyState("done");
+                          window.setTimeout(() => setCopyState("idle"), 1400);
+                        } catch {
+                          setCopyState("idle");
+                        }
+                      }}
+                      className="h-9 rounded-full px-3.5"
+                    >
+                      {copyState === "done" ? "Copied" : "Copy"}
+                    </Button>
+                    <Button type="button" size="sm" onClick={onSaveRecommendation} className="h-9 rounded-full px-3.5">
+                      Save Recommendation
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="rounded-[1rem] border border-slate-200 bg-white px-4 py-3">
@@ -868,16 +873,20 @@ function EmptyState({ totalRiskCount, message }: { totalRiskCount: number; messa
 function PanelSection({
   title,
   children,
-  action
+  action,
+  className,
+  titleClassName
 }: {
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  className?: string;
+  titleClassName?: string;
 }) {
   return (
-    <section className="rounded-[1.25rem] border border-slate-200 bg-slate-50/70 p-4">
+    <section className={cn("rounded-[1.25rem] border border-slate-200 bg-slate-50/70 p-4", className)}>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="text-[0.82rem] font-semibold tracking-[0.02em] text-slate-700">{title}</h3>
+        <h3 className={cn("text-[0.82rem] font-semibold tracking-[0.02em] text-slate-700", titleClassName)}>{title}</h3>
         {action}
       </div>
       {children}
