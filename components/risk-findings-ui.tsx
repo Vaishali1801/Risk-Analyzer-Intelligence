@@ -84,6 +84,12 @@ const riskReviewStatusStyles: Record<RiskReviewStatus, string> = {
   "Action Required": "border-amber-300 bg-amber-50 text-amber-700"
 };
 
+const severityBadgeStyles: Record<Severity, string> = {
+  High: "border-red-300 shadow-[inset_0_0_0_1px_rgba(248,113,113,0.14)]",
+  Medium: "border-amber-300 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.14)]",
+  Low: "border-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.14)]"
+};
+
 const toolbarSelectClassName =
   "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[0.81rem] font-medium text-slate-700 shadow-sm outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10";
 const compactBadgeClassName = "gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold";
@@ -116,8 +122,7 @@ export function RiskFindingsTable({
 }: RiskFindingsTableProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(Boolean(search));
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const emptyStateMessage =
-    totalRiskCount === 0 ? "No risks detected for this document." : "No risks match the current filters.";
+  const emptyStateMessage = totalRiskCount === 0 ? "No findings" : "No risks match filters";
 
   useEffect(() => {
     if (search) {
@@ -158,21 +163,21 @@ export function RiskFindingsTable({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-semibold tracking-tight text-slate-950">Risk Register</h2>
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.72rem] font-medium text-slate-500">
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.72rem] font-medium tabular-nums text-slate-500">
               {formatFindingsCount(risks.length)}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="relative flex items-center justify-end">
             {isSearchOpen ? (
-              <div className="relative w-full sm:w-[18rem]">
+              <div className="absolute right-0 top-[calc(100%+0.5rem)] z-20 w-[17rem] rounded-xl border border-slate-200 bg-white p-2 shadow-[0_16px_36px_rgba(15,23,42,0.12)]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <Input
                   ref={searchInputRef}
                   id="risk-search"
                   value={search}
                   onChange={(event) => onSearchChange(event.target.value)}
-                  placeholder="Search risk title, clause snippet, or category"
+                  placeholder="Search risk title or clause snippet"
                   className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-[0.8rem] placeholder:text-slate-400 focus-visible:ring-slate-900/10"
                 />
                 <button
@@ -181,7 +186,7 @@ export function RiskFindingsTable({
                     onSearchChange("");
                     setIsSearchOpen(false);
                   }}
-                  className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  className="absolute right-4 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Close search"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -189,30 +194,32 @@ export function RiskFindingsTable({
               </div>
             ) : null}
 
-            <button
-              type="button"
-              onClick={() => {
-                if (isSearchOpen) {
-                  searchInputRef.current?.focus();
-                  return;
-                }
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-1 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSearchOpen) {
+                    searchInputRef.current?.focus();
+                    return;
+                  }
 
-                setIsSearchOpen(true);
-              }}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
-              aria-label="Search findings"
-            >
-              <Search className="h-3.5 w-3.5" />
-            </button>
+                  setIsSearchOpen(true);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
+                aria-label="Search findings"
+              >
+                <Search className="h-3.5 w-3.5" />
+              </button>
 
-            <div className="w-[11.25rem]">
-              <SelectControl
-                value={sortKey}
-                onChange={(value) => onSortChange(value as RiskSortKey)}
-                options={SORT_OPTIONS}
-                ariaLabel="Sort findings"
-                selectClassName={toolbarSelectClassName}
-              />
+              <div className="w-[11rem]">
+                <SelectControl
+                  value={sortKey}
+                  onChange={(value) => onSortChange(value as RiskSortKey)}
+                  options={SORT_OPTIONS}
+                  ariaLabel="Sort findings"
+                  selectClassName={toolbarSelectClassName}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -247,7 +254,7 @@ export function RiskFindingsTable({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[0.72rem] font-semibold text-slate-400">#{index + 1}</span>
-                          <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity])}>{risk.severity}</Badge>
+                          <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity], severityBadgeStyles[risk.severity])}>{risk.severity}</Badge>
                           <StatusBadge status={rowStatus} />
                         </div>
                         <div
@@ -306,26 +313,26 @@ export function RiskFindingsTable({
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-[940px] w-full table-fixed border-separate border-spacing-0">
+            <table className="min-w-[880px] w-full table-fixed border-separate border-spacing-0">
               <colgroup>
-                <col className="w-11" />
-                <col className="w-[24%]" />
+                <col className="w-10" />
+                <col className="w-[20%]" />
                 <col className="w-[12%]" />
                 <col className="w-[9%]" />
-                <col className="w-[26%]" />
-                <col className="w-[7%]" />
+                <col className="w-[20%]" />
                 <col className="w-[10%]" />
-                <col className="w-[12%]" />
+                <col className="w-[11%]" />
+                <col className="w-[11%]" />
               </colgroup>
               <thead>
                 <tr className="bg-slate-100/90 text-left align-middle backdrop-blur">
-                  <th className="border-b border-slate-300/80 px-3.5 py-3">
-                    <TableHeaderLabel>#</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3 py-2.5">
+                    <TableHeaderLabel align="center">#</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3.5 py-3">
-                    <TableHeaderLabel>Risk</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3.5 py-2.5">
+                    <TableHeaderLabel align="center">Risk</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
                     <HeaderFilter
                       label="Category"
                       value={category}
@@ -334,7 +341,7 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by category"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
                     <HeaderFilter
                       label="Severity"
                       value={severity}
@@ -343,13 +350,13 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by severity"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3.5 py-3">
-                    <TableHeaderLabel>Clause Snippet</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3.5 py-2.5">
+                    <TableHeaderLabel align="center">Clause Snippet</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
-                    <TableHeaderLabel align="center">Confidence</TableHeaderLabel>
+                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
+                    <TableHeaderLabel align="center">AI Confidence</TableHeaderLabel>
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
                     <HeaderFilter
                       label="Status"
                       value={status}
@@ -358,7 +365,7 @@ export function RiskFindingsTable({
                       ariaLabel="Filter findings by status"
                     />
                   </th>
-                  <th className="border-b border-slate-300/80 px-3 py-3 text-center">
+                  <th className="border-b border-slate-300/80 px-3 py-2.5 text-center">
                     <TableHeaderLabel align="center">Actions</TableHeaderLabel>
                   </th>
                 </tr>
@@ -387,11 +394,11 @@ export function RiskFindingsTable({
                             : "bg-white hover:bg-slate-50/90"
                         )}
                       >
-                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle text-[0.76rem] font-semibold text-slate-400">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-[0.76rem] font-semibold text-slate-400">
                           {index + 1}
                         </td>
-                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle">
-                          <div className="space-y-0.5">
+                        <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
+                          <div className="space-y-[0.15rem]">
                             <div
                               className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                               title={risk.title}
@@ -401,15 +408,15 @@ export function RiskFindingsTable({
                             <div className="text-[0.72rem] leading-4 text-slate-500">{risk.clauseRef}</div>
                           </div>
                         </td>
-                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle text-center text-[0.78rem] font-medium text-slate-700">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center text-[0.78rem] font-medium text-slate-700">
                           {risk.category}
                         </td>
-                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="flex justify-center">
-                            <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity])}>{risk.severity}</Badge>
+                            <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity], severityBadgeStyles[risk.severity])}>{risk.severity}</Badge>
                           </div>
                         </td>
-                        <td className="border-b border-slate-200/90 px-3.5 py-3 align-middle">
+                        <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
                           <p
                             className="overflow-hidden text-[0.78rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
                             title={risk.highlightedText}
@@ -417,23 +424,23 @@ export function RiskFindingsTable({
                             {risk.highlightedText}
                           </p>
                         </td>
-                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle text-center">
-                          <div className="text-[0.81rem] font-semibold text-slate-900">{Math.round(risk.confidence * 100)}%</div>
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center">
+                          <div className="text-[0.81rem] font-semibold tabular-nums text-slate-900">{Math.round(risk.confidence * 100)}%</div>
                         </td>
-                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="flex justify-center">
                             <StatusBadge status={rowStatus} />
                           </div>
                         </td>
-                        <td className="border-b border-slate-200/90 px-3 py-3 align-middle">
-                          <div className="flex items-center justify-center gap-2 whitespace-nowrap text-[0.76rem] font-medium leading-none">
+                        <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
+                          <div className="flex flex-col items-center justify-center gap-1 text-[0.75rem] font-medium leading-none">
                             <button
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 onReviewRisk(risk);
                               }}
-                              className="rounded-full px-1.5 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+                              className="min-h-0 rounded-full px-2 py-1 font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
                             >
                               Review
                             </button>
@@ -443,7 +450,7 @@ export function RiskFindingsTable({
                                 event.stopPropagation();
                                 onAskAi(risk);
                               }}
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
+                              className="inline-flex min-h-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
                             >
                               <Sparkles className="h-3.5 w-3.5 text-amber-500" />
                               Ask AI
@@ -804,9 +811,9 @@ function EmptyState({ totalRiskCount, message }: { totalRiskCount: number; messa
   return (
     <div className="mx-auto max-w-md">
       <p className="text-sm font-semibold text-slate-800">{message}</p>
-      {totalRiskCount > 0 ? (
-        <p className="mt-2 text-sm leading-6 text-slate-500">Try broadening the search or clearing one of the active filters.</p>
-      ) : null}
+      <p className="mt-2 text-sm leading-6 text-slate-500">
+        {totalRiskCount > 0 ? "Try adjusting filters or search terms." : "No risks were identified for this document."}
+      </p>
     </div>
   );
 }
