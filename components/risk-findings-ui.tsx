@@ -557,13 +557,15 @@ export function RiskDecisionPanel({
 
   if (!risk) return null;
 
+  const headerClauseRef = risk.clauseRef.trim();
+
   return createPortal(
     <div className={cn("fixed inset-0 z-[140] transition-opacity duration-300", open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")}>
       <button
         type="button"
         aria-label="Close decision panel"
         onClick={onClose}
-        className={cn("absolute inset-0 bg-slate-950/10 backdrop-blur-[1px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
+        className={cn("absolute inset-0 bg-slate-950/8 backdrop-blur-[0.5px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
       />
 
       <aside
@@ -583,11 +585,13 @@ export function RiskDecisionPanel({
               <div className="min-w-0">
                 <h2 className="text-[1.22rem] font-semibold tracking-tight text-slate-950 sm:text-[1.38rem]">{risk.title}</h2>
                 <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-[0.72rem] font-semibold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {headerClauseRef ? (
+                    <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                      {headerClauseRef}
+                    </span>
+                  ) : null}
                   <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                    Section {risk.clauseRef}
-                  </span>
-                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                    Category {risk.category}
+                    {risk.category}
                   </span>
                   <Badge className={cn(compactBadgeClassName, "shrink-0", severityStyles[risk.severity])}>{risk.severity}</Badge>
                   <div className="shrink-0">
@@ -630,7 +634,7 @@ export function RiskDecisionPanel({
               </ul>
             </PanelSection>
 
-            <PanelSection title="Business Impact">
+            <PanelSection title="Business Impact" className="border-transparent bg-transparent p-0">
               <div className="rounded-[1.1rem] border border-rose-200 bg-rose-50/80 px-4 py-3.5 text-sm font-medium leading-6 text-rose-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
                 {highlightedImpact}
               </div>
@@ -663,8 +667,7 @@ export function RiskDecisionPanel({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">AI Suggested Revision</div>
-                      <div className="text-[0.78rem] text-slate-500">Edit the working draft directly, then save it for final review.</div>
+                      <div className="text-sm font-semibold text-slate-900">Recommended Draft</div>
                     </div>
                     {isRecommendationSaved ? (
                       <div className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[0.72rem] font-semibold text-emerald-700">
@@ -707,32 +710,30 @@ export function RiskDecisionPanel({
                   </div>
                 </div>
 
-                <div className="rounded-[1rem] border border-slate-200 bg-white px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">Accept Risk</div>
-                      <div className="text-[0.78rem] text-slate-500">Use this when the clause is accepted as-is for final review.</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {status !== "Pending Review" ? (
-                        <button
-                          type="button"
-                          onClick={() => onStatusChange("Pending Review")}
-                          className="text-[0.78rem] font-medium text-slate-500 transition hover:text-slate-900"
-                        >
-                          Mark Pending
-                        </button>
-                      ) : null}
-                      <Button
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Accept Risk</div>
+                    <div className="text-[0.78rem] text-slate-500">Use this when the clause is accepted as-is for final review.</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {status !== "Pending Review" ? (
+                      <button
                         type="button"
-                        variant={status === "Accepted Risk" ? "default" : "secondary"}
-                        size="sm"
-                        onClick={onAcceptRisk}
-                        className="h-8 rounded-full px-3"
+                        onClick={() => onStatusChange("Pending Review")}
+                        className="text-[0.78rem] font-medium text-slate-500 transition hover:text-slate-900"
                       >
-                        Accept Risk
-                      </Button>
-                    </div>
+                        Mark Pending
+                      </button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant={status === "Accepted Risk" ? "default" : "secondary"}
+                      size="sm"
+                      onClick={onAcceptRisk}
+                      className="h-8 rounded-full px-3"
+                    >
+                      Accept Risk
+                    </Button>
                   </div>
                 </div>
               </div>
