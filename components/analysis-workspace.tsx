@@ -557,12 +557,8 @@ export function AnalysisWorkspace() {
   const finalDecisionCounts = getFinalDecisionCounts(finalDecisionRows);
   const pendingCount = finalDecisionCounts.Pending;
   const finalReviewSummary = buildFinalReviewSummary(analysis, finalDecisionCounts);
-  const finalReviewStatusMessage =
-    pendingCount > 0
-      ? "Resolve all pending clauses before finalizing review."
-      : isReviewFinalized
-        ? "Review finalized successfully."
-        : "All clauses have a final decision.";
+  const finalReviewCountsLine = `${finalDecisionCounts.Revised} Revised \u2022 ${finalDecisionCounts.Accepted} Accepted \u2022 ${finalDecisionCounts.Pending} Pending`;
+  const finalizeReviewTooltip = pendingCount > 0 ? "Resolve pending items before finalizing" : undefined;
 
   return (
     <main className="min-h-screen">
@@ -785,139 +781,131 @@ export function AnalysisWorkspace() {
           />
         </section>
 
-        <section id="final-review" className="space-y-4">
+        <section id="final-review" className="space-y-3">
+          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Final Review</h2>
+
           <Card className="overflow-hidden border-slate-200 bg-white/95 shadow-[0_18px_44px_rgba(15,23,42,0.07)]">
             <CardContent className="p-0">
-              <div className="grid gap-5 border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                <div className="min-w-0 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Final review</p>
-                    <p className="mt-3 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Overall Recommendation</p>
-                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{finalReviewSummary.recommendation}</h2>
+              <div className="grid gap-4 border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="min-w-0">
+                  <p className="text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Recommended Decision</p>
+                  <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{finalReviewSummary.recommendation}</h3>
+                    <p className="text-sm font-medium text-slate-500">{finalReviewCountsLine}</p>
                   </div>
-                  <p className="max-w-2xl text-sm leading-6 text-slate-600">{finalReviewSummary.readiness}</p>
+                  {isReviewFinalized ? (
+                    <p className="mt-2 text-sm font-medium text-emerald-700">Review finalized successfully.</p>
+                  ) : null}
                 </div>
 
-                <div className="flex flex-wrap gap-2 lg:justify-end">
-                  <FinalReviewCountPill label="Revised" value={finalDecisionCounts.Revised} tone="revised" />
-                  <FinalReviewCountPill label="Accepted" value={finalDecisionCounts.Accepted} tone="accepted" />
-                  <FinalReviewCountPill label="Pending" value={finalDecisionCounts.Pending} tone="pending" />
+                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => downloadReportPdf(analysis, session.source)}
+                    className="gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download Report
+                  </Button>
+                  <span className="inline-flex" title={finalizeReviewTooltip}>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={pendingCount > 0}
+                      onClick={() => setIsReviewFinalized(true)}
+                      className="gap-2"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Finalize Review
+                    </Button>
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-5">
+                  <div className="text-sm font-semibold text-slate-950">Final Decisions</div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+                    <colgroup>
+                      <col className="w-[34%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[36%]" />
+                      <col className="w-[16%]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-slate-50 text-left">
+                        <th className="border-b border-slate-200 px-4 py-2.5">
+                          <TableHeaderLabel>Risk</TableHeaderLabel>
+                        </th>
+                        <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+                          <TableHeaderLabel align="center">Decision</TableHeaderLabel>
+                        </th>
+                        <th className="border-b border-slate-200 px-4 py-2.5">
+                          <TableHeaderLabel>Final Clause</TableHeaderLabel>
+                        </th>
+                        <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+                          <TableHeaderLabel align="center">Compare</TableHeaderLabel>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finalDecisionRows.map((row) => {
+                        const isExpanded = expandedFinalReviewRiskId === row.risk.id;
+
+                        return (
+                          <Fragment key={row.risk.id}>
+                            <tr className="bg-white align-middle transition hover:bg-slate-50/80">
+                              <td className="border-b border-slate-200/90 px-4 py-3">
+                                <div className="min-w-0">
+                                  <div
+                                    className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                                    title={row.risk.title}
+                                  >
+                                    {row.risk.title}
+                                  </div>
+                                  <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.risk.clauseRef}</div>
+                                </div>
+                              </td>
+                              <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                                <FinalReviewDecisionBadge decision={row.decision} />
+                              </td>
+                              <td className="border-b border-slate-200/90 px-4 py-3">
+                                <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={row.finalClause}>
+                                  {row.finalClause}
+                                </p>
+                              </td>
+                              <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.risk.id)}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                                  aria-expanded={isExpanded}
+                                >
+                                  {row.actionLabel}
+                                  <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
+                                </button>
+                              </td>
+                            </tr>
+                            {isExpanded ? (
+                              <tr className="bg-slate-50/70">
+                                <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
+                                  <FinalReviewExpansion row={row} />
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </CardContent>
           </Card>
-
-          <div className="overflow-hidden rounded-[1.05rem] border border-slate-300/80 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-slate-200 bg-slate-100/80 px-4 py-3">
-              <div className="text-sm font-semibold text-slate-950">Final Decisions</div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
-                <colgroup>
-                  <col className="w-[34%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[36%]" />
-                  <col className="w-[16%]" />
-                </colgroup>
-                <thead>
-                  <tr className="bg-slate-50 text-left">
-                    <th className="border-b border-slate-200 px-4 py-2.5">
-                      <TableHeaderLabel>Risk</TableHeaderLabel>
-                    </th>
-                    <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-                      <TableHeaderLabel align="center">Decision</TableHeaderLabel>
-                    </th>
-                    <th className="border-b border-slate-200 px-4 py-2.5">
-                      <TableHeaderLabel>Final Clause</TableHeaderLabel>
-                    </th>
-                    <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-                      <TableHeaderLabel align="center">Compare</TableHeaderLabel>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {finalDecisionRows.map((row) => {
-                    const isExpanded = expandedFinalReviewRiskId === row.risk.id;
-
-                    return (
-                      <Fragment key={row.risk.id}>
-                        <tr className="bg-white align-middle transition hover:bg-slate-50/80">
-                          <td className="border-b border-slate-200/90 px-4 py-3">
-                            <div className="min-w-0">
-                              <div
-                                className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                                title={row.risk.title}
-                              >
-                                {row.risk.title}
-                              </div>
-                              <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.risk.clauseRef}</div>
-                            </div>
-                          </td>
-                          <td className="border-b border-slate-200/90 px-4 py-3 text-center">
-                            <FinalReviewDecisionBadge decision={row.decision} />
-                          </td>
-                          <td className="border-b border-slate-200/90 px-4 py-3">
-                            <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={row.finalClause}>
-                              {row.finalClause}
-                            </p>
-                          </td>
-                          <td className="border-b border-slate-200/90 px-4 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.risk.id)}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
-                              aria-expanded={isExpanded}
-                            >
-                              {row.actionLabel}
-                              <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
-                            </button>
-                          </td>
-                        </tr>
-                        {isExpanded ? (
-                          <tr className="bg-slate-50/70">
-                            <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
-                              <FinalReviewExpansion row={row} />
-                            </td>
-                          </tr>
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-[1.05rem] border border-slate-200 bg-white/95 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <p
-              className={cn(
-                "text-sm font-medium",
-                pendingCount > 0 ? "text-amber-700" : isReviewFinalized ? "text-emerald-700" : "text-slate-600"
-              )}
-            >
-              {finalReviewStatusMessage}
-            </p>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => downloadReportPdf(analysis, session.source)}
-                className="gap-2"
-              >
-                <Download className="h-4 w-4" />
-                Download Report
-              </Button>
-              <Button
-                type="button"
-                disabled={pendingCount > 0}
-                onClick={() => setIsReviewFinalized(true)}
-                className="gap-2"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Finalize Review
-              </Button>
-            </div>
-          </div>
         </section>
       </div>
 
@@ -991,32 +979,6 @@ function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; a
     <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left")}>
       {children}
     </span>
-  );
-}
-
-function FinalReviewCountPill({
-  label,
-  value,
-  tone
-}: {
-  label: FinalReviewDecision;
-  value: number;
-  tone: "revised" | "accepted" | "pending";
-}) {
-  return (
-    <div
-      className={cn(
-        "inline-flex min-w-[8.5rem] items-center justify-between gap-3 rounded-full border bg-white px-3.5 py-2 text-sm shadow-sm",
-        tone === "revised"
-          ? "border-blue-200 text-blue-800"
-          : tone === "accepted"
-            ? "border-emerald-200 text-emerald-800"
-            : "border-amber-200 text-amber-800"
-      )}
-    >
-      <span className="font-semibold tabular-nums text-slate-950">{value}</span>
-      <span className="font-medium">{label}</span>
-    </div>
   );
 }
 
@@ -1252,27 +1214,27 @@ function buildFinalReviewSummary(
 
   if (hasPendingItems) {
     return {
-      recommendation: hasRevisedItems ? "Resolve Pending Changes" : "Pending Resolution",
+      recommendation: "Hold for Review",
       readiness: "Ready after pending items are resolved."
     };
   }
 
   if (analysis.decisionRecommendation === "Reject") {
     return {
-      recommendation: "Do Not Proceed",
+      recommendation: "Reject",
       readiness: "Ready to finalize rejection recommendation."
     };
   }
 
   if (hasRevisedItems || analysis.decisionRecommendation === "Renegotiate") {
     return {
-      recommendation: "Proceed with Changes",
+      recommendation: "Approve with Changes",
       readiness: "Ready to finalize with revised clause positions."
     };
   }
 
   return {
-    recommendation: "Proceed as Drafted",
+    recommendation: "Approve",
     readiness: "Ready to finalize with original clauses retained."
   };
 }
