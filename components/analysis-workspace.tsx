@@ -1,18 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CircleAlert, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Download, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { RISK_CATEGORIES, decisionStyles, severityRank } from "@/constants/risk";
+import { RISK_CATEGORIES, severityRank } from "@/constants/risk";
 import { buildClauseAction } from "@/lib/reporting/actions";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
-import { cn, percent, truncate } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 import {
   RISK_REVIEW_STATUSES,
   RiskDecisionPanel,
@@ -54,7 +54,8 @@ export function AnalysisWorkspace() {
   const [riskStatuses, setRiskStatuses] = useState<Record<string, RiskReviewStatus>>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
-  const [isSubmitted] = useState(false);
+  const [expandedFinalReviewRiskId, setExpandedFinalReviewRiskId] = useState<string | null>(null);
+  const [isReviewFinalized, setIsReviewFinalized] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
@@ -451,6 +452,10 @@ export function AnalysisWorkspace() {
   }, [selectedRisk?.id]);
 
   useEffect(() => {
+    setIsReviewFinalized(false);
+  }, [riskStatuses, savedRecommendations]);
+
+  useEffect(() => {
     if (!analysis) return;
 
     let frameId = 0;
@@ -548,25 +553,16 @@ export function AnalysisWorkspace() {
   const selectedRiskDraft = selectedRisk
     ? riskDrafts[selectedRisk.id] ?? savedRecommendations[selectedRisk.id] ?? selectedRisk.suggestedImprovement
     : "";
-  const finalReviewChecks = [
-    {
-      label: "Escalate high-severity findings before signature",
-      done: analysis.riskSummary.high === 0
-    },
-    {
-      label: "Align liability and commercial protections with business value",
-      done: analysis.decisionRecommendation === "Accept"
-    },
-    {
-      label: "Validate the selected clause against fallback wording",
-      done: Object.values(savedRecommendations).some((value) => value.trim().length > 0)
-    },
-    {
-      label: "Confirm next actions have an owner and negotiation sequence",
-      done: analysis.nextActions.length >= 3
-    }
-  ];
-  const reviewCompletionCount = finalReviewChecks.filter((item) => item.done).length;
+  const finalDecisionRows = buildFinalDecisionRows(analysis.risks, riskStatuses, savedRecommendations);
+  const finalDecisionCounts = getFinalDecisionCounts(finalDecisionRows);
+  const pendingCount = finalDecisionCounts.Pending;
+  const finalReviewSummary = buildFinalReviewSummary(analysis, finalDecisionCounts);
+  const finalReviewStatusMessage =
+    pendingCount > 0
+      ? "Resolve all pending clauses before finalizing review."
+      : isReviewFinalized
+        ? "Review finalized successfully."
+        : "All clauses have a final decision.";
 
   return (
     <main className="min-h-screen">
@@ -789,45 +785,138 @@ export function AnalysisWorkspace() {
           />
         </section>
 
-        <section id="final-review">
-          <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-            <Card className="border-slate-200 bg-white/95 shadow-sm">
-              <CardContent className="space-y-5 p-6">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Final review</p>
-                  <h2 className="text-xl font-semibold text-slate-950">Close-out status</h2>
-                  <p className="max-w-2xl text-sm leading-7 text-slate-600">
-                    Confirm the recommendation, open risk load, and submission state before circulating this analysis.
-                  </p>
+        <section id="final-review" className="space-y-4">
+          <Card className="overflow-hidden border-slate-200 bg-white/95 shadow-[0_18px_44px_rgba(15,23,42,0.07)]">
+            <CardContent className="p-0">
+              <div className="grid gap-5 border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_58%,#eef2f7_100%)] p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                <div className="min-w-0 space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Final review</p>
+                    <p className="mt-3 text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Overall Recommendation</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{finalReviewSummary.recommendation}</h2>
+                  </div>
+                  <p className="max-w-2xl text-sm leading-6 text-slate-600">{finalReviewSummary.readiness}</p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <MetricCard
-                    label="Recommended action"
-                    value={analysis.decisionRecommendation}
-                    badgeClass={decisionStyles[analysis.decisionRecommendation]}
-                  />
-                  <MetricCard label="Checks complete" value={`${reviewCompletionCount} / ${finalReviewChecks.length}`} detail="Completion across final review steps" />
-                  <MetricCard label="High severity open" value={String(analysis.riskSummary.high)} detail="Items still requiring escalation" />
-                  <MetricCard label="Submission" value={isSubmitted ? "Submitted" : "Pending"} detail={isSubmitted ? "Workflow handoff recorded" : "Awaiting final submission"} />
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <FinalReviewCountPill label="Revised" value={finalDecisionCounts.Revised} tone="revised" />
+                  <FinalReviewCountPill label="Accepted" value={finalDecisionCounts.Accepted} tone="accepted" />
+                  <FinalReviewCountPill label="Pending" value={finalDecisionCounts.Pending} tone="pending" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-            <Card className="border-slate-200 bg-white/95 shadow-sm">
-              <CardContent className="space-y-4 p-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Review discipline</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-950">Decision checklist</h2>
-                </div>
+          <div className="overflow-hidden rounded-[1.05rem] border border-slate-300/80 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-slate-200 bg-slate-100/80 px-4 py-3">
+              <div className="text-sm font-semibold text-slate-950">Final Decisions</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+                <colgroup>
+                  <col className="w-[34%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[36%]" />
+                  <col className="w-[16%]" />
+                </colgroup>
+                <thead>
+                  <tr className="bg-slate-50 text-left">
+                    <th className="border-b border-slate-200 px-4 py-2.5">
+                      <TableHeaderLabel>Risk</TableHeaderLabel>
+                    </th>
+                    <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+                      <TableHeaderLabel align="center">Decision</TableHeaderLabel>
+                    </th>
+                    <th className="border-b border-slate-200 px-4 py-2.5">
+                      <TableHeaderLabel>Final Clause</TableHeaderLabel>
+                    </th>
+                    <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+                      <TableHeaderLabel align="center">Compare</TableHeaderLabel>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finalDecisionRows.map((row) => {
+                    const isExpanded = expandedFinalReviewRiskId === row.risk.id;
 
-                <div className="space-y-3">
-                  {finalReviewChecks.map((item) => (
-                    <ChecklistItem key={item.label} label={item.label} done={item.done} />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    return (
+                      <Fragment key={row.risk.id}>
+                        <tr className="bg-white align-middle transition hover:bg-slate-50/80">
+                          <td className="border-b border-slate-200/90 px-4 py-3">
+                            <div className="min-w-0">
+                              <div
+                                className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                                title={row.risk.title}
+                              >
+                                {row.risk.title}
+                              </div>
+                              <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.risk.clauseRef}</div>
+                            </div>
+                          </td>
+                          <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                            <FinalReviewDecisionBadge decision={row.decision} />
+                          </td>
+                          <td className="border-b border-slate-200/90 px-4 py-3">
+                            <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={row.finalClause}>
+                              {row.finalClause}
+                            </p>
+                          </td>
+                          <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.risk.id)}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                              aria-expanded={isExpanded}
+                            >
+                              {row.actionLabel}
+                              <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr className="bg-slate-50/70">
+                            <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
+                              <FinalReviewExpansion row={row} />
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-[1.05rem] border border-slate-200 bg-white/95 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <p
+              className={cn(
+                "text-sm font-medium",
+                pendingCount > 0 ? "text-amber-700" : isReviewFinalized ? "text-emerald-700" : "text-slate-600"
+              )}
+            >
+              {finalReviewStatusMessage}
+            </p>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => downloadReportPdf(analysis, session.source)}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Download Report
+              </Button>
+              <Button
+                type="button"
+                disabled={pendingCount > 0}
+                onClick={() => setIsReviewFinalized(true)}
+                className="gap-2"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Finalize Review
+              </Button>
+            </div>
           </div>
         </section>
       </div>
@@ -897,24 +986,93 @@ export function AnalysisWorkspace() {
   );
 }
 
-function MetricCard({
+function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; align?: "left" | "center" }) {
+  return (
+    <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left")}>
+      {children}
+    </span>
+  );
+}
+
+function FinalReviewCountPill({
   label,
   value,
-  detail,
-  badgeClass
+  tone
+}: {
+  label: FinalReviewDecision;
+  value: number;
+  tone: "revised" | "accepted" | "pending";
+}) {
+  return (
+    <div
+      className={cn(
+        "inline-flex min-w-[8.5rem] items-center justify-between gap-3 rounded-full border bg-white px-3.5 py-2 text-sm shadow-sm",
+        tone === "revised"
+          ? "border-blue-200 text-blue-800"
+          : tone === "accepted"
+            ? "border-emerald-200 text-emerald-800"
+            : "border-amber-200 text-amber-800"
+      )}
+    >
+      <span className="font-semibold tabular-nums text-slate-950">{value}</span>
+      <span className="font-medium">{label}</span>
+    </div>
+  );
+}
+
+function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold",
+        decision === "Revised"
+          ? "border-blue-200 bg-blue-50 text-blue-700"
+          : decision === "Accepted"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+            : "border-amber-200 bg-amber-50 text-amber-700"
+      )}
+    >
+      {decision}
+    </span>
+  );
+}
+
+function FinalReviewExpansion({ row }: { row: FinalDecisionRow }) {
+  return (
+    <div className="grid gap-3 rounded-[0.95rem] border border-slate-200 bg-white p-3 md:grid-cols-2">
+      <ClauseComparisonBlock label="Original Clause" value={row.originalClause} />
+      {row.decision === "Revised" ? (
+        <ClauseComparisonBlock label="Revised Clause" value={row.revisedClause ?? ""} tone="revised" />
+      ) : (
+        <div className="flex min-h-[6rem] flex-col justify-between rounded-[0.85rem] border border-slate-200 bg-slate-50 p-3">
+          <div>
+            <div className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Decision Note</div>
+            <p className="mt-2 text-sm font-medium leading-6 text-slate-700">{row.note}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClauseComparisonBlock({
+  label,
+  value,
+  tone
 }: {
   label: string;
   value: string;
-  detail?: string;
-  badgeClass?: string;
+  tone?: "revised";
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
-      <div className="mt-3">
-        {badgeClass ? <Badge className={badgeClass}>{value}</Badge> : <div className="text-3xl font-semibold text-slate-950">{value}</div>}
-      </div>
-      {detail ? <p className="mt-2 text-sm text-slate-500">{detail}</p> : null}
+    <div
+      className={cn(
+        "rounded-[0.85rem] border p-3",
+        tone === "revised" ? "border-blue-200 bg-blue-50/60" : "border-slate-200 bg-slate-50"
+      )}
+    >
+      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <p className="mt-2 max-h-36 overflow-y-auto pr-1 text-sm leading-6 text-slate-700">{value || "Not available"}</p>
     </div>
   );
 }
@@ -1019,20 +1177,108 @@ function ExecutiveSummaryItem({ label, value }: { label: string; value: string }
   );
 }
 
-function ChecklistItem({ label, done }: { label: string; done: boolean }) {
-  return (
-    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-      <div
-        className={cn(
-          "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-          done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-        )}
-      >
-        {done ? "OK" : "!"}
-      </div>
-      <p className="text-sm leading-6 text-slate-700">{label}</p>
-    </div>
+type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
+
+type FinalDecisionRow = {
+  risk: ContractRisk;
+  decision: FinalReviewDecision;
+  finalClause: string;
+  actionLabel: string;
+  originalClause: string;
+  revisedClause?: string;
+  note: string;
+};
+
+function buildFinalDecisionRows(
+  risks: ContractRisk[],
+  riskStatuses: Record<string, RiskReviewStatus>,
+  savedRecommendations: Record<string, string>
+): FinalDecisionRow[] {
+  return risks.map((risk) => {
+    const status = riskStatuses[risk.id] ?? "Pending Review";
+    const savedClause = normalizeWhitespace(savedRecommendations[risk.id] ?? "");
+    const originalClause = normalizeWhitespace(risk.clauseText || risk.highlightedText);
+
+    if (status === "Accepted Risk") {
+      return {
+        risk,
+        decision: "Accepted",
+        finalClause: "Original retained",
+        actionLabel: "View Original",
+        originalClause,
+        note: "Accepted as-is"
+      };
+    }
+
+    if (status === "Action Required" && savedClause) {
+      return {
+        risk,
+        decision: "Revised",
+        finalClause: buildFinalClauseSnippet(savedClause),
+        actionLabel: "View Changes",
+        originalClause,
+        revisedClause: savedClause,
+        note: "Revised clause saved"
+      };
+    }
+
+    return {
+      risk,
+      decision: "Pending",
+      finalClause: "Awaiting decision",
+      actionLabel: "Review",
+      originalClause,
+      note: "Awaiting final decision"
+    };
+  });
+}
+
+function getFinalDecisionCounts(rows: FinalDecisionRow[]) {
+  return rows.reduce<Record<FinalReviewDecision, number>>(
+    (counts, row) => {
+      counts[row.decision] += 1;
+      return counts;
+    },
+    { Revised: 0, Accepted: 0, Pending: 0 }
   );
+}
+
+function buildFinalReviewSummary(
+  analysis: ContractAnalysis,
+  counts: Record<FinalReviewDecision, number>
+) {
+  const hasPendingItems = counts.Pending > 0;
+  const hasRevisedItems = counts.Revised > 0;
+
+  if (hasPendingItems) {
+    return {
+      recommendation: hasRevisedItems ? "Resolve Pending Changes" : "Pending Resolution",
+      readiness: "Ready after pending items are resolved."
+    };
+  }
+
+  if (analysis.decisionRecommendation === "Reject") {
+    return {
+      recommendation: "Do Not Proceed",
+      readiness: "Ready to finalize rejection recommendation."
+    };
+  }
+
+  if (hasRevisedItems || analysis.decisionRecommendation === "Renegotiate") {
+    return {
+      recommendation: "Proceed with Changes",
+      readiness: "Ready to finalize with revised clause positions."
+    };
+  }
+
+  return {
+    recommendation: "Proceed as Drafted",
+    readiness: "Ready to finalize with original clauses retained."
+  };
+}
+
+function buildFinalClauseSnippet(value: string) {
+  return truncate(normalizeWhitespace(value), 118);
 }
 
 function getPriorityRisk(analysis: ContractAnalysis) {
