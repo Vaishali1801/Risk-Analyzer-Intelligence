@@ -9,8 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SEVERITIES, severityStyles } from "@/constants/risk";
+import type { NormalizedFinding, ReviewByRiskId, ReviewStatus } from "@/lib/output-model";
 import { cn, truncate } from "@/lib/utils";
-import type { ContractRisk, RiskCategory, Severity } from "@/types/contract";
+import type { RiskCategory, Severity } from "@/types/contract";
 
 export type RiskSortKey =
   | "severity-desc"
@@ -22,11 +23,11 @@ export type RiskSortKey =
   | "category-asc"
   | "category-desc";
 export type RiskReviewLens = "safer" | "simplify" | "hidden" | "standard";
-export type RiskReviewStatus = "Pending Review" | "Accepted Risk" | "Action Required";
+export type RiskReviewStatus = ReviewStatus;
 export type RiskPanelFocusTarget = "summary" | "ask-ai";
 
 type RiskFindingsTableProps = {
-  risks: ContractRisk[];
+  risks: NormalizedFinding[];
   totalRiskCount: number;
   search: string;
   severity: Severity | "All";
@@ -35,19 +36,19 @@ type RiskFindingsTableProps = {
   categoryOptions: RiskCategory[];
   sortKey: RiskSortKey;
   selectedRiskId?: string;
-  riskStatuses: Record<string, RiskReviewStatus>;
+  reviewByRiskId: ReviewByRiskId;
   onSearchChange: (value: string) => void;
   onSeverityChange: (value: Severity | "All") => void;
   onCategoryChange: (value: RiskCategory | "All") => void;
   onStatusChange: (value: RiskReviewStatus | "All") => void;
   onSortChange: (value: RiskSortKey) => void;
-  onReviewRisk: (risk: ContractRisk) => void;
-  onAskAi: (risk: ContractRisk) => void;
+  onReviewRisk: (risk: NormalizedFinding) => void;
+  onAskAi: (risk: NormalizedFinding) => void;
 };
 
 type RiskDecisionPanelProps = {
   open: boolean;
-  risk?: ContractRisk;
+  risk?: NormalizedFinding;
   status: RiskReviewStatus;
   reviewLens: RiskReviewLens;
   draftText: string;
@@ -78,14 +79,14 @@ const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
   { key: "standard", label: "Compare Standard" }
 ];
 
-export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["Pending Review", "Accepted Risk", "Action Required"];
+export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["pending", "needs_change", "accepted"];
 
 const riskIndexColumnWidth = "1.75rem";
 
 const riskReviewStatusStyles: Record<RiskReviewStatus, string> = {
-  "Pending Review": "border-slate-300 bg-slate-100 text-slate-700",
-  "Accepted Risk": "border-emerald-300 bg-emerald-50 text-emerald-700",
-  "Action Required": "border-amber-300 bg-amber-50 text-amber-700"
+  pending: "border-slate-300 bg-slate-100 text-slate-700",
+  accepted: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  needs_change: "border-amber-300 bg-amber-50 text-amber-700"
 };
 
 const severityBadgeStyles: Record<Severity, string> = {
@@ -100,9 +101,9 @@ const compactBadgeClassName = "gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibo
 
 const STATUS_FILTER_OPTIONS: { value: RiskReviewStatus | "All"; label: string }[] = [
   { value: "All", label: "All" },
-  { value: "Pending Review", label: "Pending" },
-  { value: "Accepted Risk", label: "Accepted" },
-  { value: "Action Required", label: "Action Req." }
+  { value: "pending", label: "Pending" },
+  { value: "needs_change", label: "Needs Change" },
+  { value: "accepted", label: "Accepted" }
 ];
 
 export function RiskFindingsTable({
@@ -115,7 +116,7 @@ export function RiskFindingsTable({
   categoryOptions,
   sortKey,
   selectedRiskId,
-  riskStatuses,
+  reviewByRiskId,
   onSearchChange,
   onSeverityChange,
   onCategoryChange,
@@ -230,13 +231,13 @@ export function RiskFindingsTable({
           <div className="space-y-2.5 p-3 md:hidden">
             {risks.length ? (
               risks.map((risk, index) => {
-                const rowStatus = riskStatuses[risk.id] ?? "Pending Review";
-                const isSelected = selectedRiskId === risk.id;
+                const rowStatus = reviewByRiskId[risk.riskId]?.status ?? "pending";
+                const isSelected = selectedRiskId === risk.riskId;
 
                 return (
                   <div
-                    key={risk.id}
-                    id={`risk-row-${risk.id}`}
+                    key={risk.riskId}
+                    id={`risk-row-${risk.riskId}`}
                     onClick={() => onReviewRisk(risk)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
@@ -261,16 +262,16 @@ export function RiskFindingsTable({
                         </div>
                         <div
                           className="mt-1.5 overflow-hidden text-[0.84rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                          title={risk.title}
+                          title={risk.riskTitle}
                         >
-                          {risk.title}
+                          {risk.riskTitle}
                         </div>
-                        <div className="mt-0.5 text-[0.72rem] leading-4 text-slate-500">{risk.category} / {risk.clauseRef}</div>
+                        <div className="mt-0.5 text-[0.72rem] leading-4 text-slate-500">{risk.category} / {risk.sectionRef}</div>
                         <p
                           className="mt-1.5 overflow-hidden text-[0.77rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                          title={risk.highlightedText}
+                          title={risk.clauseSnippet}
                         >
-                          {risk.highlightedText}
+                          {risk.clauseSnippet}
                         </p>
                       </div>
                       <div className="text-right">
@@ -378,13 +379,13 @@ export function RiskFindingsTable({
               <tbody>
                 {risks.length ? (
                   risks.map((risk, index) => {
-                    const rowStatus = riskStatuses[risk.id] ?? "Pending Review";
-                    const isSelected = selectedRiskId === risk.id;
+                    const rowStatus = reviewByRiskId[risk.riskId]?.status ?? "pending";
+                    const isSelected = selectedRiskId === risk.riskId;
 
                     return (
                       <tr
-                        key={risk.id}
-                        id={`risk-row-${risk.id}`}
+                        key={risk.riskId}
+                        id={`risk-row-${risk.riskId}`}
                         onClick={() => onReviewRisk(risk)}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
@@ -409,11 +410,11 @@ export function RiskFindingsTable({
                           <div className="space-y-[0.15rem]">
                             <div
                               className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                              title={risk.title}
+                              title={risk.riskTitle}
                             >
-                              {risk.title}
+                              {risk.riskTitle}
                             </div>
-                            <div className="text-[0.72rem] leading-4 text-slate-500">{risk.clauseRef}</div>
+                            <div className="text-[0.72rem] leading-4 text-slate-500">{risk.sectionRef}</div>
                           </div>
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center text-[0.78rem] font-medium text-slate-700">
@@ -427,9 +428,9 @@ export function RiskFindingsTable({
                         <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
                           <p
                             className="overflow-hidden text-[0.78rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                            title={risk.highlightedText}
+                            title={risk.clauseSnippet}
                           >
-                            {risk.highlightedText}
+                            {risk.clauseSnippet}
                           </p>
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center">
@@ -506,15 +507,15 @@ export function RiskDecisionPanel({
   const [copyState, setCopyState] = useState<"idle" | "done">("idle");
   const clausePreviewText = useMemo(() => {
     if (!risk) return "";
-    return isClauseExpanded ? risk.clauseText : buildClauseExcerpt(risk.clauseText, risk.highlightedText, 360);
+    return isClauseExpanded ? risk.fullClauseText : buildClauseExcerpt(risk.fullClauseText, risk.flaggedText, 360);
   }, [isClauseExpanded, risk]);
   const whyItMattersBullets = useMemo(() => {
     if (!risk) return [];
-    return buildWhyItMattersBullets(risk.whyRisky, risk.category, risk.severity, risk.clauseRef);
+    return buildWhyItMattersBullets(risk.whyItMatters, risk.category, risk.severity, risk.sectionRef);
   }, [risk]);
   const highlightedImpact = useMemo(() => {
     if (!risk) return "";
-    return getStandoutStatement(risk.impactIfIgnored);
+    return getStandoutStatement(risk.businessImpact);
   }, [risk]);
 
   useEffect(() => {
@@ -557,7 +558,7 @@ export function RiskDecisionPanel({
 
   if (!risk) return null;
 
-  const headerClauseRef = risk.clauseRef.trim();
+  const headerClauseRef = risk.sectionRef.trim();
 
   return createPortal(
     <div className={cn("fixed inset-0 z-[140] transition-opacity duration-300", open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")}>
@@ -571,7 +572,7 @@ export function RiskDecisionPanel({
       <aside
         role="dialog"
         aria-modal="true"
-        aria-label={`${risk.title} review panel`}
+        aria-label={`${risk.riskTitle} review panel`}
         aria-hidden={!open}
         className={cn(
           "absolute inset-y-0 right-0 h-full w-full max-w-full border-l border-slate-200 bg-white shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out sm:max-w-[44rem] lg:max-w-[52vw]",
@@ -583,7 +584,7 @@ export function RiskDecisionPanel({
             <div className="min-w-0 space-y-2.5">
               <div className="text-[0.72rem] font-bold tracking-[0.08em] text-slate-700">Risk Review</div>
               <div className="min-w-0">
-                <h2 className="text-[1.22rem] font-semibold tracking-tight text-slate-950 sm:text-[1.38rem]">{risk.title}</h2>
+                <h2 className="text-[1.22rem] font-semibold tracking-tight text-slate-950 sm:text-[1.38rem]">{risk.riskTitle}</h2>
                 <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-[0.72rem] font-semibold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {headerClauseRef ? (
                     <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
@@ -609,8 +610,8 @@ export function RiskDecisionPanel({
           <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
             <PanelSection title="Flagged Clause">
               <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3.5">
-                <p className="text-sm leading-7 text-slate-700">{renderHighlightedClauseText(clausePreviewText, risk.highlightedText)}</p>
-                {risk.clauseText.length > clausePreviewText.length ? (
+                <p className="text-sm leading-7 text-slate-700">{renderHighlightedClauseText(clausePreviewText, risk.flaggedText)}</p>
+                {risk.fullClauseText.length > clausePreviewText.length ? (
                   <button
                     type="button"
                     onClick={() => setIsClauseExpanded((current) => !current)}
@@ -716,10 +717,10 @@ export function RiskDecisionPanel({
                     <div className="text-[0.78rem] text-slate-500">Use this when the clause is accepted as-is for final review.</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {status !== "Pending Review" ? (
+                    {status !== "pending" ? (
                       <button
                         type="button"
-                        onClick={() => onStatusChange("Pending Review")}
+                        onClick={() => onStatusChange("pending")}
                         className="text-[0.78rem] font-medium text-slate-500 transition hover:text-slate-900"
                       >
                         Mark Pending
@@ -727,7 +728,7 @@ export function RiskDecisionPanel({
                     ) : null}
                     <Button
                       type="button"
-                      variant={status === "Accepted Risk" ? "default" : "secondary"}
+                      variant={status === "accepted" ? "default" : "secondary"}
                       size="sm"
                       onClick={onAcceptRisk}
                       className="h-8 rounded-full px-3"
@@ -902,12 +903,12 @@ function formatFindingsCount(count: number) {
 
 function getRiskStatusLabel(status: RiskReviewStatus) {
   switch (status) {
-    case "Pending Review":
+    case "pending":
       return "Pending";
-    case "Accepted Risk":
+    case "accepted":
       return "Accepted";
-    case "Action Required":
-      return "Action Req.";
+    case "needs_change":
+      return "Needs Change";
     default:
       return status;
   }
@@ -915,11 +916,11 @@ function getRiskStatusLabel(status: RiskReviewStatus) {
 
 function getRiskStatusIcon(status: RiskReviewStatus) {
   switch (status) {
-    case "Pending Review":
+    case "pending":
       return Clock3;
-    case "Accepted Risk":
+    case "accepted":
       return Check;
-    case "Action Required":
+    case "needs_change":
       return TriangleAlert;
     default:
       return Clock3;

@@ -1,12 +1,23 @@
-import type { ContractRisk } from "@/types/contract";
+import type { RiskCategory } from "@/types/contract";
 
-export function buildClauseAction(type: "simplify" | "safer" | "hidden" | "standard", risk: ContractRisk) {
+type ClauseActionRisk = {
+  category: RiskCategory;
+  whyRisky?: string;
+  whyItMatters?: string;
+  suggestedImprovement?: string;
+  originalRecommendedDraft?: string;
+};
+
+export function buildClauseAction(type: "simplify" | "safer" | "hidden" | "standard", risk: ClauseActionRisk) {
+  const whyItMatters = risk.whyItMatters ?? risk.whyRisky ?? "";
+  const recommendedDraft = risk.originalRecommendedDraft ?? risk.suggestedImprovement ?? "";
+
   if (type === "simplify") {
-    return `Plain-English version: This clause may create ${risk.category.toLowerCase()} exposure because ${risk.whyRisky.toLowerCase()}`;
+    return `Plain-English version: This clause may create ${risk.category.toLowerCase()} exposure because ${whyItMatters.toLowerCase()}`;
   }
 
   if (type === "safer") {
-    return risk.suggestedImprovement;
+    return recommendedDraft;
   }
 
   if (type === "hidden") {
