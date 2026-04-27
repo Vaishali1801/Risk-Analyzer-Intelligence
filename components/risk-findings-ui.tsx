@@ -8,18 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { SEVERITIES, severityStyles } from "@/constants/risk";
-import type { NormalizedFinding, ReviewByRiskId, ReviewStatus } from "@/lib/output-model";
+import { SEVERITIES } from "@/constants/risk";
+import {
+  formatAiConfidence,
+  getEffectiveReviewStatus,
+  getReviewStateForRisk,
+  getSafeCategory,
+  getSafeClauseSnippet,
+  getSafeSeverity,
+  getSafeSeverityStyles,
+  type NormalizedFinding,
+  type ReviewByRiskId,
+  type ReviewStatus,
+  type SafeRiskCategory,
+  type SafeSeverity
+} from "@/lib/output-model";
 import { cn, truncate } from "@/lib/utils";
-import type { RiskCategory, Severity } from "@/types/contract";
+import type { Severity } from "@/types/contract";
 
 export type RiskSortKey =
   | "severity-desc"
   | "severity-asc"
   | "confidence-desc"
   | "confidence-asc"
-  | "title-asc"
-  | "title-desc"
   | "category-asc"
   | "category-desc";
 export type RiskReviewLens = "safer" | "simplify" | "hidden" | "standard";
@@ -31,15 +42,15 @@ type RiskFindingsTableProps = {
   totalRiskCount: number;
   search: string;
   severity: Severity | "All";
-  category: RiskCategory | "All";
+  category: SafeRiskCategory | "All";
   status: RiskReviewStatus | "All";
-  categoryOptions: RiskCategory[];
+  categoryOptions: SafeRiskCategory[];
   sortKey: RiskSortKey;
   selectedRiskId?: string;
   reviewByRiskId: ReviewByRiskId;
   onSearchChange: (value: string) => void;
   onSeverityChange: (value: Severity | "All") => void;
-  onCategoryChange: (value: RiskCategory | "All") => void;
+  onCategoryChange: (value: SafeRiskCategory | "All") => void;
   onStatusChange: (value: RiskReviewStatus | "All") => void;
   onSortChange: (value: RiskSortKey) => void;
   onReviewRisk: (risk: NormalizedFinding) => void;
@@ -231,7 +242,11 @@ export function RiskFindingsTable({
           <div className="space-y-2.5 p-3 md:hidden">
             {risks.length ? (
               risks.map((risk, index) => {
-                const rowStatus = reviewByRiskId[risk.riskId]?.status ?? "pending";
+                const rowStatus = getEffectiveReviewStatus(getReviewStateForRisk(risk.riskId, reviewByRiskId, risk));
+                const severityLabel = getSafeSeverity(risk.severity);
+                const categoryLabel = getSafeCategory(risk);
+                const sectionRef = risk.sectionRef.trim();
+                const clauseSnippet = getSafeClauseSnippet(risk);
                 const isSelected = selectedRiskId === risk.riskId;
 
                 return (
@@ -257,7 +272,7 @@ export function RiskFindingsTable({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[0.72rem] font-semibold text-slate-400">#{index + 1}</span>
-                          <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity], severityBadgeStyles[risk.severity])}>{risk.severity}</Badge>
+                          <Badge className={cn(compactBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
                           <StatusBadge status={rowStatus} />
                         </div>
                         <div
@@ -266,16 +281,16 @@ export function RiskFindingsTable({
                         >
                           {risk.riskTitle}
                         </div>
-                        <div className="mt-0.5 text-[0.72rem] leading-4 text-slate-500">{risk.category} / {risk.sectionRef}</div>
+                        <div className="mt-0.5 text-[0.72rem] leading-4 text-slate-500">{sectionRef ? `${categoryLabel} / ${sectionRef}` : categoryLabel}</div>
                         <p
                           className="mt-1.5 overflow-hidden text-[0.77rem] leading-5 text-slate-500 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                          title={risk.clauseSnippet}
+                          title={clauseSnippet}
                         >
-                          {risk.clauseSnippet}
+                          {clauseSnippet}
                         </p>
                       </div>
                       <div className="text-right">
-                        <div className="text-[0.82rem] font-semibold text-slate-950">{Math.round(risk.confidence * 100)}%</div>
+                        <div className="text-[0.82rem] font-semibold text-slate-950">{formatAiConfidence(risk.confidence)}</div>
                       </div>
                     </div>
                     <div className="mt-2.5 flex items-center gap-2 text-[0.78rem] font-medium">
@@ -342,7 +357,7 @@ export function RiskFindingsTable({
                     <HeaderFilter
                       label="Category"
                       value={category}
-                      onChange={(value) => onCategoryChange(value as RiskCategory | "All")}
+                      onChange={(value) => onCategoryChange(value as SafeRiskCategory | "All")}
                       options={["All", ...categoryOptions]}
                       ariaLabel="Filter findings by category"
                     />
@@ -379,7 +394,11 @@ export function RiskFindingsTable({
               <tbody>
                 {risks.length ? (
                   risks.map((risk, index) => {
-                    const rowStatus = reviewByRiskId[risk.riskId]?.status ?? "pending";
+                    const rowStatus = getEffectiveReviewStatus(getReviewStateForRisk(risk.riskId, reviewByRiskId, risk));
+                    const severityLabel = getSafeSeverity(risk.severity);
+                    const categoryLabel = getSafeCategory(risk);
+                    const sectionRef = risk.sectionRef.trim();
+                    const clauseSnippet = getSafeClauseSnippet(risk);
                     const isSelected = selectedRiskId === risk.riskId;
 
                     return (
@@ -414,27 +433,27 @@ export function RiskFindingsTable({
                             >
                               {risk.riskTitle}
                             </div>
-                            <div className="text-[0.72rem] leading-4 text-slate-500">{risk.sectionRef}</div>
+                            {sectionRef ? <div className="text-[0.72rem] leading-4 text-slate-500">{sectionRef}</div> : null}
                           </div>
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center text-[0.78rem] font-medium text-slate-700">
-                          {risk.category}
+                          {categoryLabel}
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="flex justify-center">
-                            <Badge className={cn(compactBadgeClassName, severityStyles[risk.severity], severityBadgeStyles[risk.severity])}>{risk.severity}</Badge>
+                            <Badge className={cn(compactBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
                           </div>
                         </td>
                         <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">
                           <p
                             className="overflow-hidden text-[0.78rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                            title={risk.clauseSnippet}
+                            title={clauseSnippet}
                           >
-                            {risk.clauseSnippet}
+                            {clauseSnippet}
                           </p>
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center">
-                          <div className="text-[0.81rem] font-semibold tabular-nums text-slate-900">{Math.round(risk.confidence * 100)}%</div>
+                          <div className="text-[0.81rem] font-semibold tabular-nums text-slate-900">{formatAiConfidence(risk.confidence)}</div>
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="flex justify-center">
@@ -505,13 +524,17 @@ export function RiskDecisionPanel({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [isClauseExpanded, setIsClauseExpanded] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "done">("idle");
+  const fullClauseText = risk ? normalizePanelText(risk.fullClauseText) : "";
+  const clauseSnippet = risk ? normalizePanelText(risk.clauseSnippet) : "";
+  const flaggedText = risk ? normalizePanelText(risk.flaggedText) : "";
   const clausePreviewText = useMemo(() => {
     if (!risk) return "";
-    return isClauseExpanded ? risk.fullClauseText : buildClauseExcerpt(risk.fullClauseText, risk.flaggedText, 360);
-  }, [isClauseExpanded, risk]);
+    const clauseDisplayText = getDecisionPanelClauseText(fullClauseText, clauseSnippet, flaggedText);
+    return isClauseExpanded && fullClauseText ? fullClauseText : buildClauseExcerpt(clauseDisplayText, flaggedText, 360);
+  }, [clauseSnippet, flaggedText, fullClauseText, isClauseExpanded, risk]);
   const whyItMattersBullets = useMemo(() => {
     if (!risk) return [];
-    return buildWhyItMattersBullets(risk.whyItMatters, risk.category, risk.severity, risk.sectionRef);
+    return buildWhyItMattersBullets(risk.whyItMatters, getSafeCategory(risk), getSafeSeverity(risk.severity), risk.sectionRef);
   }, [risk]);
   const highlightedImpact = useMemo(() => {
     if (!risk) return "";
@@ -549,16 +572,18 @@ export function RiskDecisionPanel({
 
       scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
-  }, [focusTarget, open, risk?.id]);
+  }, [focusTarget, open, risk?.riskId]);
 
   useEffect(() => {
     setIsClauseExpanded(false);
     setCopyState("idle");
-  }, [risk?.id]);
+  }, [risk?.riskId]);
 
   if (!risk) return null;
 
-  const headerClauseRef = risk.sectionRef.trim();
+  const headerClauseRef = normalizePanelText(risk.sectionRef);
+  const headerCategory = getSafeCategory(risk);
+  const headerSeverity = getSafeSeverity(risk.severity);
 
   return createPortal(
     <div className={cn("fixed inset-0 z-[140] transition-opacity duration-300", open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")}>
@@ -592,9 +617,9 @@ export function RiskDecisionPanel({
                     </span>
                   ) : null}
                   <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                    {risk.category}
+                    {headerCategory}
                   </span>
-                  <Badge className={cn(compactBadgeClassName, "shrink-0", severityStyles[risk.severity])}>{risk.severity}</Badge>
+                  <Badge className={cn(compactBadgeClassName, "shrink-0", getSafeSeverityStyles(risk.severity))}>{headerSeverity}</Badge>
                   <div className="shrink-0">
                     <StatusBadge status={status} />
                   </div>
@@ -610,8 +635,8 @@ export function RiskDecisionPanel({
           <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
             <PanelSection title="Flagged Clause">
               <div className="rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3.5">
-                <p className="text-sm leading-7 text-slate-700">{renderHighlightedClauseText(clausePreviewText, risk.flaggedText)}</p>
-                {risk.fullClauseText.length > clausePreviewText.length ? (
+                <p className="text-sm leading-7 text-slate-700">{renderHighlightedClauseText(clausePreviewText, flaggedText)}</p>
+                {fullClauseText.length > clausePreviewText.length ? (
                   <button
                     type="button"
                     onClick={() => setIsClauseExpanded((current) => !current)}
@@ -861,6 +886,10 @@ function StatusBadge({ status }: { status: RiskReviewStatus }) {
   );
 }
 
+function getSeverityBadgeAccentClassName(severity: SafeSeverity) {
+  return severity === "Unknown" ? "" : severityBadgeStyles[severity];
+}
+
 function EmptyState({ totalRiskCount, message }: { totalRiskCount: number; message: string }) {
   return (
     <div className="mx-auto max-w-md">
@@ -925,6 +954,10 @@ function getRiskStatusIcon(status: RiskReviewStatus) {
     default:
       return Clock3;
   }
+}
+
+function getDecisionPanelClauseText(fullClauseText: string, clauseSnippet: string, flaggedText: string) {
+  return fullClauseText || clauseSnippet || flaggedText || "Clause text unavailable";
 }
 
 function buildClauseExcerpt(clauseText: string, highlightedText: string, maxLength: number) {
@@ -1122,15 +1155,16 @@ function mapComparableRangeToOriginal(comparable: ComparableText, start: number,
 }
 
 function normalizeInlineText(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return normalizePanelText(value);
 }
 
 function isComparableCharacter(character: string) {
   return (character >= "0" && character <= "9") || character.toLowerCase() !== character.toUpperCase();
 }
 
-function buildWhyItMattersBullets(whyRisky: string, category: RiskCategory, severity: Severity, clauseRef: string) {
-  const sentenceBullets = whyRisky
+function buildWhyItMattersBullets(whyRisky: unknown, category: SafeRiskCategory, severity: SafeSeverity, clauseRef: unknown) {
+  const sectionRef = normalizePanelText(clauseRef);
+  const sentenceBullets = normalizePanelText(whyRisky)
     .split(/(?<=[.!?])\s+|;\s+/)
     .map((item) => normalizeSentence(item))
     .filter(Boolean);
@@ -1138,7 +1172,7 @@ function buildWhyItMattersBullets(whyRisky: string, category: RiskCategory, seve
   const bullets = sentenceBullets.slice(0, 2);
 
   if (bullets.length < 2) {
-    bullets.push(`${category} exposure is being flagged at ${severity.toLowerCase()} severity in ${clauseRef}.`);
+    bullets.push(buildWhyItMattersFallback(category, severity, sectionRef));
   }
 
   if (bullets.length < 3) {
@@ -1148,17 +1182,39 @@ function buildWhyItMattersBullets(whyRisky: string, category: RiskCategory, seve
   return bullets.slice(0, 3);
 }
 
-function getStandoutStatement(text: string) {
-  const sentences = text
+function buildWhyItMattersFallback(category: SafeRiskCategory, severity: SafeSeverity, sectionRef: string) {
+  const location = sectionRef ? ` in ${sectionRef}` : "";
+  if (category === "Uncategorized" && severity === "Unknown") {
+    return `This clause has been flagged for legal review${location}.`;
+  }
+
+  if (severity === "Unknown") {
+    return `${category} exposure has been flagged for review${location}.`;
+  }
+
+  if (category === "Uncategorized") {
+    return `This clause is being flagged at ${severity.toLowerCase()} severity${location}.`;
+  }
+
+  return `${category} exposure is being flagged at ${severity.toLowerCase()} severity${location}.`;
+}
+
+function getStandoutStatement(text: unknown) {
+  const normalizedText = normalizePanelText(text);
+  const sentences = normalizedText
     .split(/(?<=[.!?])\s+/)
     .map((item) => normalizeSentence(item))
     .filter(Boolean);
 
-  return sentences[0] ?? text;
+  return sentences[0] ?? "Business impact was not provided by the analysis.";
 }
 
-function normalizeSentence(value: string) {
-  const cleaned = value.replace(/\s+/g, " ").trim();
+function normalizeSentence(value: unknown) {
+  const cleaned = normalizePanelText(value);
   if (!cleaned) return "";
   return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+function normalizePanelText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }

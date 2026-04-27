@@ -1,7 +1,5 @@
-import type { RiskCategory } from "@/types/contract";
-
 type ClauseActionRisk = {
-  category: RiskCategory;
+  category: string;
   whyRisky?: string;
   whyItMatters?: string;
   suggestedImprovement?: string;

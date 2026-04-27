@@ -1,18 +1,20 @@
-import { RISK_CATEGORIES, severityRank } from "@/constants/risk";
+import { RISK_CATEGORIES, severityRank, severityStyles } from "@/constants/risk";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import type { AnalysisSource, ContractAnalysis, DecisionRecommendation, RiskCategory, Severity } from "@/types/contract";
 
 export type ReviewStatus = "pending" | "needs_change" | "accepted";
 export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
 export type FinalOverallDecision = "Hold for Review" | "Reject" | "Approve with Changes" | "Approve";
+export type SafeRiskCategory = RiskCategory | "Uncategorized";
+export type SafeSeverity = Severity | "Unknown";
 
 export type NormalizedFinding = {
   riskId: string;
   riskTitle: string;
   sectionRef: string;
-  category: RiskCategory;
-  severity: Severity;
-  confidence: number;
+  category: SafeRiskCategory;
+  severity: SafeSeverity;
+  confidence: number | null;
   clauseSnippet: string;
   fullClauseText: string;
   flaggedText: string;
@@ -36,7 +38,10 @@ export type NormalizedDocumentAnalysis = {
   sourceType: AnalysisSource["sourceKind"];
   receivedForReviewDate?: string;
   analysisGeneratedAt: string;
+  savedAt: string;
   executiveSummary: string;
+  decisionRationale: string;
+  nextActions: string[];
   aiInsight: string;
   overallRiskLevel: Severity;
   overallDecision: DecisionRecommendation;
@@ -45,7 +50,7 @@ export type NormalizedDocumentAnalysis = {
   summary: {
     totalRiskCount: number;
     severityMix: Record<Severity, number>;
-    categoryMix: Record<RiskCategory, number>;
+    categoryMix: Record<SafeRiskCategory, number>;
   };
 };
 
@@ -61,6 +66,19 @@ export type FinalReviewRow = {
 
 export type ReviewStatusCounts = Record<ReviewStatus, number>;
 export type FinalReviewCounts = Record<FinalReviewDecision, number>;
+export type SummaryRiskMixItem = { name: SafeRiskCategory; count: number };
+export type SummaryRiskMix = {
+  compactItems: SummaryRiskMixItem[];
+  expandedItems: SummaryRiskMixItem[];
+  hasHiddenCategories: boolean;
+  fullText: string;
+};
+export type TopCriticalRiskItem = { id: string; label: string };
+export type ExecutiveSummaryDetails = {
+  overallPosition: string;
+  keyDrivers: string;
+  businessImpact: string;
+};
 
 export type ReportModel = {
   document: NormalizedDocumentAnalysis;
@@ -81,17 +99,17 @@ export function normalizeOutputAnalysis(
 ): NormalizedDocumentAnalysis {
   const findings = analysis.risks.map<NormalizedFinding>((risk) => ({
     riskId: risk.id,
-    riskTitle: risk.title,
-    sectionRef: risk.clauseRef,
-    category: risk.category,
-    severity: risk.severity,
-    confidence: risk.confidence,
-    clauseSnippet: risk.highlightedText,
-    fullClauseText: risk.clauseText,
-    flaggedText: risk.highlightedText,
-    whyItMatters: risk.whyRisky,
-    businessImpact: risk.impactIfIgnored,
-    originalRecommendedDraft: risk.suggestedImprovement
+    riskTitle: getUsableText(risk.title) || "Untitled risk",
+    sectionRef: getUsableText(risk.clauseRef),
+    category: getSafeCategory(risk),
+    severity: getSafeSeverity(risk.severity),
+    confidence: getSafeConfidenceValue(risk.confidence),
+    clauseSnippet: getSafeClauseSnippet(risk),
+    fullClauseText: getUsableText(risk.clauseText),
+    flaggedText: getUsableText(risk.highlightedText),
+    whyItMatters: getUsableText(risk.whyRisky),
+    businessImpact: getUsableText(risk.impactIfIgnored),
+    originalRecommendedDraft: getUsableText(risk.suggestedImprovement)
   }));
   const summary = {
     totalRiskCount: getTotalRiskCount(findings),
@@ -105,9 +123,12 @@ export function normalizeOutputAnalysis(
     contractTitle: analysis.contractTitle,
     sourceType: source.sourceKind,
     analysisGeneratedAt: savedAt,
+    savedAt,
     executiveSummary: analysis.executiveSummary,
+    decisionRationale: analysis.decisionRationale,
+    nextActions: analysis.nextActions,
     aiInsight: buildAiInsight(findings, summary.categoryMix),
-    overallRiskLevel: analysis.overallRiskLevel,
+    overallRiskLevel: getOverallRiskLevel(findings, analysis.overallRiskLevel),
     overallDecision: analysis.decisionRecommendation,
     findings,
     topCriticalRiskIds: topCriticalRisks.map((finding) => finding.riskId),
@@ -135,6 +156,25 @@ export function getReviewState(reviewByRiskId: ReviewByRiskId, finding: Normaliz
   };
 }
 
+export function getReviewStateForRisk(
+  riskId: string,
+  reviewByRiskId: ReviewByRiskId,
+  finding: Pick<NormalizedFinding, "originalRecommendedDraft">
+): RiskReviewState {
+  return reviewByRiskId[riskId] ?? {
+    status: DEFAULT_REVIEW_STATUS,
+    currentDraft: finding.originalRecommendedDraft
+  };
+}
+
+export function getEffectiveReviewStatus(review: RiskReviewState): ReviewStatus {
+  if (review.status === "needs_change" && !normalizeWhitespace(review.savedRecommendation ?? "")) {
+    return "pending";
+  }
+
+  return review.status;
+}
+
 export function getTotalRiskCount(findings: NormalizedFinding[]) {
   return findings.length;
 }
@@ -142,17 +182,19 @@ export function getTotalRiskCount(findings: NormalizedFinding[]) {
 export function getSeverityMix(findings: NormalizedFinding[]): Record<Severity, number> {
   return findings.reduce<Record<Severity, number>>(
     (mix, finding) => {
-      mix[finding.severity] += 1;
+      if (finding.severity !== "Unknown") {
+        mix[finding.severity] += 1;
+      }
       return mix;
     },
     { High: 0, Medium: 0, Low: 0 }
   );
 }
 
-export function getCategoryMix(findings: NormalizedFinding[]): Record<RiskCategory, number> {
-  return findings.reduce<Record<RiskCategory, number>>(
+export function getCategoryMix(findings: NormalizedFinding[]): Record<SafeRiskCategory, number> {
+  return findings.reduce<Record<SafeRiskCategory, number>>(
     (mix, finding) => {
-      mix[finding.category] += 1;
+      mix[getSafeCategory(finding)] += 1;
       return mix;
     },
     {
@@ -160,21 +202,94 @@ export function getCategoryMix(findings: NormalizedFinding[]): Record<RiskCatego
       Financial: 0,
       Operational: 0,
       Compliance: 0,
-      Technical: 0
+      Technical: 0,
+      Uncategorized: 0
     }
   );
 }
 
 export function getTopCriticalRisks(findings: NormalizedFinding[], limit = 4) {
-  return [...findings]
-    .sort((a, b) => severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence)
-    .slice(0, limit);
+  return getPrioritizedFindings(findings).slice(0, limit);
+}
+
+export function getPrioritizedFindings(findings: NormalizedFinding[]) {
+  return [...findings].sort(
+    (a, b) =>
+      getSafeSeverityRank(b.severity) - getSafeSeverityRank(a.severity) ||
+      getConfidenceSortValue(b.confidence) - getConfidenceSortValue(a.confidence)
+  );
+}
+
+export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: unknown): Severity {
+  const severityMix = getSeverityMix(findings);
+  if (severityMix.High > 0) return "High";
+  if (severityMix.Medium > 0) return "Medium";
+  if (severityMix.Low > 0) return "Low";
+
+  const safeFallback = getSafeSeverity(fallback);
+  return safeFallback === "Unknown" ? "Low" : safeFallback;
+}
+
+export function getSafeSeverity(severity: unknown): SafeSeverity {
+  return isSeverity(severity) ? severity : "Unknown";
+}
+
+export function getSafeSeverityRank(severity: unknown) {
+  const safeSeverity = getSafeSeverity(severity);
+  return safeSeverity === "Unknown" ? 0 : severityRank[safeSeverity];
+}
+
+export function getSafeSeverityStyles(severity: unknown) {
+  const safeSeverity = getSafeSeverity(severity);
+  return safeSeverity === "Unknown" ? "border-slate-200 bg-slate-50 text-slate-600" : severityStyles[safeSeverity];
+}
+
+export function getSafeCategory(finding: { category?: unknown }): SafeRiskCategory {
+  return isRiskCategory(finding.category) ? finding.category : "Uncategorized";
+}
+
+export function getSafeClauseSnippet(
+  finding: Partial<Pick<NormalizedFinding, "clauseSnippet" | "flaggedText" | "fullClauseText">> & {
+    highlightedText?: unknown;
+    riskyLanguage?: unknown;
+    clauseText?: unknown;
+  }
+) {
+  return (
+    getUsableText(finding.clauseSnippet) ||
+    getUsableText(finding.highlightedText) ||
+    getUsableText(finding.flaggedText) ||
+    getUsableText(finding.riskyLanguage) ||
+    buildShortClauseExcerpt(getUsableText(finding.fullClauseText) || getUsableText(finding.clauseText)) ||
+    "Clause text unavailable"
+  );
+}
+
+export function getSafeConfidenceValue(confidence: unknown) {
+  return typeof confidence === "number" && Number.isFinite(confidence) && confidence >= 0 && confidence <= 1 ? confidence : null;
+}
+
+export function formatAiConfidence(confidence: unknown) {
+  const safeConfidence = getSafeConfidenceValue(confidence);
+  return safeConfidence === null ? "--" : `${Math.round(safeConfidence * 100)}%`;
 }
 
 export function getReviewStatusCounts(reviewByRiskId: ReviewByRiskId): ReviewStatusCounts {
   return Object.values(reviewByRiskId).reduce<ReviewStatusCounts>(
     (counts, review) => {
-      counts[review.status] += 1;
+      const effectiveStatus = getEffectiveReviewStatus(review);
+
+      if (effectiveStatus === "accepted") {
+        counts.accepted += 1;
+        return counts;
+      }
+
+      if (effectiveStatus === "needs_change") {
+        counts.needs_change += 1;
+        return counts;
+      }
+
+      counts.pending += 1;
       return counts;
     },
     { pending: 0, needs_change: 0, accepted: 0 }
@@ -244,8 +359,8 @@ export function getOverallDecision(
   return "Approve";
 }
 
-export function canFinalizeReview(reviewByRiskId: ReviewByRiskId) {
-  return getReviewStatusCounts(reviewByRiskId).pending === 0;
+export function canFinalizeReview(finalReviewCounts: FinalReviewCounts) {
+  return finalReviewCounts.Pending === 0;
 }
 
 export function getReportModel(
@@ -262,7 +377,7 @@ export function getReportModel(
     finalReviewRows,
     finalReviewCounts,
     overallDecision: getOverallDecision(document, finalReviewCounts),
-    canFinalize: canFinalizeReview(reviewByRiskId)
+    canFinalize: canFinalizeReview(finalReviewCounts)
   };
 }
 
@@ -277,7 +392,57 @@ export function getUniqueClauseCount(findings: NormalizedFinding[], severity?: S
   return clauseRefs.size || relevantFindings.length;
 }
 
-function buildAiInsight(findings: NormalizedFinding[], categoryMix: Record<RiskCategory, number>) {
+export function getSummaryInsight(document: NormalizedDocumentAnalysis) {
+  return getUsableText(document.aiInsight) || buildAiInsight(document.findings, document.summary.categoryMix);
+}
+
+export function buildRiskMixSummary(categoryBreakdown: SummaryRiskMixItem[]): SummaryRiskMix | null {
+  const visibleCategories = categoryBreakdown.filter((item) => item.count > 0);
+  if (!visibleCategories.length) return null;
+
+  const compactItems = visibleCategories.slice(0, 2);
+  const expandedItems = visibleCategories.slice(0, 3);
+  const fullText = buildRiskMixSummaryText(visibleCategories);
+
+  return {
+    compactItems,
+    expandedItems,
+    hasHiddenCategories: visibleCategories.length > compactItems.length,
+    fullText
+  };
+}
+
+export function buildRiskMixBreakdown(document: NormalizedDocumentAnalysis): SummaryRiskMixItem[] {
+  return [...RISK_CATEGORIES, "Uncategorized" as const].map((name) => ({
+    name,
+    count: document.summary.categoryMix[name] ?? 0
+  }));
+}
+
+export function buildTopCriticalRiskItems(document: NormalizedDocumentAnalysis): TopCriticalRiskItem[] {
+  return document.topCriticalRiskIds
+    .map((riskId) => document.findings.find((risk) => risk.riskId === riskId))
+    .filter((risk): risk is NormalizedFinding => Boolean(risk))
+    .map((risk) => ({
+      id: risk.riskId,
+      label: buildTopCriticalRiskLabel(risk.riskTitle)
+    }));
+}
+
+export function buildExecutiveSummaryDetails(
+  document: NormalizedDocumentAnalysis,
+  categoryBreakdown: SummaryRiskMixItem[]
+): ExecutiveSummaryDetails {
+  const prioritizedRisks = getPrioritizedFindings(document.findings);
+
+  return {
+    overallPosition: getOverallPositionSentence(document),
+    keyDrivers: buildExecutiveKeyDrivers(document, categoryBreakdown),
+    businessImpact: buildExecutiveBusinessImpact(prioritizedRisks)
+  };
+}
+
+function buildAiInsight(findings: NormalizedFinding[], categoryMix: Record<SafeRiskCategory, number>) {
   const topRisks = getTopCriticalRisks(findings, 2).map((finding) => buildTopCriticalRiskLabel(finding.riskTitle).toLowerCase());
   const highRiskSectionCount = getUniqueClauseCount(findings, "High");
   const mediumRiskSectionCount = getUniqueClauseCount(findings, "Medium");
@@ -309,10 +474,11 @@ function buildAiInsight(findings: NormalizedFinding[], categoryMix: Record<RiskC
   return `${categorySummary}, with most material exposure concentrated in ${concentrationBasis}.`;
 }
 
-export function buildTopCriticalRiskLabel(value: string) {
-  const normalized = normalizeWhitespace(value)
+export function buildTopCriticalRiskLabel(value: unknown) {
+  const normalized = getUsableText(value)
     .replace(/\([^)]*\)/g, "")
     .replace(/[.!?]+$/, "");
+  if (!normalized) return "Untitled risk";
   if (normalized.length <= 38) return normalized;
 
   const separators = [
@@ -347,6 +513,125 @@ export function buildTopCriticalRiskLabel(value: string) {
   return normalized;
 }
 
+function buildPrimaryInsightLine(
+  document: NormalizedDocumentAnalysis,
+  categoryBreakdown: SummaryRiskMixItem[]
+) {
+  const riskDrivers = buildTopCriticalRiskItems(document)
+    .slice(0, 2)
+    .map((item) => item.label.toLowerCase());
+  const highRiskSectionCount = getUniqueClauseCount(document.findings, "High");
+  const mediumRiskSectionCount = getUniqueClauseCount(document.findings, "Medium");
+
+  if (riskDrivers.length) {
+    const concentrationBasis =
+      highRiskSectionCount > 0
+        ? `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"}`
+        : mediumRiskSectionCount > 0
+          ? `${mediumRiskSectionCount} medium-risk section${mediumRiskSectionCount === 1 ? "" : "s"}`
+          : `${document.summary.totalRiskCount} flagged finding${document.summary.totalRiskCount === 1 ? "" : "s"}`;
+    const riskLedSummary = `Primary exposure is concentrated in ${joinWithAnd(riskDrivers)} across ${concentrationBasis}.`;
+    if (riskLedSummary.length <= 152) {
+      return riskLedSummary;
+    }
+  }
+
+  if (!categoryBreakdown.length) {
+    return "Primary exposure drivers are not available for this document.";
+  }
+
+  const categoryLabels = categoryBreakdown.slice(0, 2).map((item) => item.name.toLowerCase());
+  const categorySummary = buildCategoryDriverSummary(categoryLabels).replace(/[.!?]+$/, "");
+  const concentrationBasis =
+    highRiskSectionCount > 0 ? `${highRiskSectionCount} high-risk sections` : `${document.summary.totalRiskCount} flagged findings`;
+
+  return `${categorySummary}, with most material exposure concentrated in ${concentrationBasis}.`;
+}
+
+function buildCategoryDriverSummary(categoryLabels: string[]) {
+  if (categoryLabels.length === 1) {
+    return `${capitalize(categoryLabels[0])} terms drive the current exposure`;
+  }
+
+  if (categoryLabels.length === 2) {
+    return `Primary exposure is concentrated in ${categoryLabels[0]} and ${categoryLabels[1]} terms`;
+  }
+
+  return `${capitalize(categoryLabels[0])}, ${categoryLabels[1]}, and ${categoryLabels[2]} terms drive the current exposure`;
+}
+
+function buildRiskMixSummaryText(items: SummaryRiskMixItem[]) {
+  const separator = " \u2022 ";
+  return items.map((item) => `${item.name} ${item.count}`).join(separator);
+}
+
+function buildExecutiveKeyDrivers(
+  document: NormalizedDocumentAnalysis,
+  categoryBreakdown: SummaryRiskMixItem[]
+) {
+  const driverLabels = buildTopCriticalRiskItems(document)
+    .slice(0, 2)
+    .map((item) => item.label.toLowerCase());
+
+  if (driverLabels.length) {
+    return ensureSentence(`Primary drivers are ${joinWithAnd(driverLabels)}`);
+  }
+
+  return ensureSentence(buildPrimaryInsightLine(document, categoryBreakdown));
+}
+
+function buildExecutiveBusinessImpact(prioritizedRisks: NormalizedFinding[]) {
+  const impactSentences = collectCompleteSummarySentences(
+    prioritizedRisks.map((risk) => risk.businessImpact),
+    2
+  );
+
+  if (impactSentences.length) {
+    return impactSentences.join(" ");
+  }
+
+  return "Business impact details are not available.";
+}
+
+function collectCompleteSummarySentences(values: unknown[], maxCount: number) {
+  const sentences: string[] = [];
+
+  for (const value of uniqueStrings(values.map((item) => getUsableText(item)).filter(Boolean))) {
+    const sentence = extractFirstSentence(value);
+    if (!sentence || sentences.includes(sentence)) continue;
+
+    sentences.push(sentence);
+    if (sentences.length === maxCount) break;
+  }
+
+  return sentences;
+}
+
+function getOverallPositionSentence(document: NormalizedDocumentAnalysis) {
+  const firstSentence = extractFirstSentence(document.executiveSummary);
+  if (firstSentence) return firstSentence;
+
+  const documentLabel = getUsableText(document.contractTitle) || getUsableText(document.documentName) || "This document";
+  return `${documentLabel} currently presents a ${document.overallRiskLevel.toLowerCase()} risk profile based on the flagged findings.`;
+}
+
+function extractFirstSentence(value: unknown) {
+  const normalized = getUsableText(value);
+  const match = normalized.match(/^.*?[.!?](?=\s|$)/);
+
+  if (match?.[0]) return match[0];
+  if (!normalized) return "";
+
+  return ensureSentence(normalized);
+}
+
+function ensureSentence(value: unknown) {
+  const normalized = getUsableText(value).replace(/[.!?]+$/, "");
+  if (!normalized) return "Unavailable.";
+
+  return `${normalized}.`;
+}
+
 function buildFinalClauseSnippet(value: string) {
   const normalized = normalizeWhitespace(value);
   return normalized.length > 118 ? `${normalized.slice(0, 118).trimEnd()}...` : normalized;
@@ -371,8 +656,34 @@ function joinWithAnd(values: string[]) {
   return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
 }
 
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function getUsableText(value: unknown) {
+  return typeof value === "string" ? normalizeWhitespace(value) : "";
+}
+
+function buildShortClauseExcerpt(value: string, maxLength = 140) {
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return "";
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trimEnd()}...` : normalized;
+}
+
+function getConfidenceSortValue(confidence: unknown) {
+  return getSafeConfidenceValue(confidence) ?? -1;
+}
+
+function isRiskCategory(value: unknown): value is RiskCategory {
+  return typeof value === "string" && RISK_CATEGORIES.includes(value as RiskCategory);
+}
+
+function isSeverity(value: unknown): value is Severity {
+  return typeof value === "string" && value in severityRank;
 }
 
 function capitalize(value: string) {

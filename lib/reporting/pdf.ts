@@ -2,6 +2,7 @@
 
 import jsPDF from "jspdf";
 import { getReportDocumentName, getReportFileName, getSourceLabel } from "@/lib/reporting/metadata";
+import type { ReportModel } from "@/lib/output-model";
 import type { AnalysisSource } from "@/types/contract";
 import type { ContractAnalysis } from "@/types/contract";
 
@@ -12,13 +13,70 @@ function writeWrapped(doc: jsPDF, text: string, x: number, y: number, maxWidth: 
 }
 
 type ReportExportSource = Pick<AnalysisSource, "documentName" | "sourceKind">;
+type PdfRiskDetail = {
+  title: string;
+  severity: string;
+  category: string;
+  clauseRef: string;
+  highlightedText: string;
+  whyRisky: string;
+  suggestedImprovement: string;
+};
 
-export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExportSource) {
+export function downloadReportPdf(reportModel: ReportModel): void;
+export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExportSource): void;
+export function downloadReportPdf(input: ReportModel | ContractAnalysis, source?: ReportExportSource) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const margin = 16;
   const width = 180;
-  const documentName = getReportDocumentName(source?.documentName ?? analysis.contractTitle);
-  const sourceLabel = getSourceLabel(source?.sourceKind);
+  let reportModel: ReportModel | null = null;
+  let documentName: string;
+  let sourceLabel: string;
+  let recommendation: string;
+  let overallRiskLevel: string;
+  let executiveSummary: string;
+  let topCriticalRisks: string[];
+  let nextActions: string[];
+  let riskDetails: PdfRiskDetail[];
+
+  if (isReportModel(input)) {
+    reportModel = input;
+    documentName = input.document.documentName;
+    sourceLabel = getSourceLabel(input.document.sourceType);
+    recommendation = input.overallDecision;
+    overallRiskLevel = input.document.overallRiskLevel;
+    executiveSummary = input.document.executiveSummary;
+    topCriticalRisks = input.document.topCriticalRiskIds
+      .map((riskId) => input.document.findings.find((finding) => finding.riskId === riskId)?.riskTitle)
+      .filter((riskTitle): riskTitle is string => Boolean(riskTitle));
+    nextActions = input.document.nextActions;
+    riskDetails = input.document.findings.map((finding) => ({
+      title: finding.riskTitle,
+      severity: finding.severity,
+      category: finding.category,
+      clauseRef: finding.sectionRef,
+      highlightedText: finding.clauseSnippet,
+      whyRisky: finding.whyItMatters,
+      suggestedImprovement: finding.originalRecommendedDraft
+    }));
+  } else {
+    documentName = getReportDocumentName(source?.documentName ?? input.contractTitle);
+    sourceLabel = getSourceLabel(source?.sourceKind);
+    recommendation = input.decisionRecommendation;
+    overallRiskLevel = input.overallRiskLevel;
+    executiveSummary = input.executiveSummary;
+    topCriticalRisks = input.topCriticalRisks;
+    nextActions = input.nextActions;
+    riskDetails = input.risks.map((risk) => ({
+      title: risk.title,
+      severity: risk.severity,
+      category: risk.category,
+      clauseRef: risk.clauseRef,
+      highlightedText: risk.highlightedText,
+      whyRisky: risk.whyRisky,
+      suggestedImprovement: risk.suggestedImprovement
+    }));
+  }
   let y = 18;
 
   doc.setFont("helvetica", "bold");
@@ -34,21 +92,21 @@ export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExp
   doc.setFont("helvetica", "normal");
   doc.text(`Source: ${sourceLabel}`, margin, y);
   y += 7;
-  doc.text(`Recommendation: ${analysis.decisionRecommendation} | Overall Risk: ${analysis.overallRiskLevel}`, margin, y);
+  doc.text(`Recommendation: ${recommendation} | Overall Risk: ${overallRiskLevel}`, margin, y);
   y += 10;
 
   doc.setFont("helvetica", "bold");
   doc.text("Executive Summary", margin, y);
   y += 7;
   doc.setFont("helvetica", "normal");
-  y = writeWrapped(doc, analysis.executiveSummary, margin, y, width);
+  y = writeWrapped(doc, executiveSummary, margin, y, width);
   y += 5;
 
   doc.setFont("helvetica", "bold");
   doc.text("Top Critical Risks", margin, y);
   y += 7;
   doc.setFont("helvetica", "normal");
-  analysis.topCriticalRisks.forEach((risk) => {
+  topCriticalRisks.forEach((risk) => {
     y = writeWrapped(doc, `- ${risk}`, margin, y, width);
   });
   y += 4;
@@ -57,11 +115,11 @@ export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExp
   doc.text("Recommended Next Actions", margin, y);
   y += 7;
   doc.setFont("helvetica", "normal");
-  analysis.nextActions.forEach((action) => {
+  nextActions.forEach((action) => {
     y = writeWrapped(doc, `- ${action}`, margin, y, width);
   });
 
-  analysis.risks.forEach((risk, index) => {
+  riskDetails.forEach((risk, index) => {
     if (y > 250) {
       doc.addPage();
       y = 18;
@@ -77,5 +135,39 @@ export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExp
     y = writeWrapped(doc, `Suggested improvement: ${risk.suggestedImprovement}`, margin, y + 2, width);
   });
 
+  if (reportModel) {
+    if (y > 236) {
+      doc.addPage();
+      y = 18;
+    }
+
+    y += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Review Decisions", margin, y);
+    y += 7;
+    doc.setFont("helvetica", "normal");
+    reportModel.finalReviewRows.forEach((row, index) => {
+      if (y > 250) {
+        doc.addPage();
+        y = 18;
+      }
+
+      y = writeWrapped(
+        doc,
+        `${index + 1}. ${row.finding.riskTitle} (${row.decision}) - ${row.finalClause}`,
+        margin,
+        y,
+        width
+      );
+      if (row.decision === "Revised" && row.revisedClause) {
+        y = writeWrapped(doc, `Saved recommendation: ${row.revisedClause}`, margin, y + 2, width);
+      }
+    });
+  }
+
   doc.save(getReportFileName(documentName));
+}
+
+function isReportModel(value: ReportModel | ContractAnalysis): value is ReportModel {
+  return "document" in value && "reviewByRiskId" in value && "finalReviewRows" in value;
 }

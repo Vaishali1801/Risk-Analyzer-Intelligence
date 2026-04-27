@@ -7,12 +7,36 @@ import { CheckCircle2, ChevronDown, CircleAlert, Download, ShieldCheck, Triangle
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { RISK_CATEGORIES, severityRank } from "@/constants/risk";
 import { buildClauseAction } from "@/lib/reporting/actions";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
-import { cn, truncate } from "@/lib/utils";
+import {
+  buildExecutiveSummaryDetails,
+  buildRiskMixBreakdown,
+  buildRiskMixSummary,
+  buildTopCriticalRiskItems,
+  createInitialReviewByRiskId,
+  getEffectiveReviewStatus,
+  getOverallRiskLevel,
+  getPrioritizedFindings,
+  getReportModel,
+  getReviewState,
+  getSafeCategory,
+  getSafeClauseSnippet,
+  getSafeConfidenceValue,
+  getSafeSeverityRank,
+  getSummaryInsight,
+  getUniqueClauseCount,
+  normalizeOutputAnalysis,
+  type FinalReviewDecision,
+  type FinalReviewRow,
+  type NormalizedDocumentAnalysis,
+  type NormalizedFinding,
+  type ReviewByRiskId,
+  type SafeRiskCategory
+} from "@/lib/output-model";
+import { cn } from "@/lib/utils";
 import {
   RISK_REVIEW_STATUSES,
   RiskDecisionPanel,
@@ -22,7 +46,7 @@ import {
   type RiskReviewStatus,
   type RiskSortKey
 } from "@/components/risk-findings-ui";
-import type { ContractAnalysis, ContractRisk, RiskCategory, Severity } from "@/types/contract";
+import type { ContractAnalysis, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "risks" | "final-review";
 
@@ -44,14 +68,12 @@ export function AnalysisWorkspace() {
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<Severity | "All">("All");
-  const [category, setCategory] = useState<RiskCategory | "All">("All");
+  const [category, setCategory] = useState<SafeRiskCategory | "All">("All");
   const [statusFilter, setStatusFilter] = useState<RiskReviewStatus | "All">("All");
   const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
   const [reviewLens, setReviewLens] = useState<RiskReviewLens>("safer");
-  const [riskDrafts, setRiskDrafts] = useState<Record<string, string>>({});
-  const [savedRecommendations, setSavedRecommendations] = useState<Record<string, string>>({});
-  const [riskStatuses, setRiskStatuses] = useState<Record<string, RiskReviewStatus>>({});
+  const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
   const [expandedFinalReviewRiskId, setExpandedFinalReviewRiskId] = useState<string | null>(null);
@@ -73,6 +95,7 @@ export function AnalysisWorkspace() {
   const pendingSectionRef = useRef<SectionId | null>(null);
   const settleTimeoutRef = useRef<number | null>(null);
   const initialHashHandledRef = useRef(false);
+  const reviewSessionKeyRef = useRef<string | null>(null);
 
   const clearPendingNavigationTimeout = () => {
     if (settleTimeoutRef.current === null) return;
@@ -213,7 +236,7 @@ export function AnalysisWorkspace() {
   };
 
   const handleTopCriticalRiskClick = (riskId: string) => {
-    const targetRisk = analysis?.risks.find((risk) => risk.id === riskId);
+    const targetRisk = documentModel?.findings.find((risk) => risk.riskId === riskId);
     if (!targetRisk) return;
 
     setSearch("");
@@ -245,47 +268,88 @@ export function AnalysisWorkspace() {
   };
 
   const updateRiskStatus = (riskId: string, nextStatus: RiskReviewStatus) => {
-    setRiskStatuses((current) => {
-      if (current[riskId] === nextStatus) return current;
-      return { ...current, [riskId]: nextStatus };
+    setReviewByRiskId((current) => {
+      const finding = documentModel?.findings.find((risk) => risk.riskId === riskId);
+      const currentReview = current[riskId] ?? (finding ? getReviewState(current, finding) : undefined);
+      if (!currentReview || currentReview.status === nextStatus) return current;
+
+      return {
+        ...current,
+        [riskId]: {
+          ...currentReview,
+          status: nextStatus,
+          savedRecommendation:
+            nextStatus === "needs_change" ? currentReview.savedRecommendation : undefined,
+          lastUpdated: new Date().toISOString()
+        }
+      };
     });
   };
 
   const updateRiskDraft = (riskId: string, nextDraft: string) => {
-    setRiskDrafts((current) => {
-      if (current[riskId] === nextDraft) return current;
-      return { ...current, [riskId]: nextDraft };
+    setReviewByRiskId((current) => {
+      const finding = documentModel?.findings.find((risk) => risk.riskId === riskId);
+      const currentReview = current[riskId] ?? (finding ? getReviewState(current, finding) : undefined);
+      if (!currentReview || currentReview.currentDraft === nextDraft) return current;
+
+      return {
+        ...current,
+        [riskId]: {
+          ...currentReview,
+          currentDraft: nextDraft
+        }
+      };
     });
   };
 
-  const resetRiskDraft = (risk: ContractRisk) => {
-    updateRiskDraft(risk.id, risk.suggestedImprovement);
+  const resetRiskDraft = (risk: NormalizedFinding) => {
+    updateRiskDraft(risk.riskId, normalizeReviewText(risk.originalRecommendedDraft));
   };
 
-  const saveRiskRecommendation = (risk: ContractRisk) => {
-    const nextDraft = (riskDrafts[risk.id] ?? savedRecommendations[risk.id] ?? risk.suggestedImprovement).trim() || risk.suggestedImprovement;
-    updateRiskDraft(risk.id, nextDraft);
-    setSavedRecommendations((current) => {
-      if (current[risk.id] === nextDraft) return current;
-      return { ...current, [risk.id]: nextDraft };
+  const saveRiskRecommendation = (risk: NormalizedFinding) => {
+    setReviewByRiskId((current) => {
+      const currentReview = getReviewState(current, risk);
+      const nextDraft = normalizeReviewText(currentReview.currentDraft) || normalizeReviewText(risk.originalRecommendedDraft);
+      if (!nextDraft) return current;
+
+      return {
+        ...current,
+        [risk.riskId]: {
+          ...currentReview,
+          status: "needs_change",
+          currentDraft: nextDraft,
+          savedRecommendation: nextDraft,
+          lastUpdated: new Date().toISOString()
+        }
+      };
     });
-    updateRiskStatus(risk.id, "Action Required");
   };
 
-  const applyReviewLens = (risk: ContractRisk, nextLens: RiskReviewLens) => {
+  const acceptRisk = (risk: NormalizedFinding) => {
+    setReviewByRiskId((current) => {
+      const currentReview = getReviewState(current, risk);
+
+      return {
+        ...current,
+        [risk.riskId]: {
+          ...currentReview,
+          status: "accepted",
+          savedRecommendation: undefined,
+          lastUpdated: new Date().toISOString()
+        }
+      };
+    });
+  };
+
+  const applyReviewLens = (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
     setReviewLens(nextLens);
-    updateRiskDraft(risk.id, buildClauseAction(nextLens, risk));
+    updateRiskDraft(risk.riskId, buildClauseAction(nextLens, risk));
   };
 
   useEffect(() => {
     const storedSession = readAnalysisSession();
     setSession(storedSession);
     setLoaded(true);
-
-    if (storedSession) {
-      const initialRisk = getPriorityRisk(storedSession.analysis);
-      setSelectedRiskId(initialRisk?.id ?? "");
-    }
   }, []);
 
   useEffect(() => {
@@ -327,6 +391,28 @@ export function AnalysisWorkspace() {
   }, [isRiskMixPopoverOpen]);
 
   const analysis = session?.analysis;
+  const documentModel = useMemo(() => {
+    if (!session) return null;
+    return normalizeOutputAnalysis(session.analysis, session.source, session.savedAt);
+  }, [session]);
+  const reviewSessionKey = useMemo(() => {
+    if (!session) return null;
+    return [
+      session.analysisId ?? "local",
+      session.savedAt,
+      session.source.sourceKind,
+      session.source.documentName
+    ].join("|");
+  }, [session]);
+  const effectiveReviewByRiskId = useMemo(() => {
+    if (!documentModel) return reviewByRiskId;
+    const scopedReviewByRiskId = reviewSessionKey && reviewSessionKeyRef.current === reviewSessionKey ? reviewByRiskId : {};
+    return createInitialReviewByRiskId(documentModel.findings, scopedReviewByRiskId);
+  }, [documentModel, reviewByRiskId, reviewSessionKey]);
+  const reportModel = useMemo(() => {
+    if (!documentModel) return null;
+    return getReportModel(documentModel, effectiveReviewByRiskId);
+  }, [documentModel, effectiveReviewByRiskId]);
 
   useLayoutEffect(() => {
     if (!analysis || initialHashHandledRef.current) return;
@@ -351,23 +437,23 @@ export function AnalysisWorkspace() {
   }, [analysis]);
 
   const selectedRisk = useMemo(() => {
-    if (!analysis) return undefined;
-    return analysis.risks.find((risk) => risk.id === selectedRiskId);
-  }, [analysis, selectedRiskId]);
+    if (!documentModel) return undefined;
+    return documentModel.findings.find((risk) => risk.riskId === selectedRiskId);
+  }, [documentModel, selectedRiskId]);
 
   const filteredRisks = useMemo(() => {
-    if (!analysis) return [];
+    if (!documentModel) return [];
 
     const query = deferredSearch.trim().toLowerCase();
 
-    return [...analysis.risks]
+    return [...documentModel.findings]
       .filter((risk) => severity === "All" || risk.severity === severity)
-      .filter((risk) => category === "All" || risk.category === category)
-      .filter((risk) => statusFilter === "All" || (riskStatuses[risk.id] ?? "Pending Review") === statusFilter)
+      .filter((risk) => category === "All" || getSafeCategory(risk) === category)
+      .filter((risk) => statusFilter === "All" || getEffectiveReviewStatus(getReviewState(effectiveReviewByRiskId, risk)) === statusFilter)
       .filter((risk) => {
         if (!query) return true;
 
-        return [risk.title, risk.highlightedText, risk.category]
+        return [risk.riskTitle, getSafeClauseSnippet(risk), getSafeCategory(risk)]
           .join(" ")
           .toLowerCase()
           .includes(query);
@@ -375,72 +461,67 @@ export function AnalysisWorkspace() {
       .sort((a, b) => {
         switch (sortKey) {
           case "severity-desc":
-            return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
+            return getSafeSeverityRank(b.severity) - getSafeSeverityRank(a.severity) || (getSafeConfidenceValue(b.confidence) ?? -1) - (getSafeConfidenceValue(a.confidence) ?? -1);
           case "severity-asc":
-            return severityRank[a.severity] - severityRank[b.severity] || a.confidence - b.confidence;
+            return getSafeSeverityRank(a.severity) - getSafeSeverityRank(b.severity) || (getSafeConfidenceValue(a.confidence) ?? -1) - (getSafeConfidenceValue(b.confidence) ?? -1);
           case "confidence-desc":
-            return b.confidence - a.confidence || severityRank[b.severity] - severityRank[a.severity];
+            return (getSafeConfidenceValue(b.confidence) ?? -1) - (getSafeConfidenceValue(a.confidence) ?? -1) || getSafeSeverityRank(b.severity) - getSafeSeverityRank(a.severity);
           case "confidence-asc":
-            return a.confidence - b.confidence || severityRank[a.severity] - severityRank[b.severity];
-          case "title-asc":
-            return a.title.localeCompare(b.title) || severityRank[b.severity] - severityRank[a.severity];
-          case "title-desc":
-            return b.title.localeCompare(a.title) || severityRank[b.severity] - severityRank[a.severity];
+            return (getSafeConfidenceValue(a.confidence) ?? -1) - (getSafeConfidenceValue(b.confidence) ?? -1) || getSafeSeverityRank(a.severity) - getSafeSeverityRank(b.severity);
           case "category-asc":
-            return a.category.localeCompare(b.category) || a.title.localeCompare(b.title);
+            return getSafeCategory(a).localeCompare(getSafeCategory(b)) || a.riskTitle.localeCompare(b.riskTitle);
           case "category-desc":
-            return b.category.localeCompare(a.category) || a.title.localeCompare(b.title);
+            return getSafeCategory(b).localeCompare(getSafeCategory(a)) || a.riskTitle.localeCompare(b.riskTitle);
           default:
             return 0;
         }
       });
-  }, [analysis, category, deferredSearch, riskStatuses, severity, sortKey, statusFilter]);
+  }, [category, deferredSearch, documentModel, effectiveReviewByRiskId, severity, sortKey, statusFilter]);
 
   const categoryOptions = useMemo(() => {
-    if (!analysis) return [];
+    if (!documentModel) return [];
 
-    return Array.from(new Set(analysis.risks.map((risk) => risk.category))).sort((a, b) => a.localeCompare(b));
-  }, [analysis]);
+    return Array.from(new Set(documentModel.findings.map((risk) => getSafeCategory(risk)))).sort((a, b) => a.localeCompare(b));
+  }, [documentModel]);
 
   const categoryBreakdown = useMemo(() => {
-    if (!analysis) return [];
+    if (!documentModel) return [];
 
-    return Object.entries(analysis.riskSummary.byCategory)
-      .map(([name, count]) => ({ name: name as RiskCategory, count }))
+    return Object.entries(documentModel.summary.categoryMix)
+      .map(([name, count]) => ({ name: name as SafeRiskCategory, count }))
       .sort((a, b) => b.count - a.count);
-  }, [analysis]);
+  }, [documentModel]);
 
   useEffect(() => {
-    if (!analysis || !analysis.risks.length) return;
+    if (!documentModel || !reviewSessionKey) return;
 
-    setRiskStatuses((current) => {
-      const nextStatuses = analysis.risks.reduce<Record<string, RiskReviewStatus>>((accumulator, risk) => {
-        accumulator[risk.id] = current[risk.id] ?? "Pending Review";
-        return accumulator;
-      }, {});
-
+    setReviewByRiskId((current) => {
+      const shouldResetReview = reviewSessionKeyRef.current !== reviewSessionKey;
+      const nextReview = createInitialReviewByRiskId(documentModel.findings, shouldResetReview ? {} : current);
       const isUnchanged =
-        Object.keys(nextStatuses).length === Object.keys(current).length &&
-        Object.entries(nextStatuses).every(([riskId, riskStatus]) => current[riskId] === riskStatus);
+        !shouldResetReview &&
+        Object.keys(nextReview).length === Object.keys(current).length &&
+        Object.entries(nextReview).every(([riskId, review]) => current[riskId] === review);
 
-      return isUnchanged ? current : nextStatuses;
+      reviewSessionKeyRef.current = reviewSessionKey;
+      return isUnchanged ? current : nextReview;
     });
-  }, [analysis]);
+  }, [documentModel, reviewSessionKey]);
 
   useEffect(() => {
-    if (!analysis || !analysis.risks.length) return;
+    if (!documentModel || !documentModel.findings.length) return;
 
-    const currentSelectionExists = analysis.risks.some((risk) => risk.id === selectedRiskId);
+    const currentSelectionExists = documentModel.findings.some((risk) => risk.riskId === selectedRiskId);
     if (!currentSelectionExists) {
-      setSelectedRiskId(getPriorityRisk(analysis)?.id ?? analysis.risks[0].id);
+      setSelectedRiskId(getPriorityFinding(documentModel)?.riskId ?? documentModel.findings[0].riskId);
       return;
     }
 
-    const currentSelectionVisible = filteredRisks.some((risk) => risk.id === selectedRiskId);
+    const currentSelectionVisible = filteredRisks.some((risk) => risk.riskId === selectedRiskId);
     if (!currentSelectionVisible && filteredRisks.length > 0) {
-      setSelectedRiskId(filteredRisks[0].id);
+      setSelectedRiskId(filteredRisks[0].riskId);
     }
-  }, [analysis, filteredRisks, selectedRiskId]);
+  }, [documentModel, filteredRisks, selectedRiskId]);
 
   useEffect(() => {
     if (filteredRisks.length > 0) return;
@@ -449,11 +530,11 @@ export function AnalysisWorkspace() {
 
   useEffect(() => {
     setReviewLens("safer");
-  }, [selectedRisk?.id]);
+  }, [selectedRisk?.riskId]);
 
   useEffect(() => {
     setIsReviewFinalized(false);
-  }, [riskStatuses, savedRecommendations]);
+  }, [reviewByRiskId]);
 
   useEffect(() => {
     if (!analysis) return;
@@ -513,7 +594,7 @@ export function AnalysisWorkspace() {
     );
   }
 
-  if (!session || !analysis) {
+  if (!session || !analysis || !documentModel || !reportModel) {
     return (
       <main className="min-h-screen px-5 py-10">
         <div className="mx-auto max-w-4xl">
@@ -539,24 +620,24 @@ export function AnalysisWorkspace() {
     );
   }
 
-  const documentName = getReportDocumentName(session.source.documentName);
-  const dominantCategory = categoryBreakdown.find((item) => item.count > 0);
+  const documentName = documentModel.documentName;
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
-  const flaggedSectionCount = getUniqueClauseCount(analysis.risks);
+  const flaggedSectionCount = getUniqueClauseCount(documentModel.findings);
   const totalAnalyzedSectionCount = getTotalAnalyzedSectionCount(analysis);
   const flaggedSectionsDisplay = formatFlaggedSectionSummary(flaggedSectionCount, totalAnalyzedSectionCount);
-  const summaryInsight = buildSummaryInsight(analysis, nonZeroCategoryBreakdown);
-  const executiveSummaryDetails = buildExecutiveSummaryDetails(analysis, nonZeroCategoryBreakdown);
+  const summaryRiskLevel = getOverallRiskLevel(documentModel.findings, documentModel.overallRiskLevel);
+  const summaryInsight = getSummaryInsight(documentModel);
+  const executiveSummaryDetails = buildExecutiveSummaryDetails(documentModel, nonZeroCategoryBreakdown);
   const riskMixSummary = buildRiskMixSummary(nonZeroCategoryBreakdown);
-  const riskMixBreakdown = buildRiskMixBreakdown(analysis);
-  const topCriticalRiskItems = buildTopCriticalRiskItems(analysis);
-  const selectedRiskDraft = selectedRisk
-    ? riskDrafts[selectedRisk.id] ?? savedRecommendations[selectedRisk.id] ?? selectedRisk.suggestedImprovement
-    : "";
-  const finalDecisionRows = buildFinalDecisionRows(analysis.risks, riskStatuses, savedRecommendations);
-  const finalDecisionCounts = getFinalDecisionCounts(finalDecisionRows);
+  const riskMixBreakdown = buildRiskMixBreakdown(documentModel);
+  const topCriticalRiskItems = buildTopCriticalRiskItems(documentModel);
+  const selectedReview = selectedRisk ? getReviewState(effectiveReviewByRiskId, selectedRisk) : undefined;
+  const selectedReviewStatus = selectedReview ? getEffectiveReviewStatus(selectedReview) : RISK_REVIEW_STATUSES[0];
+  const selectedRiskDraft = getReviewDraftValue(selectedReview?.currentDraft);
+  const finalDecisionRows = reportModel.finalReviewRows;
+  const finalDecisionCounts = reportModel.finalReviewCounts;
   const pendingCount = finalDecisionCounts.Pending;
-  const finalReviewSummary = buildFinalReviewSummary(analysis, finalDecisionCounts);
+  const finalReviewSummary = buildFinalReviewSummary(reportModel);
   const finalReviewCountsLine = `${finalDecisionCounts.Revised} Revised \u2022 ${finalDecisionCounts.Accepted} Accepted \u2022 ${finalDecisionCounts.Pending} Pending`;
   const finalizeReviewTooltip = pendingCount > 0 ? "Resolve pending items before finalizing" : undefined;
 
@@ -579,7 +660,7 @@ export function AnalysisWorkspace() {
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => downloadReportPdf(analysis, session.source)}
+                  onClick={() => downloadReportPdf(reportModel)}
                   className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
                 >
                   Download
@@ -635,7 +716,7 @@ export function AnalysisWorkspace() {
                     label="Risk Level"
                     valueClassName="min-h-[1.75rem] flex items-center"
                     value={
-                      <RiskLevelValue level={analysis.overallRiskLevel} />
+                      <RiskLevelValue level={summaryRiskLevel} />
                     }
                   />
                   <PrimarySummaryCard
@@ -658,9 +739,9 @@ export function AnalysisWorkspace() {
                     label="Severity"
                     value={
                       <div className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-[0.9rem] text-slate-700">
-                        <InlineSeverityStat tone="high" count={analysis.riskSummary.high} label="High" />
-                        <InlineSeverityStat tone="medium" count={analysis.riskSummary.medium} label="Medium" />
-                        <InlineSeverityStat tone="low" count={analysis.riskSummary.low} label="Low" />
+                        <InlineSeverityStat tone="high" count={documentModel.summary.severityMix.High} label="High" />
+                        <InlineSeverityStat tone="medium" count={documentModel.summary.severityMix.Medium} label="Medium" />
+                        <InlineSeverityStat tone="low" count={documentModel.summary.severityMix.Low} label="Low" />
                       </div>
                     }
                   />
@@ -759,7 +840,7 @@ export function AnalysisWorkspace() {
         <section id="risks" className="space-y-5">
           <RiskFindingsTable
             risks={filteredRisks}
-            totalRiskCount={analysis.risks.length}
+            totalRiskCount={documentModel.findings.length}
             search={search}
             severity={severity}
             category={category}
@@ -767,16 +848,16 @@ export function AnalysisWorkspace() {
             categoryOptions={categoryOptions}
             sortKey={sortKey}
             selectedRiskId={selectedRiskId}
-            riskStatuses={riskStatuses}
+            reviewByRiskId={effectiveReviewByRiskId}
             onSearchChange={setSearch}
             onSeverityChange={setSeverity}
             onCategoryChange={setCategory}
             onStatusChange={setStatusFilter}
             onSortChange={setSortKey}
-            onReviewRisk={(risk) => openRiskPanel(risk.id)}
+            onReviewRisk={(risk) => openRiskPanel(risk.riskId)}
             onAskAi={(risk) => {
               setReviewLens("safer");
-              openRiskPanel(risk.id, { focusTarget: "ask-ai" });
+              openRiskPanel(risk.riskId, { focusTarget: "ask-ai" });
             }}
           />
         </section>
@@ -803,7 +884,7 @@ export function AnalysisWorkspace() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => downloadReportPdf(analysis, session.source)}
+                    onClick={() => downloadReportPdf(reportModel)}
                     className="gap-2"
                   >
                     <Download className="h-4 w-4" />
@@ -813,7 +894,7 @@ export function AnalysisWorkspace() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={pendingCount > 0}
+                      disabled={!reportModel.canFinalize}
                       onClick={() => setIsReviewFinalized(true)}
                       className="gap-2"
                     >
@@ -854,20 +935,20 @@ export function AnalysisWorkspace() {
                     </thead>
                     <tbody>
                       {finalDecisionRows.map((row) => {
-                        const isExpanded = expandedFinalReviewRiskId === row.risk.id;
+                        const isExpanded = expandedFinalReviewRiskId === row.finding.riskId;
 
                         return (
-                          <Fragment key={row.risk.id}>
+                          <Fragment key={row.finding.riskId}>
                             <tr className="bg-white align-middle transition hover:bg-slate-50/80">
                               <td className="border-b border-slate-200/90 px-4 py-3">
                                 <div className="min-w-0">
                                   <div
                                     className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                                    title={row.risk.title}
+                                    title={row.finding.riskTitle}
                                   >
-                                    {row.risk.title}
+                                    {row.finding.riskTitle}
                                   </div>
-                                  <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.risk.clauseRef}</div>
+                                  <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.finding.sectionRef}</div>
                                 </div>
                               </td>
                               <td className="border-b border-slate-200/90 px-4 py-3 text-center">
@@ -881,7 +962,7 @@ export function AnalysisWorkspace() {
                               <td className="border-b border-slate-200/90 px-4 py-3 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.risk.id)}
+                                  onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.finding.riskId)}
                                   className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
                                   aria-expanded={isExpanded}
                                 >
@@ -912,10 +993,10 @@ export function AnalysisWorkspace() {
       <RiskDecisionPanel
         open={isDecisionPanelOpen}
         risk={selectedRisk}
-        status={selectedRisk ? riskStatuses[selectedRisk.id] ?? "Pending Review" : RISK_REVIEW_STATUSES[0]}
+        status={selectedReviewStatus}
         reviewLens={reviewLens}
         draftText={selectedRiskDraft}
-        isRecommendationSaved={selectedRisk ? savedRecommendations[selectedRisk.id] === selectedRiskDraft : false}
+        isRecommendationSaved={Boolean(selectedReview?.savedRecommendation && selectedReview.savedRecommendation === selectedRiskDraft)}
         focusTarget={panelFocusTarget}
         onClose={() => setIsDecisionPanelOpen(false)}
         onReviewLensChange={(value) => {
@@ -924,7 +1005,7 @@ export function AnalysisWorkspace() {
         }}
         onDraftTextChange={(value) => {
           if (!selectedRisk) return;
-          updateRiskDraft(selectedRisk.id, value);
+          updateRiskDraft(selectedRisk.riskId, value);
         }}
         onResetDraft={() => {
           if (!selectedRisk) return;
@@ -936,11 +1017,11 @@ export function AnalysisWorkspace() {
         }}
         onAcceptRisk={() => {
           if (!selectedRisk) return;
-          updateRiskStatus(selectedRisk.id, "Accepted Risk");
+          acceptRisk(selectedRisk);
         }}
         onStatusChange={(value) => {
           if (!selectedRisk) return;
-          updateRiskStatus(selectedRisk.id, value);
+          updateRiskStatus(selectedRisk.riskId, value);
         }}
       />
 
@@ -999,7 +1080,7 @@ function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision 
   );
 }
 
-function FinalReviewExpansion({ row }: { row: FinalDecisionRow }) {
+function FinalReviewExpansion({ row }: { row: FinalReviewRow }) {
   return (
     <div className="grid gap-3 rounded-[0.95rem] border border-slate-200 bg-white p-3 md:grid-cols-2">
       <ClauseComparisonBlock label="Original Clause" value={row.originalClause} />
@@ -1100,7 +1181,7 @@ function InlineSeverityStat({ tone, count, label }: { tone: "high" | "medium" | 
 function RiskMixLine({
   items
 }: {
-  items: { name: RiskCategory; count: number }[];
+  items: { name: SafeRiskCategory; count: number }[];
 }) {
   return (
     <div className="flex min-w-0 items-center overflow-hidden whitespace-nowrap text-[0.92rem] text-slate-600">
@@ -1139,94 +1220,30 @@ function ExecutiveSummaryItem({ label, value }: { label: string; value: string }
   );
 }
 
-type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
-
-type FinalDecisionRow = {
-  risk: ContractRisk;
-  decision: FinalReviewDecision;
-  finalClause: string;
-  actionLabel: string;
-  originalClause: string;
-  revisedClause?: string;
-  note: string;
-};
-
-function buildFinalDecisionRows(
-  risks: ContractRisk[],
-  riskStatuses: Record<string, RiskReviewStatus>,
-  savedRecommendations: Record<string, string>
-): FinalDecisionRow[] {
-  return risks.map((risk) => {
-    const status = riskStatuses[risk.id] ?? "Pending Review";
-    const savedClause = normalizeWhitespace(savedRecommendations[risk.id] ?? "");
-    const originalClause = normalizeWhitespace(risk.clauseText || risk.highlightedText);
-
-    if (status === "Accepted Risk") {
-      return {
-        risk,
-        decision: "Accepted",
-        finalClause: "Original retained",
-        actionLabel: "View Original",
-        originalClause,
-        note: "Accepted as-is"
-      };
-    }
-
-    if (status === "Action Required" && savedClause) {
-      return {
-        risk,
-        decision: "Revised",
-        finalClause: buildFinalClauseSnippet(savedClause),
-        actionLabel: "View Changes",
-        originalClause,
-        revisedClause: savedClause,
-        note: "Revised clause saved"
-      };
-    }
-
-    return {
-      risk,
-      decision: "Pending",
-      finalClause: "Awaiting decision",
-      actionLabel: "Review",
-      originalClause,
-      note: "Awaiting final decision"
-    };
-  });
+function getReviewDraftValue(value: unknown) {
+  return typeof value === "string" ? value : "";
 }
 
-function getFinalDecisionCounts(rows: FinalDecisionRow[]) {
-  return rows.reduce<Record<FinalReviewDecision, number>>(
-    (counts, row) => {
-      counts[row.decision] += 1;
-      return counts;
-    },
-    { Revised: 0, Accepted: 0, Pending: 0 }
-  );
+function normalizeReviewText(value: unknown) {
+  return getReviewDraftValue(value).trim();
 }
 
-function buildFinalReviewSummary(
-  analysis: ContractAnalysis,
-  counts: Record<FinalReviewDecision, number>
-) {
-  const hasPendingItems = counts.Pending > 0;
-  const hasRevisedItems = counts.Revised > 0;
-
-  if (hasPendingItems) {
+function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>) {
+  if (reportModel.finalReviewCounts.Pending > 0) {
     return {
       recommendation: "Hold for Review",
       readiness: "Ready after pending items are resolved."
     };
   }
 
-  if (analysis.decisionRecommendation === "Reject") {
+  if (reportModel.overallDecision === "Reject") {
     return {
       recommendation: "Reject",
       readiness: "Ready to finalize rejection recommendation."
     };
   }
 
-  if (hasRevisedItems || analysis.decisionRecommendation === "Renegotiate") {
+  if (reportModel.overallDecision === "Approve with Changes") {
     return {
       recommendation: "Approve with Changes",
       readiness: "Ready to finalize with revised clause positions."
@@ -1239,29 +1256,8 @@ function buildFinalReviewSummary(
   };
 }
 
-function buildFinalClauseSnippet(value: string) {
-  return truncate(normalizeWhitespace(value), 118);
-}
-
-function getPriorityRisk(analysis: ContractAnalysis) {
-  return getPrioritizedRisks(analysis)[0];
-}
-
-function getPrioritizedRisks(analysis: ContractAnalysis) {
-  return [...analysis.risks].sort((a, b) => {
-    return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
-  });
-}
-
-function getUniqueClauseCount(risks: ContractAnalysis["risks"], severity?: Severity) {
-  const relevantRisks = severity ? risks.filter((risk) => risk.severity === severity) : risks;
-  const clauseRefs = new Set(
-    relevantRisks
-      .map((risk) => normalizeWhitespace(risk.clauseRef))
-      .filter(Boolean)
-  );
-
-  return clauseRefs.size || relevantRisks.length;
+function getPriorityFinding(documentModel: NormalizedDocumentAnalysis) {
+  return getPrioritizedFindings(documentModel.findings)[0];
 }
 
 function getTotalAnalyzedSectionCount(_analysis: ContractAnalysis) {
@@ -1284,362 +1280,4 @@ function formatFlaggedSectionSummary(flaggedCount: number, totalCount: number | 
     totalCount: "",
     totalLabel: ""
   };
-}
-
-function buildSummaryInsight(
-  analysis: ContractAnalysis,
-  categoryBreakdown: { name: RiskCategory; count: number }[]
-) {
-  return buildPrimaryInsightLine(analysis, categoryBreakdown);
-}
-
-function buildPrimaryInsightLine(
-  analysis: ContractAnalysis,
-  categoryBreakdown: { name: RiskCategory; count: number }[]
-) {
-  const riskDrivers = buildTopCriticalRiskItems(analysis)
-    .slice(0, 2)
-    .map((item) => item.label.toLowerCase());
-  const highRiskSectionCount = getUniqueClauseCount(analysis.risks, "High");
-  const mediumRiskSectionCount = getUniqueClauseCount(analysis.risks, "Medium");
-
-  if (riskDrivers.length) {
-    const concentrationBasis =
-      highRiskSectionCount > 0
-        ? `${highRiskSectionCount} high-risk section${highRiskSectionCount === 1 ? "" : "s"}`
-        : mediumRiskSectionCount > 0
-          ? `${mediumRiskSectionCount} medium-risk section${mediumRiskSectionCount === 1 ? "" : "s"}`
-          : `${analysis.riskSummary.total} flagged finding${analysis.riskSummary.total === 1 ? "" : "s"}`;
-    const riskLedSummary = `Primary exposure is concentrated in ${joinWithAnd(riskDrivers)} across ${concentrationBasis}.`;
-    if (riskLedSummary.length <= 152) {
-      return riskLedSummary;
-    }
-  }
-
-  if (!categoryBreakdown.length) {
-    return "Primary exposure drivers are not available for this document.";
-  }
-
-  const categoryLabels = categoryBreakdown.slice(0, 2).map((item) => item.name.toLowerCase());
-  const categorySummary = buildCategoryDriverSummary(categoryLabels).replace(/[.!?]+$/, "");
-  const concentrationBasis = highRiskSectionCount > 0 ? `${highRiskSectionCount} high-risk sections` : `${analysis.riskSummary.total} flagged findings`;
-
-  return `${categorySummary}, with most material exposure concentrated in ${concentrationBasis}.`;
-}
-
-function buildRiskMixSummary(categoryBreakdown: { name: RiskCategory; count: number }[]) {
-  if (!categoryBreakdown.length) return null;
-
-  const compactItems = categoryBreakdown.slice(0, 2);
-  const expandedItems = categoryBreakdown.slice(0, 3);
-  const fullText = buildRiskMixSummaryText(categoryBreakdown);
-
-  return {
-    compactItems,
-    expandedItems,
-    hasHiddenCategories: categoryBreakdown.length > compactItems.length,
-    fullText
-  };
-}
-
-function buildRiskMixBreakdown(analysis: ContractAnalysis) {
-  return RISK_CATEGORIES.map((name) => ({
-    name,
-    count: analysis.riskSummary.byCategory[name] ?? 0
-  }));
-}
-
-function buildTopCriticalRiskItems(analysis: ContractAnalysis) {
-  const prioritizedRisks = getPrioritizedRisks(analysis);
-  const matchedRiskIds = new Set<string>();
-  const items: { id: string; label: string }[] = [];
-
-  for (const summaryRisk of uniqueStrings(analysis.topCriticalRisks.map((risk) => normalizeWhitespace(risk)))) {
-    const matchedRisk = findBestMatchingRisk(summaryRisk, prioritizedRisks, matchedRiskIds);
-    if (!matchedRisk) continue;
-
-    matchedRiskIds.add(matchedRisk.id);
-    items.push({
-      id: matchedRisk.id,
-      label: buildTopCriticalRiskLabel(matchedRisk.title)
-    });
-
-    if (items.length === 4) return items;
-  }
-
-  for (const risk of prioritizedRisks) {
-    if (matchedRiskIds.has(risk.id)) continue;
-
-    matchedRiskIds.add(risk.id);
-    items.push({
-      id: risk.id,
-      label: buildTopCriticalRiskLabel(risk.title)
-    });
-
-    if (items.length === 4) break;
-  }
-
-  return items;
-}
-
-function buildCategoryDriverSummary(categoryLabels: string[]) {
-  if (categoryLabels.length === 1) {
-    return `${capitalize(categoryLabels[0])} terms drive the current exposure`;
-  }
-
-  if (categoryLabels.length === 2) {
-    return `Primary exposure is concentrated in ${categoryLabels[0]} and ${categoryLabels[1]} terms`;
-  }
-
-  return `${capitalize(categoryLabels[0])}, ${categoryLabels[1]}, and ${categoryLabels[2]} terms drive the current exposure`;
-}
-
-function joinWithAnd(values: string[]) {
-  if (!values.length) return "";
-  if (values.length === 1) return values[0];
-  if (values.length === 2) return `${values[0]} and ${values[1]}`;
-
-  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
-}
-
-function buildRiskMixSummaryText(items: { name: RiskCategory; count: number }[]) {
-  const separator = " \u2022 ";
-  return items.map((item) => `${item.name} ${item.count}`).join(separator);
-}
-
-function findBestMatchingRisk(
-  summaryRisk: string,
-  prioritizedRisks: ContractAnalysis["risks"],
-  matchedRiskIds: Set<string>
-) {
-  const normalizedSummaryRisk = normalizeWhitespace(summaryRisk).toLowerCase();
-  let bestRisk: ContractAnalysis["risks"][number] | undefined;
-  let bestScore = 0;
-
-  for (const risk of prioritizedRisks) {
-    if (matchedRiskIds.has(risk.id)) continue;
-
-    const normalizedTitle = normalizeWhitespace(risk.title).toLowerCase();
-    if (normalizedTitle === normalizedSummaryRisk) {
-      return risk;
-    }
-
-    const score = scoreRiskMatch(summaryRisk, risk);
-    if (score > bestScore) {
-      bestRisk = risk;
-      bestScore = score;
-    }
-  }
-
-  return bestScore > 0 ? bestRisk : undefined;
-}
-
-function scoreRiskMatch(summaryRisk: string, risk: ContractAnalysis["risks"][number]) {
-  const sourceTokens = new Set(getMeaningfulTokens(summaryRisk));
-  const candidateTokens = new Set([
-    ...getMeaningfulTokens(risk.title),
-    ...getMeaningfulTokens(risk.whyRisky),
-    ...getMeaningfulTokens(risk.highlightedText)
-  ]);
-
-  let score = 0;
-  sourceTokens.forEach((token) => {
-    if (candidateTokens.has(token)) score += 1;
-  });
-
-  return score;
-}
-
-function getMeaningfulTokens(value: string) {
-  const stopWords = new Set([
-    "the",
-    "and",
-    "for",
-    "with",
-    "from",
-    "into",
-    "that",
-    "this",
-    "will",
-    "shall",
-    "must",
-    "does",
-    "have",
-    "has",
-    "are",
-    "too"
-  ]);
-
-  return normalizeWhitespace(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !stopWords.has(token));
-}
-
-function buildTopCriticalRiskLabel(value: string) {
-  const normalized = normalizeWhitespace(value)
-    .replace(/\([^)]*\)/g, "")
-    .replace(/[.!?]+$/, "");
-  if (normalized.length <= 38) return normalized;
-
-  const separators = [
-    " because ",
-    " due to ",
-    " without ",
-    " with ",
-    " if ",
-    " when ",
-    " after ",
-    " before ",
-    " under ",
-    " allowing ",
-    " allow ",
-    " permits ",
-    " permit ",
-    " requires ",
-    " require ",
-    ": ",
-    "; ",
-    ", "
-  ];
-  const normalizedLower = normalized.toLowerCase();
-  for (const separator of separators) {
-    const separatorIndex = normalizedLower.indexOf(separator);
-    if (separatorIndex > 16) {
-      return normalized.slice(0, separatorIndex).trim();
-    }
-  }
-
-  const words = normalized.split(" ");
-  if (words.length > 5) {
-    return trimTrailingConnectorWords(words.slice(0, 5)).join(" ");
-  }
-
-  return normalized;
-}
-
-function trimTrailingConnectorWords(words: string[]) {
-  const trailingWords = new Set(["and", "or", "for", "with", "without", "to", "of", "the", "a", "an", "in", "on"]);
-  const trimmedWords = [...words];
-
-  while (trimmedWords.length > 2 && trailingWords.has(trimmedWords[trimmedWords.length - 1].toLowerCase())) {
-    trimmedWords.pop();
-  }
-
-  return trimmedWords;
-}
-
-function buildExecutiveSummaryDetails(
-  analysis: ContractAnalysis,
-  categoryBreakdown: { name: RiskCategory; count: number }[]
-) {
-  const prioritizedRisks = [...analysis.risks].sort((a, b) => {
-    return severityRank[b.severity] - severityRank[a.severity] || b.confidence - a.confidence;
-  });
-
-  return {
-    overallPosition: getOverallPositionSentence(analysis),
-    keyDrivers: buildExecutiveKeyDrivers(analysis, categoryBreakdown),
-    businessImpact: buildExecutiveBusinessImpact(prioritizedRisks, analysis)
-  };
-}
-
-function buildExecutiveKeyDrivers(
-  analysis: ContractAnalysis,
-  categoryBreakdown: { name: RiskCategory; count: number }[]
-) {
-  const driverLabels = buildTopCriticalRiskItems(analysis)
-    .slice(0, 2)
-    .map((item) => item.label.toLowerCase());
-
-  if (driverLabels.length) {
-    return ensureSentence(`Primary drivers are ${joinWithAnd(driverLabels)}`);
-  }
-
-  return ensureSentence(buildPrimaryInsightLine(analysis, categoryBreakdown));
-}
-
-function buildExecutiveBusinessImpact(
-  prioritizedRisks: ContractAnalysis["risks"],
-  analysis: ContractAnalysis
-) {
-  const impactSentences = collectCompleteSummarySentences(
-    prioritizedRisks.map((risk) => risk.impactIfIgnored),
-    2
-  );
-
-  if (impactSentences.length) {
-    return impactSentences.join(" ");
-  }
-
-  const rationaleSentence = extractFirstSentence(analysis.decisionRationale);
-  if (rationaleSentence) {
-    return rationaleSentence;
-  }
-
-  return "Business impact details are not available.";
-}
-
-function collectCompleteSummarySentences(values: string[], maxCount: number) {
-  const sentences: string[] = [];
-
-  for (const value of uniqueStrings(values.map((item) => normalizeWhitespace(item)).filter(Boolean))) {
-    const sentence = extractFirstSentence(value);
-    if (!sentence || sentences.includes(sentence)) continue;
-
-    sentences.push(sentence);
-    if (sentences.length === maxCount) break;
-  }
-
-  return sentences;
-}
-
-function getOverallPositionSentence(analysis: ContractAnalysis) {
-  const firstSentence = extractFirstSentence(analysis.executiveSummary);
-  if (firstSentence) return firstSentence;
-
-  return `${analysis.contractTitle} currently presents a ${analysis.overallRiskLevel.toLowerCase()} risk profile based on the flagged findings.`;
-}
-
-function getRecommendedActionFallback(analysis: ContractAnalysis) {
-  if (analysis.riskSummary.high > 0) {
-    return "Resolve the highest-risk sections before approval";
-  }
-
-  if (analysis.riskSummary.medium > 0) {
-    return "Review the flagged sections before approval";
-  }
-
-  return "Proceed after confirming the remaining low-risk items";
-}
-
-function extractFirstSentence(value: string) {
-  const normalized = normalizeWhitespace(value);
-  const match = normalized.match(/^.*?[.!?](?=\s|$)/);
-
-  if (match?.[0]) return match[0];
-  if (!normalized) return "";
-
-  return ensureSentence(normalized);
-}
-
-function ensureSentence(value: string) {
-  const normalized = normalizeWhitespace(value).replace(/[.!?]+$/, "");
-  if (!normalized) return "Unavailable.";
-
-  return `${normalized}.`;
-}
-
-function normalizeWhitespace(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function uniqueStrings(values: string[]) {
-  return Array.from(new Set(values.filter(Boolean)));
-}
-
-function capitalize(value: string) {
-  if (!value) return value;
-  return `${value[0].toUpperCase()}${value.slice(1)}`;
 }
