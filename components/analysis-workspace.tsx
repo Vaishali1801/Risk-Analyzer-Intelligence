@@ -717,14 +717,14 @@ export function AnalysisWorkspace() {
                         <div className="text-[0.72rem] font-medium text-slate-500">(click a risk to view)</div>
                       </div>
                       <div className="overflow-x-auto pb-1">
-                        <div className="grid min-w-full grid-flow-col auto-cols-[minmax(12rem,1fr)] items-stretch gap-2.5">
-                        {topCriticalRiskItems.map((risk) => (
-                          <TopCriticalRiskPill
-                            key={risk.id}
-                            label={risk.label}
-                            onClick={() => handleTopCriticalRiskClick(risk.id)}
-                          />
-                        ))}
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          {topCriticalRiskItems.map((risk) => (
+                            <TopCriticalRiskPill
+                              key={risk.id}
+                              label={risk.label}
+                              onClick={() => handleTopCriticalRiskClick(risk.id)}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -1051,12 +1051,12 @@ function PrimarySummaryCard({
   headerAccessory?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[4.85rem] flex-col justify-between rounded-[1.15rem] border border-slate-200/80 bg-white px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.045)] ring-1 ring-slate-950/[0.02]">
+    <div className="flex min-h-[4.15rem] flex-col justify-between rounded-[1rem] border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-950/[0.02]">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[0.8rem] font-medium uppercase tracking-[0.14em] text-slate-700">{label}</span>
         {headerAccessory}
       </div>
-      <div className={cn("min-w-0 flex min-h-[2.1rem] flex-1 items-center text-left", valueClassName)}>{value}</div>
+      <div className={cn("min-w-0 flex min-h-[1.65rem] items-center text-left", valueClassName)}>{value}</div>
     </div>
   );
 }
@@ -1121,11 +1121,11 @@ function TopCriticalRiskPill({ label, onClick }: { label: string; onClick: () =>
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex w-full min-w-0 cursor-pointer items-center rounded-[1.05rem] border border-slate-300/90 bg-white px-3.5 py-2.5 text-left text-[0.92rem] font-medium leading-5 text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:border-slate-400 hover:bg-slate-50 active:translate-y-px active:border-slate-500"
+        "inline-flex min-h-8 cursor-pointer items-center rounded-full border border-slate-300/80 bg-slate-50/85 px-3 py-1.5 text-left text-[0.82rem] font-medium leading-tight text-slate-700 shadow-[0_4px_10px_rgba(15,23,42,0.035)] transition hover:border-slate-500 hover:bg-white hover:text-slate-950 active:translate-y-px active:border-slate-600"
       )}
       title={label}
     >
-      <span className="min-w-0">{label}</span>
+      <span>{label}</span>
     </button>
   );
 }
