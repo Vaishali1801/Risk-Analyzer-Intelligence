@@ -1,0 +1,11 @@
+
+> contract-risk-analyzer@1.0.0 dev
+> next dev
+
+  ▲ Next.js 14.2.23
+  - Local:        http://localhost:3000
+
+ ✓ Starting...
+ ✓ Ready in 2.7s
+ ○ Compiling / ...
+ ✓ Compiled / in 1060ms (538 modules)
