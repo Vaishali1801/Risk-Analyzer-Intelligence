@@ -1,173 +1,395 @@
 "use client";
 
 import jsPDF from "jspdf";
-import { getReportDocumentName, getReportFileName, getSourceLabel } from "@/lib/reporting/metadata";
-import type { ReportModel } from "@/lib/output-model";
+import { getReportFileName } from "@/lib/reporting/metadata";
+import type { FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
 import type { AnalysisSource } from "@/types/contract";
-import type { ContractAnalysis } from "@/types/contract";
 
-function writeWrapped(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight = 6) {
-  const lines = doc.splitTextToSize(text, maxWidth);
-  doc.text(lines, x, y);
-  return y + lines.length * lineHeight;
-}
+const PAGE_TOP = 18;
+const PAGE_BOTTOM = 276;
+const PAGE_MARGIN = 16;
+const PAGE_WIDTH = 180;
+const BODY_LINE_HEIGHT = 5.2;
+const TABLE_LINE_HEIGHT = 4.4;
+const TABLE_CELL_VERTICAL_PADDING = 4;
 
-type ReportExportSource = Pick<AnalysisSource, "documentName" | "sourceKind">;
-type PdfRiskDetail = {
-  title: string;
-  severity: string;
-  category: string;
-  clauseRef: string;
-  highlightedText: string;
-  whyRisky: string;
-  suggestedImprovement: string;
+type PdfTableColumn = {
+  label: string;
+  width: number;
 };
 
-export function downloadReportPdf(reportModel: ReportModel): void;
-export function downloadReportPdf(analysis: ContractAnalysis, source?: ReportExportSource): void;
-export function downloadReportPdf(input: ReportModel | ContractAnalysis, source?: ReportExportSource) {
+export function downloadReportPdf(reportModel: ReportModel) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const margin = 16;
-  const width = 180;
-  let reportModel: ReportModel | null = null;
-  let documentName: string;
-  let sourceLabel: string;
-  let recommendation: string;
-  let overallRiskLevel: string;
-  let executiveSummary: string;
-  let topCriticalRisks: string[];
-  let nextActions: string[];
-  let riskDetails: PdfRiskDetail[];
+  const document = reportModel.document;
+  const topCriticalRisks = document.topCriticalRiskIds
+    .map((riskId) => document.findings.find((finding) => finding.riskId === riskId)?.riskTitle)
+    .filter((riskTitle): riskTitle is string => Boolean(riskTitle));
+  let y = PAGE_TOP;
 
-  if (isReportModel(input)) {
-    reportModel = input;
-    documentName = input.document.documentName;
-    sourceLabel = getSourceLabel(input.document.sourceType);
-    recommendation = input.overallDecision;
-    overallRiskLevel = input.document.overallRiskLevel;
-    executiveSummary = input.document.executiveSummary;
-    topCriticalRisks = input.document.topCriticalRiskIds
-      .map((riskId) => input.document.findings.find((finding) => finding.riskId === riskId)?.riskTitle)
-      .filter((riskTitle): riskTitle is string => Boolean(riskTitle));
-    nextActions = input.document.nextActions;
-    riskDetails = input.document.findings.map((finding) => ({
-      title: finding.riskTitle,
-      severity: finding.severity,
-      category: finding.category,
-      clauseRef: finding.sectionRef,
-      highlightedText: finding.clauseSnippet,
-      whyRisky: finding.whyItMatters,
-      suggestedImprovement: finding.originalRecommendedDraft
-    }));
-  } else {
-    documentName = getReportDocumentName(source?.documentName ?? input.contractTitle);
-    sourceLabel = getSourceLabel(source?.sourceKind);
-    recommendation = input.decisionRecommendation;
-    overallRiskLevel = input.overallRiskLevel;
-    executiveSummary = input.executiveSummary;
-    topCriticalRisks = input.topCriticalRisks;
-    nextActions = input.nextActions;
-    riskDetails = input.risks.map((risk) => ({
-      title: risk.title,
-      severity: risk.severity,
-      category: risk.category,
-      clauseRef: risk.clauseRef,
-      highlightedText: risk.highlightedText,
-      whyRisky: risk.whyRisky,
-      suggestedImprovement: risk.suggestedImprovement
-    }));
-  }
-  let y = 18;
+  y = writeReportHeader(doc, y, reportModel);
+  y = writeRiskSummary(doc, y, reportModel);
+  y = writeInsightAndSummary(doc, y, reportModel);
+  y = writeTopCriticalRisks(doc, y, topCriticalRisks);
+  y = writeRiskRegister(doc, y, reportModel.finalReviewRows);
+  y = writeDetailedRiskReviews(doc, y, reportModel.finalReviewRows);
+  y = writeFinalReviewTable(doc, y, reportModel.finalReviewRows);
+  y = writeNextActions(doc, y, document.nextActions);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text("Risk Analysis Results", margin, y);
-  y += 6;
-
-  doc.setFontSize(18);
-  y = writeWrapped(doc, documentName, margin, y, width, 8);
-  y += 2;
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Source: ${sourceLabel}`, margin, y);
-  y += 7;
-  doc.text(`Recommendation: ${recommendation} | Overall Risk: ${overallRiskLevel}`, margin, y);
-  y += 10;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Executive Summary", margin, y);
-  y += 7;
-  doc.setFont("helvetica", "normal");
-  y = writeWrapped(doc, executiveSummary, margin, y, width);
-  y += 5;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Top Critical Risks", margin, y);
-  y += 7;
-  doc.setFont("helvetica", "normal");
-  topCriticalRisks.forEach((risk) => {
-    y = writeWrapped(doc, `- ${risk}`, margin, y, width);
-  });
-  y += 4;
-
-  doc.setFont("helvetica", "bold");
-  doc.text("Recommended Next Actions", margin, y);
-  y += 7;
-  doc.setFont("helvetica", "normal");
-  nextActions.forEach((action) => {
-    y = writeWrapped(doc, `- ${action}`, margin, y, width);
-  });
-
-  riskDetails.forEach((risk, index) => {
-    if (y > 250) {
-      doc.addPage();
-      y = 18;
-    }
-
-    y += 8;
-    doc.setFont("helvetica", "bold");
-    doc.text(`${index + 1}. ${risk.title} (${risk.severity} / ${risk.category})`, margin, y);
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    y = writeWrapped(doc, `Clause: ${risk.clauseRef} - ${risk.highlightedText}`, margin, y, width);
-    y = writeWrapped(doc, `Why risky: ${risk.whyRisky}`, margin, y + 2, width);
-    y = writeWrapped(doc, `Suggested improvement: ${risk.suggestedImprovement}`, margin, y + 2, width);
-  });
-
-  if (reportModel) {
-    if (y > 236) {
-      doc.addPage();
-      y = 18;
-    }
-
-    y += 8;
-    doc.setFont("helvetica", "bold");
-    doc.text("Review Decisions", margin, y);
-    y += 7;
-    doc.setFont("helvetica", "normal");
-    reportModel.finalReviewRows.forEach((row, index) => {
-      if (y > 250) {
-        doc.addPage();
-        y = 18;
-      }
-
-      y = writeWrapped(
-        doc,
-        `${index + 1}. ${row.finding.riskTitle} (${row.decision}) - ${row.finalClause}`,
-        margin,
-        y,
-        width
-      );
-      if (row.decision === "Revised" && row.revisedClause) {
-        y = writeWrapped(doc, `Saved recommendation: ${row.revisedClause}`, margin, y + 2, width);
-      }
-    });
-  }
-
-  doc.save(getReportFileName(documentName));
+  doc.save(getReportFileName(document.documentName));
 }
 
-function isReportModel(value: ReportModel | ContractAnalysis): value is ReportModel {
-  return "document" in value && "reviewByRiskId" in value && "finalReviewRows" in value;
+function writeReportHeader(doc: jsPDF, y: number, reportModel: ReportModel) {
+  const document = reportModel.document;
+  const generatedAt = formatReportDate(new Date());
+  const metadataRows = [
+    `Document Name: ${document.documentName}`,
+    `Source Type: ${formatSourceType(document.sourceType)}`,
+    document.receivedForReviewDate ? `Received for Review: ${formatReportDate(document.receivedForReviewDate)}` : "",
+    `Report Generated: ${generatedAt}`
+  ].filter(Boolean);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  y = writeWrappedPaginated(doc, "Risk Review Report", PAGE_MARGIN, y, PAGE_WIDTH, 8);
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  y = writeWrappedPaginated(doc, "Generated by AI Risk Analyzer", PAGE_MARGIN, y + 1, PAGE_WIDTH);
+  y += 3;
+
+  metadataRows.forEach((row) => {
+    y = writeWrappedPaginated(doc, row, PAGE_MARGIN, y, PAGE_WIDTH);
+  });
+
+  return y + 5;
+}
+
+function writeRiskSummary(doc: jsPDF, y: number, reportModel: ReportModel) {
+  const document = reportModel.document;
+  const severityMix = `High ${document.summary.severityMix.High} / Medium ${document.summary.severityMix.Medium} / Low ${document.summary.severityMix.Low}`;
+  const riskCategories = Object.entries(document.summary.categoryMix)
+    .filter(([, count]) => count > 0)
+    .map(([category, count]) => `${category} ${count}`)
+    .join(" / ");
+  const reviewCounts = `Revised ${reportModel.finalReviewCounts.Revised} / Accepted ${reportModel.finalReviewCounts.Accepted} / Pending ${reportModel.finalReviewCounts.Pending}`;
+
+  y = writeSectionHeading(doc, y, "Risk Summary / Decision Snapshot");
+  y = writeKeyValue(doc, y, "Overall Decision", reportModel.overallDecision);
+  y = writeKeyValue(doc, y, "Overall Risk", document.overallRiskLevel);
+  y = writeKeyValue(doc, y, "Total Risks", String(document.summary.totalRiskCount));
+  y = writeKeyValue(doc, y, "Severity Mix", severityMix);
+  y = writeKeyValue(doc, y, "Risk Categories", riskCategories || "No categorized risks");
+  y = writeKeyValue(doc, y, "Review Counts", reviewCounts);
+
+  const reviewStateNote =
+    reportModel.finalReviewCounts.Pending > 0
+      ? "Pending decisions remain. Resolve pending items before finalizing."
+      : "No pending decisions remain; review package is ready for finalization.";
+
+  return writeParagraph(doc, reviewStateNote, y + 1) + 4;
+}
+
+function writeInsightAndSummary(doc: jsPDF, y: number, reportModel: ReportModel) {
+  const document = reportModel.document;
+  const aiInsight = safeText(document.aiInsight);
+  const executiveSummary = safeText(document.executiveSummary) || "Executive summary is not available.";
+
+  y = writeSectionHeading(doc, y, "AI Insight + Executive Summary");
+
+  if (aiInsight) {
+    y = writeKeyValue(doc, y, "AI Insight", aiInsight);
+    y += 1;
+  }
+
+  y = writeKeyValue(doc, y, "Executive Summary", executiveSummary);
+  return y + 4;
+}
+
+function writeTopCriticalRisks(doc: jsPDF, y: number, topCriticalRisks: string[]) {
+  if (!topCriticalRisks.length) return y;
+
+  y = writeSectionHeading(doc, y, "Top Critical Risks");
+  topCriticalRisks.forEach((riskTitle) => {
+    y = writeParagraph(doc, `- ${riskTitle}`, y);
+  });
+
+  return y + 4;
+}
+
+function writeRiskRegister(doc: jsPDF, y: number, rows: FinalReviewRow[]) {
+  y = writeSectionHeading(doc, y, "Risk Register");
+
+  return writeTable(
+    doc,
+    y,
+    [
+      { label: "#", width: 9 },
+      { label: "Risk", width: 58 },
+      { label: "Category", width: 26 },
+      { label: "Severity", width: 22 },
+      { label: "AI Confidence", width: 27 },
+      { label: "Decision", width: 38 }
+    ],
+    rows.map((row, index) => [
+      String(index + 1),
+      row.finding.riskTitle,
+      row.finding.category,
+      row.finding.severity,
+      formatPdfConfidence(row.finding.confidence),
+      row.decision
+    ])
+  ) + 5;
+}
+
+function writeDetailedRiskReviews(doc: jsPDF, y: number, rows: FinalReviewRow[]) {
+  y = writeSectionHeading(doc, y, "Detailed Risk Reviews");
+
+  rows.forEach((row, index) => {
+    const finding = row.finding;
+    const heading = `${index + 1}. ${finding.riskTitle}`;
+
+    y = ensureSpace(doc, y, 18);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    y = writeWrappedPaginated(doc, heading, PAGE_MARGIN, y, PAGE_WIDTH, 5.8);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+
+    y = writeCompactMetadataLine(doc, y + 1, finding);
+    y = writeKeyValue(doc, y, "Original Clause / Clause Evidence", row.originalClause);
+    y = writeKeyValue(doc, y, "Why It Matters", finding.whyItMatters || "Not available.");
+    y = writeKeyValue(doc, y, "Business Impact", finding.businessImpact || "Not available.");
+    y = writeKeyValue(doc, y, "Final Decision", row.decision);
+    y = writeKeyValue(doc, y, "Final Clause Outcome", getFinalClauseOutcome(row));
+    y += 4;
+  });
+
+  return y;
+}
+
+function writeFinalReviewTable(doc: jsPDF, y: number, rows: FinalReviewRow[]) {
+  y = writeSectionHeading(doc, y, "Final Review");
+
+  return writeTable(
+    doc,
+    y,
+    [
+      { label: "Risk", width: 62 },
+      { label: "Decision", width: 24 },
+      { label: "Final Clause", width: 64 },
+      { label: "Compare / Notes", width: 30 }
+    ],
+    rows.map((row) => [
+      row.finding.riskTitle,
+      row.decision,
+      getFinalReviewTableClause(row),
+      row.note
+    ])
+  ) + 5;
+}
+
+function writeNextActions(doc: jsPDF, y: number, nextActions: string[]) {
+  const actions = nextActions.map((action) => safeText(action)).filter(Boolean);
+  if (!actions.length) return y;
+
+  y = writeSectionHeading(doc, y, "Recommended Next Actions / Closing Notes");
+  actions.forEach((action) => {
+    y = writeParagraph(doc, `- ${action}`, y);
+  });
+
+  return y;
+}
+
+function writeCompactMetadataLine(doc: jsPDF, y: number, finding: NormalizedFinding) {
+  const sectionRef = finding.sectionRef ? `Section: ${finding.sectionRef} | ` : "";
+  const line = `${sectionRef}Category: ${finding.category} | Severity: ${finding.severity} | AI Confidence: ${formatPdfConfidence(finding.confidence)}`;
+  return writeParagraph(doc, line, y);
+}
+
+function getFinalClauseOutcome(row: FinalReviewRow) {
+  if (row.decision === "Revised") {
+    return `Revised Clause: ${row.revisedClause || row.finalClause}`;
+  }
+
+  if (row.decision === "Accepted") {
+    return "Accepted as-is / Original retained.";
+  }
+
+  return "Awaiting decision.";
+}
+
+function getFinalReviewTableClause(row: FinalReviewRow) {
+  if (row.decision === "Revised") {
+    return row.revisedClause || row.finalClause;
+  }
+
+  return row.finalClause;
+}
+
+function writeSectionHeading(doc: jsPDF, y: number, title: string) {
+  y = ensureSpace(doc, y, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  y = writeWrappedPaginated(doc, title, PAGE_MARGIN, y, PAGE_WIDTH, 6.4);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  return y + 2;
+}
+
+function writeKeyValue(doc: jsPDF, y: number, label: string, value: string) {
+  const text = `${label}: ${safeText(value) || "Not available."}`;
+  return writeParagraph(doc, text, y);
+}
+
+function writeParagraph(doc: jsPDF, text: string, y: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  return writeWrappedPaginated(doc, text, PAGE_MARGIN, y, PAGE_WIDTH, BODY_LINE_HEIGHT);
+}
+
+function writeTable(doc: jsPDF, y: number, columns: PdfTableColumn[], rows: string[][]) {
+  y = writeTableHeader(doc, y, columns);
+
+  rows.forEach((row) => {
+    const cellLines = row.map((cell, index) => getWrappedLines(doc, cell, columns[index].width - 2));
+    const totalLineCount = Math.max(...cellLines.map((lines) => lines.length), 1);
+    let lineOffset = 0;
+
+    while (lineOffset < totalLineCount) {
+      const remainingLineCount = totalLineCount - lineOffset;
+      const fullRowHeight = remainingLineCount * TABLE_LINE_HEIGHT + TABLE_CELL_VERTICAL_PADDING;
+
+      if (y + fullRowHeight <= PAGE_BOTTOM) {
+        y = writeTableRowChunk(doc, y, columns, cellLines, lineOffset, remainingLineCount);
+        lineOffset = totalLineCount;
+        continue;
+      }
+
+      const availableLineCount = getAvailableTableLineCount(y);
+      if (availableLineCount <= 0) {
+        doc.addPage();
+        y = writeTableHeader(doc, PAGE_TOP, columns);
+        continue;
+      }
+
+      const chunkLineCount = Math.min(remainingLineCount, availableLineCount);
+      y = writeTableRowChunk(doc, y, columns, cellLines, lineOffset, chunkLineCount);
+      lineOffset += chunkLineCount;
+
+      if (lineOffset < totalLineCount) {
+        doc.addPage();
+        y = writeTableHeader(doc, PAGE_TOP, columns);
+      }
+    }
+  });
+
+  return y;
+}
+
+function writeTableRowChunk(
+  doc: jsPDF,
+  y: number,
+  columns: PdfTableColumn[],
+  cellLines: string[][],
+  lineOffset: number,
+  lineCount: number
+) {
+  const rowHeight = lineCount * TABLE_LINE_HEIGHT + TABLE_CELL_VERTICAL_PADDING;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+
+  let x = PAGE_MARGIN;
+  cellLines.forEach((lines, index) => {
+    const visibleLines = lines.slice(lineOffset, lineOffset + lineCount);
+    let cellY = y + TABLE_CELL_VERTICAL_PADDING;
+
+    visibleLines.forEach((line) => {
+      doc.text(line, x, cellY);
+      cellY += TABLE_LINE_HEIGHT;
+    });
+
+    x += columns[index].width;
+  });
+
+  return y + rowHeight;
+}
+
+function getAvailableTableLineCount(y: number) {
+  return Math.floor((PAGE_BOTTOM - y - TABLE_CELL_VERTICAL_PADDING) / TABLE_LINE_HEIGHT);
+}
+
+function writeTableHeader(doc: jsPDF, y: number, columns: PdfTableColumn[]) {
+  y = ensureSpace(doc, y, 12);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+
+  let x = PAGE_MARGIN;
+  columns.forEach((column) => {
+    doc.text(column.label, x, y);
+    x += column.width;
+  });
+
+  return y + 5;
+}
+
+function writeWrappedPaginated(
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight = BODY_LINE_HEIGHT
+) {
+  const lines = getWrappedLines(doc, text, maxWidth);
+
+  lines.forEach((line) => {
+    if (y > PAGE_BOTTOM) {
+      doc.addPage();
+      y = PAGE_TOP;
+    }
+
+    doc.text(line, x, y);
+    y += lineHeight;
+  });
+
+  return y;
+}
+
+function ensureSpace(doc: jsPDF, y: number, requiredHeight: number) {
+  if (y + requiredHeight <= PAGE_BOTTOM) return y;
+  doc.addPage();
+  return PAGE_TOP;
+}
+
+function getWrappedLines(doc: jsPDF, value: string, maxWidth: number) {
+  const lines = doc.splitTextToSize(safeText(value), maxWidth);
+  return Array.isArray(lines) ? lines : [lines];
+}
+
+function formatPdfConfidence(confidence: unknown) {
+  return typeof confidence === "number" && Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : "--";
+}
+
+function formatSourceType(sourceType: AnalysisSource["sourceKind"]) {
+  if (sourceType === "upload") return "Upload";
+  if (sourceType === "paste") return "Paste";
+  if (sourceType === "demo") return "Demo";
+  return "Document";
+}
+
+function formatReportDate(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function safeText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }

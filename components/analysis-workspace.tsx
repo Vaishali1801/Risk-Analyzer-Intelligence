@@ -96,6 +96,7 @@ export function AnalysisWorkspace() {
   const settleTimeoutRef = useRef<number | null>(null);
   const initialHashHandledRef = useRef(false);
   const reviewSessionKeyRef = useRef<string | null>(null);
+  const expandedFinalReviewSessionKeyRef = useRef<string | null>(null);
 
   const clearPendingNavigationTimeout = () => {
     if (settleTimeoutRef.current === null) return;
@@ -507,6 +508,19 @@ export function AnalysisWorkspace() {
       return isUnchanged ? current : nextReview;
     });
   }, [documentModel, reviewSessionKey]);
+
+  useEffect(() => {
+    if (!reviewSessionKey) {
+      expandedFinalReviewSessionKeyRef.current = null;
+      setExpandedFinalReviewRiskId(null);
+      return;
+    }
+
+    if (expandedFinalReviewSessionKeyRef.current === reviewSessionKey) return;
+
+    expandedFinalReviewSessionKeyRef.current = reviewSessionKey;
+    setExpandedFinalReviewRiskId(null);
+  }, [reviewSessionKey]);
 
   useEffect(() => {
     if (!documentModel || !documentModel.findings.length) return;

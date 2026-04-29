@@ -302,8 +302,8 @@ export function getFinalReviewRows(
 ): FinalReviewRow[] {
   return findings.map((finding) => {
     const review = getReviewState(reviewByRiskId, finding);
-    const savedClause = normalizeWhitespace(review.savedRecommendation ?? "");
-    const originalClause = normalizeWhitespace(finding.fullClauseText || finding.flaggedText);
+    const savedClause = getUsableText(review.savedRecommendation);
+    const originalClause = getFinalReviewOriginalClause(finding);
 
     if (review.status === "accepted") {
       return {
@@ -337,6 +337,15 @@ export function getFinalReviewRows(
       note: "Awaiting final decision"
     };
   });
+}
+
+function getFinalReviewOriginalClause(finding: NormalizedFinding) {
+  return (
+    getUsableText(finding.fullClauseText) ||
+    getUsableText(finding.clauseSnippet) ||
+    getUsableText(finding.flaggedText) ||
+    "Original clause text unavailable."
+  );
 }
 
 export function getFinalReviewCounts(rows: FinalReviewRow[]): FinalReviewCounts {
