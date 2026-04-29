@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, Clock3, Search, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, LoaderCircle, Search, Sparkles, TriangleAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,6 +62,7 @@ type RiskDecisionPanelProps = {
   risk?: NormalizedFinding;
   status: RiskReviewStatus;
   reviewLens: RiskReviewLens;
+  activeAskAiLens?: RiskReviewLens | null;
   draftText: string;
   isRecommendationSaved: boolean;
   focusTarget: RiskPanelFocusTarget;
@@ -509,6 +510,7 @@ export function RiskDecisionPanel({
   risk,
   status,
   reviewLens,
+  activeAskAiLens = null,
   draftText,
   isRecommendationSaved,
   focusTarget,
@@ -678,13 +680,16 @@ export function RiskDecisionPanel({
                       key={lens.key}
                       type="button"
                       onClick={() => onReviewLensChange(lens.key)}
+                      disabled={Boolean(activeAskAiLens)}
+                      aria-busy={activeAskAiLens === lens.key}
                       className={cn(
-                        "rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition disabled:cursor-not-allowed disabled:opacity-70",
                         reviewLens === lens.key
                           ? "border-slate-950 bg-slate-950 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                       )}
                     >
+                      {activeAskAiLens === lens.key ? <LoaderCircle className="h-3 w-3 animate-spin" /> : null}
                       {lens.label}
                     </button>
                   ))}

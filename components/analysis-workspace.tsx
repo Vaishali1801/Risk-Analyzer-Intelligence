@@ -49,6 +49,7 @@ import {
 import type { ContractAnalysis, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "risks" | "final-review";
+type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -62,6 +63,12 @@ const SECTION_NAVIGATION_SETTLE_DELAY_MS = 450;
 const RISK_FOCUS_SCROLL_DELAY_MS = 220;
 const SECTION_HASH_PREFIX = "#";
 const knownSectionIds = sectionTabs.map((tab) => tab.id);
+const askAiActionByLens: Record<RiskReviewLens, AskAiActionType> = {
+  simplify: "simplify",
+  safer: "safer_wording",
+  hidden: "hidden_risks",
+  standard: "compare_standard"
+};
 
 export function AnalysisWorkspace() {
   const [session, setSession] = useState<StoredAnalysisSession | null>(null);
@@ -73,6 +80,7 @@ export function AnalysisWorkspace() {
   const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
   const [reviewLens, setReviewLens] = useState<RiskReviewLens>("safer");
+  const [activeAskAiLens, setActiveAskAiLens] = useState<RiskReviewLens | null>(null);
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
@@ -342,9 +350,48 @@ export function AnalysisWorkspace() {
     });
   };
 
-  const applyReviewLens = (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
+  const applyReviewLens = async (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
+    if (activeAskAiLens) return;
+
     setReviewLens(nextLens);
-    updateRiskDraft(risk.riskId, buildClauseAction(nextLens, risk));
+    setActiveAskAiLens(nextLens);
+
+    try {
+      const currentReview = getReviewState(effectiveReviewByRiskId, risk);
+      const response = await fetch("/api/ask-ai", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          actionType: askAiActionByLens[nextLens],
+          riskTitle: risk.riskTitle,
+          category: risk.category,
+          severity: risk.severity,
+          sectionRef: risk.sectionRef,
+          fullClauseText: risk.fullClauseText,
+          flaggedText: risk.flaggedText,
+          whyItMatters: risk.whyItMatters,
+          businessImpact: risk.businessImpact,
+          currentDraft: currentReview.currentDraft
+        })
+      });
+      const payload = response.ok ? ((await response.json()) as { output?: unknown }) : null;
+      const aiOutput = normalizeReviewText(payload?.output);
+      const fallbackOutput = aiOutput ? "" : normalizeReviewText(buildClauseAction(nextLens, risk));
+      const nextDraft = aiOutput || fallbackOutput;
+
+      if (nextDraft) {
+        updateRiskDraft(risk.riskId, nextDraft);
+      }
+    } catch {
+      const fallbackOutput = normalizeReviewText(buildClauseAction(nextLens, risk));
+      if (fallbackOutput) {
+        updateRiskDraft(risk.riskId, fallbackOutput);
+      }
+    } finally {
+      setActiveAskAiLens(null);
+    }
   };
 
   useEffect(() => {
@@ -1009,6 +1056,7 @@ export function AnalysisWorkspace() {
         risk={selectedRisk}
         status={selectedReviewStatus}
         reviewLens={reviewLens}
+        activeAskAiLens={activeAskAiLens}
         draftText={selectedRiskDraft}
         isRecommendationSaved={Boolean(selectedReview?.savedRecommendation && selectedReview.savedRecommendation === selectedRiskDraft)}
         focusTarget={panelFocusTarget}
