@@ -15,6 +15,7 @@ const DASHBOARD_MARGIN = 10;
 const DASHBOARD_WIDTH = A4_WIDTH - DASHBOARD_MARGIN * 2;
 const FOOTER_HEIGHT = 13.5;
 const FOOTER_TOP = A4_HEIGHT - FOOTER_HEIGHT;
+const CARD_RADIUS = 1.8;
 const BODY_LINE_HEIGHT = 5.2;
 const TABLE_LINE_HEIGHT = 4.4;
 const TABLE_CELL_VERTICAL_PADDING = 4;
@@ -26,6 +27,8 @@ const COLORS = {
   lightBorder: "#E5E7EB",
   lightBackground: "#F8FAFC",
   lightBluePanel: "#EFF6FF",
+  softAmber: "#FFFBEB",
+  softBlueGrey: "#F8FAFC",
   highRed: "#DC2626",
   mediumAmber: "#F59E0B",
   lowGreen: "#16A34A",
@@ -65,101 +68,83 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
 
-  drawHeader(doc, 0, 0, A4_WIDTH, 24);
+  drawHeader(doc, 0, 0, A4_WIDTH, 22);
 
-  let y = 35;
+  let y = 29.5;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15.5);
+  doc.setFontSize(20);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH - 12, 2);
+  const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH, 2);
   titleLines.forEach((line) => {
-    doc.text(line, DASHBOARD_MARGIN + 2, y);
-    y += 6.3;
+    doc.text(line, DASHBOARD_MARGIN, y);
+    y += 7.2;
   });
 
-  const subtitle = safeText(document.contractTitle);
-  if (titleLines.length === 1 && subtitle && subtitle !== document.documentName) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10.5);
-    doc.setTextColor(...hexToRgb(COLORS.darkText));
-    doc.text(clampSingleLine(doc, subtitle, DASHBOARD_WIDTH - 12), DASHBOARD_MARGIN + 2, y);
-    y += 5.3;
-  }
+  drawDivider(doc, DASHBOARD_MARGIN, y - 2.1, DASHBOARD_WIDTH);
 
-  const metadataY = y + 2.5;
-  const metadataCards = [
-    { label: "Source Type", value: dashboard.sourceType },
-    { label: "Document Created", value: dashboard.documentCreated },
-    { label: "Received by Risk Team", value: dashboard.receivedByRiskTeam },
-    { label: "Report Generated", value: dashboard.reportGenerated }
+  const metadataY = y + 1.5;
+  const metadataItems = [
+    { label: "Source", value: dashboard.sourceType },
+    { label: "Created", value: dashboard.documentCreated },
+    { label: "Received", value: dashboard.receivedByRiskTeam },
+    { label: "Generated", value: dashboard.reportGenerated }
   ];
-  const metadataGap = 3.5;
-  const metadataWidth = (DASHBOARD_WIDTH - metadataGap * 3) / 4;
-  metadataCards.forEach((item, index) => {
-    drawInfoChip(doc, DASHBOARD_MARGIN + index * (metadataWidth + metadataGap), metadataY, metadataWidth, 20, item.label, item.value);
-  });
+  drawMetadataStrip(doc, DASHBOARD_MARGIN, metadataY, DASHBOARD_WIDTH, 10, metadataItems);
 
-  y = metadataY + 27;
-  drawDivider(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH);
-  y += 7;
+  y = metadataY + 16.5;
 
-  drawSectionTitle(doc, "DECISION SNAPSHOT", DASHBOARD_MARGIN + 1, y);
-  y += 5.7;
+  drawSectionTitle(doc, "DECISION SNAPSHOT", DASHBOARD_MARGIN, y);
+  y += 5.2;
   const kpiGap = 4;
   const kpiWidth = (DASHBOARD_WIDTH - kpiGap * 3) / 4;
   const kpiCards = [
-    { label: "Overall Decision", value: reportModel.overallDecision, color: getDecisionColor(reportModel.overallDecision) },
-    { label: "Overall Risk", value: document.overallRiskLevel, color: getSeverityColor(document.overallRiskLevel) },
-    { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy },
-    { label: "Critical Risks", value: String(dashboard.criticalRisks), color: COLORS.highRed }
+    { label: "Overall Decision", value: reportModel.overallDecision, color: getDecisionColor(reportModel.overallDecision), fill: COLORS.softAmber },
+    { label: "Overall Risk", value: document.overallRiskLevel, color: getSeverityColor(document.overallRiskLevel), fill: COLORS.softRed },
+    { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy, fill: COLORS.softBlueGrey },
+    { label: "Critical Risks", value: String(dashboard.criticalRisks), color: COLORS.highRed, fill: COLORS.softRed }
   ];
   kpiCards.forEach((item, index) => {
-    drawKpiCard(doc, DASHBOARD_MARGIN + index * (kpiWidth + kpiGap), y, kpiWidth, 23.5, item.label, item.value, item.color);
+    drawKpiCard(doc, DASHBOARD_MARGIN + index * (kpiWidth + kpiGap), y, kpiWidth, 21, item.label, item.value, item.color, item.fill);
   });
 
-  y += 30;
+  y += 26.5;
   const rowGap = 5;
   const leftWidth = 86;
   const rightWidth = DASHBOARD_WIDTH - leftWidth - rowGap;
-  drawSeverityMixCard(doc, DASHBOARD_MARGIN, y, leftWidth, 49, dashboard);
-  drawCategoryBreakdown(doc, DASHBOARD_MARGIN + leftWidth + rowGap, y, rightWidth, 49, dashboard.categoryBreakdown, dashboard.totalRisks);
+  drawSeverityMixCard(doc, DASHBOARD_MARGIN, y, leftWidth, 45, dashboard);
+  drawCategoryBreakdown(doc, DASHBOARD_MARGIN + leftWidth + rowGap, y, rightWidth, 45, dashboard.categoryBreakdown, dashboard.totalRisks);
 
-  y += 55;
-  const insightWidth = 91;
-  const summaryWidth = DASHBOARD_WIDTH - insightWidth - rowGap;
+  y += 49.5;
   drawInfoCard(
     doc,
     DASHBOARD_MARGIN,
     y,
-    insightWidth,
-    42,
+    DASHBOARD_WIDTH,
+    30,
     "INSIGHT",
     dashboard.aiInsight || "Key risk concentration identified from the analyzed document.",
     COLORS.lightBluePanel
   );
+  y += 33;
   drawInfoCard(
     doc,
-    DASHBOARD_MARGIN + insightWidth + rowGap,
+    DASHBOARD_MARGIN,
     y,
-    summaryWidth,
-    42,
+    DASHBOARD_WIDTH,
+    38,
     "EXECUTIVE SUMMARY",
     dashboard.executiveSummary || "Executive summary is not available.",
     COLORS.lightBluePanel
   );
 
-  y += 50;
-  drawDivider(doc, DASHBOARD_MARGIN, y - 5, DASHBOARD_WIDTH);
-  drawSectionTitle(doc, "TOP ACTIONS / RECOMMENDED PRIORITIES", DASHBOARD_MARGIN + 1, y);
-  y += 5.5;
-  const actionGap = 4;
-  const actionWidth = (DASHBOARD_WIDTH - actionGap * 3) / 4;
-  dashboard.topActions.forEach((action, index) => {
-    drawTopActionCard(doc, DASHBOARD_MARGIN + index * (actionWidth + actionGap), y, actionWidth, 26, index + 1, action);
-  });
+  y += 43;
+  drawDivider(doc, DASHBOARD_MARGIN, y - 4.5, DASHBOARD_WIDTH);
+  drawSectionTitle(doc, "TOP ACTIONS / RECOMMENDED PRIORITIES", DASHBOARD_MARGIN, y);
+  y += 5;
+  const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
-  y += 31.5;
-  drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 11.5, dashboard.pendingDecisionCount);
+  y += actionsHeight + 4.5;
+  drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 12, dashboard.pendingDecisionCount);
 }
 
 type DashboardBreakdownItem = {
@@ -269,21 +254,21 @@ function drawHeader(doc: jsPDF, x: number, y: number, width: number, height: num
   doc.rect(x, y, width, height, "F");
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13.5);
+  doc.setFontSize(15);
   doc.setTextColor(...hexToRgb(COLORS.white));
-  doc.text("AI Risk Analyzer", DASHBOARD_MARGIN, y + height / 2 + 1.6);
+  doc.text("AI Risk Analyzer", DASHBOARD_MARGIN + 2, y + height / 2 + 1.8);
 
   const rightTitle = "Risk Review Report";
-  doc.text(rightTitle, x + width - doc.getTextWidth(rightTitle) - DASHBOARD_MARGIN, y + height / 2 + 1.6);
+  doc.text(rightTitle, x + width - doc.getTextWidth(rightTitle) - DASHBOARD_MARGIN - 2, y + height / 2 + 1.8);
 }
 
 function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 8.6);
+  doc.setFontSize(7.8);
+  doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
   const pageText = `Page ${pageNumber} of ${totalPages}`;
-  doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 8.6);
+  doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
 }
 
 function drawFooters(doc: jsPDF) {
@@ -296,60 +281,125 @@ function drawFooters(doc: jsPDF) {
 
 function drawSectionTitle(doc: jsPDF, title: string, x: number, y: number) {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.8);
+  doc.setFontSize(9.6);
   doc.setTextColor(...hexToRgb(COLORS.navy));
   doc.text(title, x, y);
 }
 
-function drawKpiCard(doc: jsPDF, x: number, y: number, width: number, height: number, label: string, value: string, valueColor: string) {
-  drawCard(doc, x, y, width, height, COLORS.white);
-  doc.setFillColor(...hexToRgb(tintColor(valueColor)));
-  doc.circle(x + 8.7, y + height / 2, 5.5, "F");
-  drawBadge(doc, x + 6.7, y + height / 2 - 2.2, 4.4, valueColor);
+function drawMetadataStrip(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  items: Array<{ label: string; value: string }>
+) {
+  doc.setFillColor(250, 250, 250);
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.22);
+  doc.roundedRect(x, y, width, height, 1.4, 1.4, "FD");
+
+  const itemWidth = width / items.length;
+  items.forEach((item, index) => {
+    const itemX = x + itemWidth * index;
+    if (index > 0) {
+      doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+      doc.line(itemX, y + 2, itemX, y + height - 2);
+    }
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.4);
+    doc.setTextColor(...hexToRgb(COLORS.mutedText));
+    const label = `${item.label}:`;
+    doc.text(label, itemX + 3.2, y + 6.4);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.7);
+    doc.setTextColor(...hexToRgb(COLORS.darkText));
+    const valueX = itemX + 3.2 + doc.getTextWidth(label) + 1.2;
+    doc.text(clampSingleLine(doc, item.value || "Not available", itemWidth - (valueX - itemX) - 3), valueX, y + 6.4);
+  });
+}
+
+function drawKpiCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  label: string,
+  value: string,
+  valueColor: string,
+  fillColor: string
+) {
+  drawCard(doc, x, y, width, height, fillColor, true);
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.circle(x + 7.5, y + height / 2, 4.8, "F");
+  drawBadge(doc, x + 5.8, y + height / 2 - 1.7, 3.4, valueColor);
+
+  const contentX = x + 14.5;
+  const contentWidth = width - 17;
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(...hexToRgb(COLORS.darkText));
-  doc.text(label, x + 17.5, y + 9.5);
+  doc.setFontSize(8.1);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text(label, contentX, y + 7.3);
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(value.length > 13 ? 10.3 : 13.8);
   doc.setTextColor(...hexToRgb(valueColor));
-  doc.text(clampSingleLine(doc, value, width - 21), x + 17.5, y + 17.4);
+  const isNumericValue = /^\d+$/.test(value);
+
+  if (isNumericValue) {
+    doc.setFontSize(16);
+    doc.text(value, contentX, y + 17.2);
+    return;
+  }
+
+  doc.setFontSize(10.5);
+  const valueLines = clampTextLines(doc, value, contentWidth, 2);
+  if (valueLines.length === 1) {
+    doc.text(valueLines[0], contentX, y + 16.1);
+    return;
+  }
+
+  doc.text(valueLines[0], contentX, y + 13.6);
+  doc.text(valueLines[1], contentX, y + 18);
 }
 
 function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string, background: string) {
-  drawCard(doc, x, y, width, height, background);
+  drawCard(doc, x, y, width, height, background, true);
   doc.setFillColor(...hexToRgb(COLORS.revisedBlue));
-  doc.circle(x + 9, y + 10.5, 5.2, "F");
+  doc.circle(x + 10, y + 10.8, 5.1, "F");
   doc.setTextColor(...hexToRgb(COLORS.white));
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text(title === "INSIGHT" ? "i" : "S", x + 8.2, y + 13);
+  doc.setFontSize(8.2);
+  doc.text(title === "INSIGHT" ? "i" : "S", x + 9.2, y + 13.4);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.8);
-  doc.setTextColor(...hexToRgb(COLORS.revisedBlue));
-  doc.text(title, x + 18, y + 10.8);
+  doc.setFontSize(9.3);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  doc.text(title, x + 19, y + 11);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.2);
+  doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const lines = clampTextLines(doc, body, width - 24, 6);
-  drawWrappedText(doc, lines, x + 18, y + 18.3, 4.6);
+  const lineHeight = 4.9;
+  const bodyY = y + 18.2;
+  const maxLines = Math.max(2, Math.floor((height - 19) / lineHeight) + 1);
+  const lines = clampTextLines(doc, body, width - 25, maxLines);
+  drawWrappedText(doc, lines, x + 19, bodyY, lineHeight);
 }
 
 function drawInfoChip(doc: jsPDF, x: number, y: number, width: number, height: number, label: string, value: string) {
-  drawCard(doc, x, y, width, height, COLORS.white);
-  doc.setFillColor(...hexToRgb(COLORS.lightBluePanel));
-  doc.roundedRect(x + 4, y + 6.1, 5.6, 5.6, 1.2, 1.2, "F");
+  drawCard(doc, x, y, width, height, "#FAFAFA");
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.9);
+  doc.setFontSize(7.2);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(label, x + 12.4, y + 8.2);
+  doc.text(label, x + 5, y + 7);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(value.length > 18 ? 7.1 : 8);
+  doc.setFontSize(value.length > 18 ? 7.5 : 8.7);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  doc.text(clampSingleLine(doc, value || "Not available", width - 14.5), x + 12.4, y + 14.3);
+  doc.text(clampSingleLine(doc, value || "Not available", width - 10), x + 5, y + 13.4);
 }
 
 function drawBadge(doc: jsPDF, x: number, y: number, size: number, color: string) {
@@ -372,24 +422,25 @@ function drawDivider(doc: jsPDF, x: number, y: number, width: number) {
 }
 
 function drawSeverityMixCard(doc: jsPDF, x: number, y: number, width: number, height: number, dashboard: DashboardData) {
-  drawCard(doc, x, y, width, height, COLORS.white);
+  drawCard(doc, x, y, width, height, COLORS.white, true);
   drawSectionTitle(doc, "SEVERITY MIX", x + 3, y + 8);
 
   const severities = ["High", "Medium", "Low"] as const;
   severities.forEach((severity, index) => {
     const count = dashboard.severityMix[severity];
-    const rowY = y + 15.5 + index * 9.4;
+    const rowY = y + 16.8 + index * 9.7;
     doc.setFillColor(...hexToRgb(COLORS.lightBackground));
     doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
-    doc.roundedRect(x + 5, rowY - 4.5, width - 10, 7, 1.2, 1.2, "FD");
-    drawSeverityBadge(doc, x + 8, rowY - 2.5, severity);
+    doc.roundedRect(x + 5, rowY - 4.9, width - 10, 7.6, 1.4, 1.4, "FD");
+    drawSeverityBadge(doc, x + 8.2, rowY - 2.8, severity);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.2);
+    doc.setFontSize(9);
     doc.setTextColor(...hexToRgb(COLORS.darkText));
-    doc.text(severity, x + 14, rowY);
+    doc.text(severity, x + 14.8, rowY);
     const value = `${count} (${formatPercent(count, dashboard.totalRisks)})`;
+    doc.setFontSize(9.2);
     doc.setTextColor(...hexToRgb(getSeverityColor(severity)));
-    doc.text(value, x + width - doc.getTextWidth(value) - 8, rowY);
+    doc.text(value, x + width - doc.getTextWidth(value) - 8.5, rowY);
   });
 }
 
@@ -450,20 +501,22 @@ function drawCategoryBreakdown(
   items: DashboardBreakdownItem[],
   totalRisks: number
 ) {
-  drawCard(doc, x, y, width, height, COLORS.white);
+  drawCard(doc, x, y, width, height, COLORS.white, true);
   drawSectionTitle(doc, "CATEGORY BREAKDOWN", x + 3, y + 8);
 
   const visibleItems = items.length ? items.slice(0, 5) : [{ label: "Uncategorized", count: 0 }];
-  drawDonutChart(doc, x + 25, y + 29, 12.5, 5.2, visibleItems, totalRisks);
+  drawDonutChart(doc, x + 24.5, y + 27.2, 11.8, 5.2, visibleItems, totalRisks);
 
   visibleItems.forEach((item, index) => {
-    const rowY = y + 16.6 + index * 6.2;
-    drawBadge(doc, x + 47, rowY - 2.8, 2.8, getCategoryColor(index));
+    const rowY = y + 15.8 + index * 6.6;
+    drawBadge(doc, x + 48, rowY - 2.8, 3, getCategoryColor(index));
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.7);
+    doc.setFontSize(8.3);
     doc.setTextColor(...hexToRgb(COLORS.darkText));
-    doc.text(clampSingleLine(doc, item.label, 25), x + 53, rowY);
+    doc.text(clampSingleLine(doc, item.label, 31), x + 54, rowY);
     const value = `${item.count} (${formatPercent(item.count, totalRisks)})`;
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...hexToRgb(COLORS.navy));
     doc.text(value, x + width - doc.getTextWidth(value) - 4, rowY);
   });
 }
@@ -519,21 +572,38 @@ function polarPoint(cx: number, cy: number, radius: number, angle: number) {
   };
 }
 
+function drawTopActions(doc: jsPDF, x: number, y: number, width: number, actions: string[]) {
+  const visibleActions = actions.slice(0, 4);
+  if (!visibleActions.length) return 0;
+
+  const gap = 3.5;
+  const columns = visibleActions.length === 4 ? 4 : visibleActions.length;
+  const cardWidth = (width - gap * (columns - 1)) / columns;
+  const cardHeight = 25;
+
+  visibleActions.forEach((action, index) => {
+    const cardX = x + index * (cardWidth + gap);
+    drawTopActionCard(doc, cardX, y, cardWidth, cardHeight, index + 1, action);
+  });
+
+  return cardHeight;
+}
+
 function drawTopActionCard(doc: jsPDF, x: number, y: number, width: number, height: number, index: number, action: string) {
-  drawCard(doc, x, y, width, height, COLORS.white);
+  drawCard(doc, x, y, width, height, COLORS.white, true);
   const colors = [COLORS.highRed, COLORS.mediumAmber, COLORS.pendingAmber, COLORS.lowGreen];
   const color = colors[(index - 1) % colors.length];
   doc.setFillColor(...hexToRgb(color));
-  doc.circle(x + 6, y + 6.5, 3.3, "F");
+  doc.circle(x + 7, y + 7, 3.8, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
+  doc.setFontSize(7.4);
   doc.setTextColor(...hexToRgb(COLORS.white));
-  doc.text(String(index), x + 5.1, y + 8.8);
+  doc.text(String(index), x + 6.1, y + 9.6);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
+  doc.setFontSize(8);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const lines = clampTextLines(doc, action, width - 10, 4);
-  drawWrappedText(doc, lines, x + 4, y + 15, 4.1);
+  const lines = clampTextLines(doc, action, width - 9, 3);
+  drawWrappedText(doc, lines, x + 4.5, y + 15.2, 4.1);
 }
 
 function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: number, height: number, pendingCount: number) {
@@ -546,20 +616,27 @@ function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: numbe
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(color));
-  doc.setLineWidth(0.25);
-  doc.roundedRect(x, y, width, height, 1.4, 1.4, "FD");
-  drawDecisionBadge(doc, x + 35, y + 3.8, hasPending ? "Pending" : "Accepted");
+  doc.setLineWidth(0.35);
+  doc.roundedRect(x, y, width, height, 1.7, 1.7, "FD");
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.circle(x + 36.5, y + height / 2, 3.6, "F");
+  drawDecisionBadge(doc, x + 34.9, y + height / 2 - 1.6, hasPending ? "Pending" : "Accepted");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.8);
+  doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(color));
-  doc.text(text, x + 43, y + 7.4);
+  doc.text(text, x + 43, y + height / 2 + 1.4);
 }
 
-function drawCard(doc: jsPDF, x: number, y: number, width: number, height: number, fillColor: string) {
+function drawCard(doc: jsPDF, x: number, y: number, width: number, height: number, fillColor: string, shadow = false) {
+  if (shadow) {
+    doc.setFillColor(243, 244, 246);
+    doc.roundedRect(x + 0.6, y + 0.8, width, height, CARD_RADIUS, CARD_RADIUS, "F");
+  }
+
   doc.setFillColor(...hexToRgb(fillColor));
   doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
-  doc.setLineWidth(0.25);
-  doc.roundedRect(x, y, width, height, 1.4, 1.4, "FD");
+  doc.setLineWidth(0.28);
+  doc.roundedRect(x, y, width, height, CARD_RADIUS, CARD_RADIUS, "FD");
 }
 
 function wrapText(doc: jsPDF, value: string, maxWidth: number) {
