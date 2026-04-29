@@ -94,18 +94,30 @@ export function useContractAnalysis() {
     beginFlow("demo");
 
     try {
-      applyAnalysisPayload({
-        analysisId: null,
-        analysis: demoAnalysis,
-        source: {
-          sourceKind: "demo",
-          documentName: demoAnalysis.contractTitle,
-          extractedCharacters: preprocessContractText(demoContractText).length
-        }
-      });
+      const response = await fetch("/api/demo");
+      const payload = (await response.json()) as AnalyzeApiResponse;
+
+      if (!response.ok) {
+        throw new Error("Unable to load the live demo analysis.");
+      }
+
+      applyAnalysisPayload(payload);
     } catch (caught) {
-      failFlow(caught instanceof Error ? caught.message : "Unable to load the demo analysis.");
+      console.warn("Demo API unavailable; using bundled demo analysis.", caught);
+      applyDemoFallback();
     }
+  }
+
+  function applyDemoFallback() {
+    applyAnalysisPayload({
+      analysisId: null,
+      analysis: demoAnalysis,
+      source: {
+        sourceKind: "demo",
+        documentName: demoAnalysis.contractTitle,
+        extractedCharacters: preprocessContractText(demoContractText).length
+      }
+    });
   }
 
   return {

@@ -151,7 +151,13 @@ async function callOpenAI(prompt: string) {
   return completion.choices[0]?.message?.content ?? "";
 }
 
-export async function analyzeContract(text: string): Promise<ContractAnalysis> {
+type AnalyzeContractOptions = {
+  allowFallbackAnalysis?: boolean;
+};
+
+export async function analyzeContract(text: string, options: AnalyzeContractOptions = {}): Promise<ContractAnalysis> {
+  const allowFallbackAnalysis = options.allowFallbackAnalysis ?? true;
+
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured. Add it to .env.local to analyze uploaded contracts.");
   }
@@ -174,6 +180,10 @@ ${firstResponse || String(firstError)}`;
       return validateResponse(retryResponse);
     } catch (retryError) {
       const reason = retryError instanceof Error ? retryError.message : "Model output failed validation after retry.";
+      if (!allowFallbackAnalysis) {
+        throw new Error(reason);
+      }
+
       return createFallbackAnalysis(reason);
     }
   }
