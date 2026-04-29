@@ -37,6 +37,7 @@ export const RiskSummarySchema = z.object({
 export const ContractAnalysisSchema = z.object({
   contractTitle: z.string().min(3),
   executiveSummary: z.string().min(40),
+  aiInsight: z.string().optional(),
   overallRiskLevel: SeveritySchema,
   decisionRecommendation: DecisionRecommendationSchema,
   decisionRationale: z.string().min(20),

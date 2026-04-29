@@ -117,6 +117,7 @@ export function normalizeOutputAnalysis(
     categoryMix: getCategoryMix(findings)
   };
   const topCriticalRisks = getTopCriticalRisks(findings);
+  const aiInsight = getValidAiInsight(analysis.aiInsight) || buildAiInsight(findings, summary.categoryMix);
 
   return {
     documentName: getReportDocumentName(source.documentName),
@@ -127,7 +128,7 @@ export function normalizeOutputAnalysis(
     executiveSummary: analysis.executiveSummary,
     decisionRationale: analysis.decisionRationale,
     nextActions: analysis.nextActions,
-    aiInsight: buildAiInsight(findings, summary.categoryMix),
+    aiInsight,
     overallRiskLevel: getOverallRiskLevel(findings, analysis.overallRiskLevel),
     overallDecision: analysis.decisionRecommendation,
     findings,
@@ -481,6 +482,41 @@ function buildAiInsight(findings: NormalizedFinding[], categoryMix: Record<SafeR
   const concentrationBasis = highRiskSectionCount > 0 ? `${highRiskSectionCount} high-risk sections` : `${findings.length} flagged findings`;
 
   return `${categorySummary}, with most material exposure concentrated in ${concentrationBasis}.`;
+}
+
+function getValidAiInsight(value: unknown) {
+  const normalized = getUsableText(value).replace(/^ai insight:\s*/i, "");
+  if (!normalized || normalized.length < 20) return "";
+  if (hasGenericInsightText(normalized) || hasLegalAdviceWording(normalized)) return "";
+
+  const firstSentence = extractFirstSentence(normalized);
+  if (!firstSentence || firstSentence.length < 20) return "";
+
+  return firstSentence.length > 240 ? "" : firstSentence;
+}
+
+function hasGenericInsightText(value: string) {
+  const normalized = value.toLowerCase();
+  return [
+    "not available",
+    "not enough information",
+    "insufficient information",
+    "cannot determine",
+    "unable to determine",
+    "no significant risks",
+    "as an ai"
+  ].some((phrase) => normalized.includes(phrase));
+}
+
+function hasLegalAdviceWording(value: string) {
+  const normalized = value.toLowerCase();
+  return [
+    "legal advice",
+    "consult an attorney",
+    "consult a lawyer",
+    "seek legal counsel",
+    "qualified legal professional"
+  ].some((phrase) => normalized.includes(phrase));
 }
 
 export function buildTopCriticalRiskLabel(value: unknown) {

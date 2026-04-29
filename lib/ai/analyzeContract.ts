@@ -59,6 +59,7 @@ Return a single JSON object with this exact structure:
 {
   "contractTitle": "string",
   "executiveSummary": "string",
+  "aiInsight": "string",
   "overallRiskLevel": "High | Medium | Low",
   "decisionRecommendation": "Accept | Renegotiate | Reject",
   "decisionRationale": "string",
@@ -97,6 +98,8 @@ Return a single JSON object with this exact structure:
 
 Rules:
 - Identify 5 to 12 meaningful risks unless the contract is very short.
+- Set aiInsight to exactly one concise, decision-oriented business sentence summarizing the most important exposure driver or drivers.
+- Base aiInsight only on the reviewed contract text and extracted risks; do not invent facts, use generic filler, or phrase it as legal advice.
 - Use confidence as a number between 0 and 1.
 - Quote only the minimum clause text needed for evidence.
 - Prefer actionable business language over legal jargon.
