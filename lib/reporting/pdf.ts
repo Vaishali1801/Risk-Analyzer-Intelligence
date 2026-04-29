@@ -70,28 +70,28 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
 
   drawHeader(doc, 0, 0, A4_WIDTH, 22);
 
-  let y = 29.5;
+  let y = 32;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
+  doc.setFontSize(19.5);
   doc.setTextColor(...hexToRgb(COLORS.navy));
   const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH, 2);
   titleLines.forEach((line) => {
     doc.text(line, DASHBOARD_MARGIN, y);
-    y += 7.2;
+    y += 7.5;
   });
 
-  drawDivider(doc, DASHBOARD_MARGIN, y - 2.1, DASHBOARD_WIDTH);
+  drawDivider(doc, DASHBOARD_MARGIN, y - 1.8, DASHBOARD_WIDTH);
 
-  const metadataY = y + 1.5;
+  const metadataY = y + 2.2;
   const metadataItems = [
     { label: "Source", value: dashboard.sourceType },
     { label: "Created", value: dashboard.documentCreated },
     { label: "Received", value: dashboard.receivedByRiskTeam },
     { label: "Generated", value: dashboard.reportGenerated }
   ];
-  drawMetadataStrip(doc, DASHBOARD_MARGIN, metadataY, DASHBOARD_WIDTH, 10, metadataItems);
+  drawMetadataStrip(doc, DASHBOARD_MARGIN, metadataY, DASHBOARD_WIDTH, 12, metadataItems);
 
-  y = metadataY + 16.5;
+  y = metadataY + 18;
 
   drawSectionTitle(doc, "DECISION SNAPSHOT", DASHBOARD_MARGIN, y);
   y += 5.2;
@@ -137,13 +137,13 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
     COLORS.lightBluePanel
   );
 
-  y += 43;
+  y += 46;
   drawDivider(doc, DASHBOARD_MARGIN, y - 4.5, DASHBOARD_WIDTH);
   drawSectionTitle(doc, "TOP ACTIONS / RECOMMENDED PRIORITIES", DASHBOARD_MARGIN, y);
   y += 5;
   const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
-  y += actionsHeight + 4.5;
+  y += actionsHeight + 9;
   drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 12, dashboard.pendingDecisionCount);
 }
 
@@ -265,7 +265,7 @@ function drawHeader(doc: jsPDF, x: number, y: number, width: number, height: num
 function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.8);
+  doc.setFontSize(8.2);
   doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
   const pageText = `Page ${pageNumber} of ${totalPages}`;
   doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
@@ -281,7 +281,7 @@ function drawFooters(doc: jsPDF) {
 
 function drawSectionTitle(doc: jsPDF, title: string, x: number, y: number) {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.6);
+  doc.setFontSize(10.1);
   doc.setTextColor(...hexToRgb(COLORS.navy));
   doc.text(title, x, y);
 }
@@ -299,25 +299,27 @@ function drawMetadataStrip(
   doc.setLineWidth(0.22);
   doc.roundedRect(x, y, width, height, 1.4, 1.4, "FD");
 
-  const itemWidth = width / items.length;
+  const widthRatios = [0.16, 0.22, 0.22, 0.4];
+  let itemX = x;
   items.forEach((item, index) => {
-    const itemX = x + itemWidth * index;
+    const itemWidth = width * (widthRatios[index] ?? 1 / items.length);
     if (index > 0) {
       doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
       doc.line(itemX, y + 2, itemX, y + height - 2);
     }
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.4);
+    doc.setFontSize(8);
     doc.setTextColor(...hexToRgb(COLORS.mutedText));
     const label = `${item.label}:`;
-    doc.text(label, itemX + 3.2, y + 6.4);
+    doc.text(label, itemX + 3.4, y + 7.3);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.7);
+    doc.setFontSize(8.2);
     doc.setTextColor(...hexToRgb(COLORS.darkText));
-    const valueX = itemX + 3.2 + doc.getTextWidth(label) + 1.2;
-    doc.text(clampSingleLine(doc, item.value || "Not available", itemWidth - (valueX - itemX) - 3), valueX, y + 6.4);
+    const valueX = itemX + 3.4 + doc.getTextWidth(label) + 1.4;
+    doc.text(clampSingleLine(doc, item.value || "Not available", itemWidth - (valueX - itemX) - 3.4), valueX, y + 7.3);
+    itemX += itemWidth;
   });
 }
 
@@ -341,7 +343,7 @@ function drawKpiCard(
   const contentWidth = width - 17;
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.1);
+  doc.setFontSize(8.5);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.text(label, contentX, y + 7.3);
 
@@ -350,12 +352,12 @@ function drawKpiCard(
   const isNumericValue = /^\d+$/.test(value);
 
   if (isNumericValue) {
-    doc.setFontSize(16);
+    doc.setFontSize(16.5);
     doc.text(value, contentX, y + 17.2);
     return;
   }
 
-  doc.setFontSize(10.5);
+  doc.setFontSize(10.8);
   const valueLines = clampTextLines(doc, value, contentWidth, 2);
   if (valueLines.length === 1) {
     doc.text(valueLines[0], contentX, y + 16.1);
@@ -381,10 +383,10 @@ function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: n
   doc.text(title, x + 19, y + 11);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.2);
+  doc.setFontSize(9.6);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const lineHeight = 4.9;
-  const bodyY = y + 18.2;
+  const lineHeight = 5.3;
+  const bodyY = y + 18.8;
   const maxLines = Math.max(2, Math.floor((height - 19) / lineHeight) + 1);
   const lines = clampTextLines(doc, body, width - 25, maxLines);
   drawWrappedText(doc, lines, x + 19, bodyY, lineHeight);
