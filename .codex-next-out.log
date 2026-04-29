@@ -9,3 +9,11 @@
  ✓ Ready in 2.7s
  ○ Compiling / ...
  ✓ Compiled / in 1060ms (538 modules)
+ GET / 200 in 1299ms
+ GET / 200 in 99ms
+ GET / 200 in 70ms
+ ○ Compiling /api/demo ...
+ ✓ Compiled /api/demo in 1643ms (454 modules)
+ GET /api/demo 200 in 2229ms
+ ○ Compiling /analysis ...
+ ✓ Compiled /analysis in 4s (1163 modules)
