@@ -68,7 +68,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
 
-  drawHeader(doc, 0, 0, A4_WIDTH, 22);
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
 
   let y = 32;
   doc.setFont("helvetica", "bold");
@@ -253,13 +253,25 @@ function drawHeader(doc: jsPDF, x: number, y: number, width: number, height: num
   doc.setFillColor(...hexToRgb(COLORS.navy));
   doc.rect(x, y, width, height, "F");
 
+  drawHeaderAiIcon(doc, DASHBOARD_MARGIN + 4, y + height / 2);
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
+  doc.setFontSize(14);
   doc.setTextColor(...hexToRgb(COLORS.white));
-  doc.text("AI Risk Analyzer", DASHBOARD_MARGIN + 2, y + height / 2 + 1.8);
+  doc.text("AI Risk Analyzer", DASHBOARD_MARGIN + 10, y + height / 2 + 1.6);
 
   const rightTitle = "Risk Review Report";
-  doc.text(rightTitle, x + width - doc.getTextWidth(rightTitle) - DASHBOARD_MARGIN - 2, y + height / 2 + 1.8);
+  doc.text(rightTitle, x + width - doc.getTextWidth(rightTitle) - DASHBOARD_MARGIN - 2, y + height / 2 + 1.6);
+}
+
+function drawHeaderAiIcon(doc: jsPDF, cx: number, cy: number) {
+  doc.setDrawColor(...hexToRgb(COLORS.white));
+  doc.setLineWidth(0.45);
+  doc.circle(cx, cy, 3.6, "S");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.7);
+  doc.setTextColor(...hexToRgb(COLORS.white));
+  doc.text("AI", cx - 2.3, cy + 1.8);
 }
 
 function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
@@ -336,8 +348,8 @@ function drawKpiCard(
 ) {
   drawCard(doc, x, y, width, height, fillColor, true);
   doc.setFillColor(...hexToRgb(COLORS.white));
-  doc.circle(x + 7.5, y + height / 2, 4.8, "F");
-  drawBadge(doc, x + 5.8, y + height / 2 - 1.7, 3.4, valueColor);
+  doc.circle(x + 7.5, y + height / 2, 4.5, "F");
+  drawKpiIcon(doc, label, x + 7.5, y + height / 2, valueColor);
 
   const contentX = x + 14.5;
   const contentWidth = width - 17;
@@ -370,12 +382,7 @@ function drawKpiCard(
 
 function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string, background: string) {
   drawCard(doc, x, y, width, height, background, true);
-  doc.setFillColor(...hexToRgb(COLORS.revisedBlue));
-  doc.circle(x + 10, y + 10.8, 5.1, "F");
-  doc.setTextColor(...hexToRgb(COLORS.white));
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.2);
-  doc.text(title === "INSIGHT" ? "i" : "S", x + 9.2, y + 13.4);
+  drawCardIcon(doc, title, x + 9.5, y + 10.6);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.3);
@@ -415,6 +422,55 @@ function drawSeverityBadge(doc: jsPDF, x: number, y: number, severity: string) {
 
 function drawDecisionBadge(doc: jsPDF, x: number, y: number, decision: string) {
   drawBadge(doc, x, y, 3.3, getDecisionColor(decision));
+}
+
+function drawKpiIcon(doc: jsPDF, label: string, cx: number, cy: number, color: string) {
+  doc.setDrawColor(...hexToRgb(color));
+  doc.setLineWidth(0.45);
+
+  if (label === "Overall Decision") {
+    doc.circle(cx, cy, 2.5, "S");
+    doc.line(cx - 1.2, cy, cx - 0.2, cy + 1);
+    doc.line(cx - 0.2, cy + 1, cx + 1.4, cy - 1);
+    return;
+  }
+
+  if (label === "Overall Risk" || label === "Critical Risks") {
+    doc.line(cx, cy - 2.6, cx - 2.4, cy + 1.9);
+    doc.line(cx - 2.4, cy + 1.9, cx + 2.4, cy + 1.9);
+    doc.line(cx + 2.4, cy + 1.9, cx, cy - 2.6);
+    doc.line(cx, cy - 0.7, cx, cy + 0.6);
+    doc.circle(cx, cy + 1.3, 0.25, "S");
+    return;
+  }
+
+  doc.roundedRect(cx - 2.2, cy - 2.5, 4.4, 5, 0.6, 0.6, "S");
+  doc.line(cx - 1.2, cy - 1.1, cx + 1.2, cy - 1.1);
+  doc.line(cx - 1.2, cy + 0.2, cx + 1.2, cy + 0.2);
+  doc.line(cx - 1.2, cy + 1.5, cx + 0.6, cy + 1.5);
+}
+
+function drawCardIcon(doc: jsPDF, title: string, cx: number, cy: number) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.setDrawColor(...hexToRgb(COLORS.revisedBlue));
+  doc.setLineWidth(0.35);
+  doc.roundedRect(cx - 4, cy - 4, 8, 8, 1.7, 1.7, "FD");
+  doc.setDrawColor(...hexToRgb(COLORS.revisedBlue));
+  doc.setLineWidth(0.45);
+
+  if (title === "INSIGHT") {
+    doc.line(cx, cy - 2.4, cx, cy + 2.4);
+    doc.line(cx - 2.4, cy, cx + 2.4, cy);
+    doc.line(cx - 1.7, cy - 1.7, cx + 1.7, cy + 1.7);
+    doc.line(cx - 1.7, cy + 1.7, cx + 1.7, cy - 1.7);
+    doc.circle(cx, cy, 0.7, "S");
+    return;
+  }
+
+  doc.roundedRect(cx - 2.1, cy - 2.5, 4.2, 5, 0.5, 0.5, "S");
+  doc.line(cx - 1.1, cy - 1.1, cx + 1.1, cy - 1.1);
+  doc.line(cx - 1.1, cy + 0.1, cx + 1.1, cy + 0.1);
+  doc.line(cx - 1.1, cy + 1.3, cx + 0.7, cy + 1.3);
 }
 
 function drawDivider(doc: jsPDF, x: number, y: number, width: number) {
@@ -596,11 +652,11 @@ function drawTopActionCard(doc: jsPDF, x: number, y: number, width: number, heig
   const colors = [COLORS.highRed, COLORS.mediumAmber, COLORS.pendingAmber, COLORS.lowGreen];
   const color = colors[(index - 1) % colors.length];
   doc.setFillColor(...hexToRgb(color));
-  doc.circle(x + 7, y + 7, 3.8, "F");
+  doc.circle(x + 6.5, y + 6.5, 3.2, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.4);
+  doc.setFontSize(6.9);
   doc.setTextColor(...hexToRgb(COLORS.white));
-  doc.text(String(index), x + 6.1, y + 9.6);
+  doc.text(String(index), x + 5.7, y + 8.8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
