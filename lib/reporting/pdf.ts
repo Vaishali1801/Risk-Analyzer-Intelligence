@@ -167,6 +167,13 @@ type DashboardData = {
   topActions: string[];
 };
 
+const TOP_ACTION_FALLBACKS = [
+  "Strengthen payment certainty and remove broad withholding",
+  "Cap supplier indemnity to align with liability cap",
+  "Rebalance termination rights and payment for completed work",
+  "Limit audit rights and clarify data processing responsibilities"
+];
+
 function getDashboardData(reportModel: ReportModel): DashboardData {
   const document = reportModel.document;
   const documentRecord = document as unknown as Record<string, unknown>;
@@ -236,13 +243,7 @@ function getTopActions(reportModel: ReportModel) {
 }
 
 function padActions(actions: string[]) {
-  const fallbackActions = [
-    "Strengthen payment certainty and remove broad withholding",
-    "Cap supplier indemnity to align with liability cap",
-    "Rebalance termination rights and payment for completed work",
-    "Limit audit rights and clarify data processing responsibilities"
-  ];
-  return [...actions, ...fallbackActions].slice(0, 4);
+  return [...actions, ...TOP_ACTION_FALLBACKS].slice(0, 4);
 }
 
 function isPendingDecision(row: FinalReviewRow) {
@@ -327,26 +328,23 @@ function drawMetadataStrip(
   doc.setLineWidth(0.22);
   doc.roundedRect(x, y, width, height, 1.4, 1.4, "FD");
 
-  const widthRatios = [0.16, 0.22, 0.22, 0.4];
+  const itemWidth = width / items.length;
   let itemX = x;
   items.forEach((item, index) => {
-    const itemWidth = width * (widthRatios[index] ?? 1 / items.length);
     if (index > 0) {
       doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
       doc.line(itemX, y + 2, itemX, y + height - 2);
     }
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(6.8);
     doc.setTextColor(...hexToRgb(COLORS.mutedText));
-    const label = `${item.label}:`;
-    doc.text(label, itemX + 3.4, y + 7.3);
+    doc.text(item.label, itemX + 3.5, y + 4.8);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.2);
+    doc.setFontSize(7.7);
     doc.setTextColor(...hexToRgb(COLORS.darkText));
-    const valueX = itemX + 3.4 + doc.getTextWidth(label) + 1.4;
-    doc.text(clampSingleLine(doc, item.value || "Not available", itemWidth - (valueX - itemX) - 3.4), valueX, y + 7.3);
+    doc.text(clampSingleLine(doc, item.value || "Not available", itemWidth - 7), itemX + 3.5, y + 9.4);
     itemX += itemWidth;
   });
 }
@@ -363,37 +361,37 @@ function drawKpiCard(
   fillColor: string
 ) {
   drawCard(doc, x, y, width, height, fillColor, true);
-  doc.setFillColor(...hexToRgb(COLORS.white));
-  doc.circle(x + 7.1, y + height / 2, 4.6, "F");
-  drawKpiIcon(doc, label, x + 7.1, y + height / 2, valueColor);
+  const centerX = x + width / 2;
+  const contentWidth = width - 7;
 
-  const contentX = x + 13.4;
-  const contentWidth = width - 15.8;
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.circle(centerX, y + 4.7, 3.35, "F");
+  drawKpiIcon(doc, label, centerX, y + 4.7, valueColor);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.9);
+  doc.setFontSize(8.3);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(label, contentX, y + 6.9);
+  doc.text(label, centerX, y + 10.3, { align: "center" });
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...hexToRgb(valueColor));
   const isNumericValue = /^\d+$/.test(value);
 
   if (isNumericValue) {
-    doc.setFontSize(16.2);
-    doc.text(value, contentX, y + 16.1);
+    doc.setFontSize(14.8);
+    doc.text(value, centerX, y + 17.1, { align: "center" });
     return;
   }
 
-  doc.setFontSize(11);
+  doc.setFontSize(9.6);
   const valueLines = clampTextLines(doc, value, contentWidth, 2);
   if (valueLines.length === 1) {
-    doc.text(valueLines[0], contentX, y + 15.4);
+    doc.text(valueLines[0], centerX, y + 16.4, { align: "center" });
     return;
   }
 
-  doc.text(valueLines[0], contentX, y + 12.9);
-  doc.text(valueLines[1], contentX, y + 17);
+  doc.text(valueLines[0], centerX, y + 14.2, { align: "center" });
+  doc.text(valueLines[1], centerX, y + 17.6, { align: "center" });
 }
 
 function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string, background: string) {
@@ -442,28 +440,39 @@ function drawDecisionBadge(doc: jsPDF, x: number, y: number, decision: string) {
 
 function drawKpiIcon(doc: jsPDF, label: string, cx: number, cy: number, color: string) {
   doc.setDrawColor(...hexToRgb(color));
-  doc.setLineWidth(0.45);
+  doc.setLineWidth(0.38);
 
   if (label === "Overall Decision") {
-    doc.circle(cx, cy, 2.8, "S");
-    doc.line(cx - 1.35, cy, cx - 0.25, cy + 1.15);
-    doc.line(cx - 0.25, cy + 1.15, cx + 1.55, cy - 1.15);
+    doc.circle(cx, cy, 2.05, "S");
+    doc.line(cx - 1, cy, cx - 0.2, cy + 0.8);
+    doc.line(cx - 0.2, cy + 0.8, cx + 1.15, cy - 0.9);
     return;
   }
 
-  if (label === "Overall Risk" || label === "Critical Risks") {
-    doc.line(cx, cy - 2.85, cx - 2.65, cy + 2.05);
-    doc.line(cx - 2.65, cy + 2.05, cx + 2.65, cy + 2.05);
-    doc.line(cx + 2.65, cy + 2.05, cx, cy - 2.85);
-    doc.line(cx, cy - 0.8, cx, cy + 0.7);
-    doc.circle(cx, cy + 1.45, 0.28, "S");
+  if (label === "Overall Risk") {
+    doc.line(cx, cy - 2.25, cx - 2.1, cy + 1.75);
+    doc.line(cx - 2.1, cy + 1.75, cx + 2.1, cy + 1.75);
+    doc.line(cx + 2.1, cy + 1.75, cx, cy - 2.25);
+    doc.line(cx, cy - 0.55, cx, cy + 0.65);
+    doc.circle(cx, cy + 1.2, 0.22, "S");
     return;
   }
 
-  doc.roundedRect(cx - 2.45, cy - 2.75, 4.9, 5.5, 0.65, 0.65, "S");
-  doc.line(cx - 1.35, cy - 1.25, cx + 1.35, cy - 1.25);
-  doc.line(cx - 1.35, cy + 0.2, cx + 1.35, cy + 0.2);
-  doc.line(cx - 1.35, cy + 1.65, cx + 0.75, cy + 1.65);
+  if (label === "Critical Risks") {
+    doc.setLineWidth(0.46);
+    doc.line(cx, cy - 2.35, cx + 2.2, cy);
+    doc.line(cx + 2.2, cy, cx, cy + 2.35);
+    doc.line(cx, cy + 2.35, cx - 2.2, cy);
+    doc.line(cx - 2.2, cy, cx, cy - 2.35);
+    doc.line(cx, cy - 1.05, cx, cy + 0.65);
+    doc.circle(cx, cy + 1.35, 0.24, "S");
+    return;
+  }
+
+  doc.roundedRect(cx - 1.85, cy - 2.15, 3.7, 4.3, 0.5, 0.5, "S");
+  doc.line(cx - 1, cy - 0.95, cx + 1, cy - 0.95);
+  doc.line(cx - 1, cy + 0.15, cx + 1, cy + 0.15);
+  doc.line(cx - 1, cy + 1.25, cx + 0.55, cy + 1.25);
 }
 
 function drawCardIcon(doc: jsPDF, title: string, cx: number, cy: number) {
@@ -647,40 +656,34 @@ function polarPoint(cx: number, cy: number, radius: number, angle: number) {
 }
 
 function drawTopActions(doc: jsPDF, x: number, y: number, width: number, actions: string[]) {
-  const visibleActions = actions.slice(0, 4);
-  if (!visibleActions.length) return 0;
+  const visibleActions = [...actions.filter(Boolean), ...TOP_ACTION_FALLBACKS].slice(0, 4);
 
-  const columnGap = 4;
-  const rowGap = 3;
-  const columns = visibleActions.length === 1 ? 1 : 2;
-  const cardWidth = (width - columnGap * (columns - 1)) / columns;
-  const cardHeight = 17;
+  const gap = 3;
+  const cardWidth = (width - gap * 3) / 4;
+  const cardHeight = 25;
 
   visibleActions.forEach((action, index) => {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    const cardX = x + column * (cardWidth + columnGap);
-    const cardY = y + row * (cardHeight + rowGap);
-    drawTopActionCard(doc, cardX, cardY, cardWidth, cardHeight, index + 1, action);
+    const cardX = x + index * (cardWidth + gap);
+    drawTopActionCard(doc, cardX, y, cardWidth, cardHeight, index + 1, action);
   });
 
-  return Math.ceil(visibleActions.length / columns) * cardHeight + (Math.ceil(visibleActions.length / columns) - 1) * rowGap;
+  return cardHeight;
 }
 
 function drawTopActionCard(doc: jsPDF, x: number, y: number, width: number, height: number, index: number, action: string) {
   drawCard(doc, x, y, width, height, COLORS.white, true);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text(String(index), x + 4.4, y + 7.7);
+  doc.text(String(index), x + 4.4, y + 8);
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.7);
+  doc.setFontSize(7.6);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const textX = x + 11.2;
-  const lines = clampTextLines(doc, action, width - 15.2, 2);
-  drawWrappedText(doc, lines, textX, y + 7.5, 4.3);
+  const textX = x + 10;
+  const lines = clampTextLines(doc, action, width - 13.5, 4);
+  drawWrappedText(doc, lines, textX, y + 7.8, 4.05);
 }
 
 function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: number, height: number, pendingCount: number) {
