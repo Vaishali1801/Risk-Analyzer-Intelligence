@@ -88,9 +88,11 @@ export function downloadReportPdf(reportModel: ReportModel) {
   drawDetailedRiskAnalysisPages(doc, reportModel);
 
   doc.addPage();
+  const finalReviewStartPage = doc.getNumberOfPages();
   drawFinalReviewPages(doc, reportModel);
+  const finalReviewEndPage = doc.getNumberOfPages();
 
-  drawFooters(doc);
+  drawFooters(doc, finalReviewStartPage, finalReviewEndPage);
   doc.save(getReportFileName(document.documentName));
 }
 
@@ -324,14 +326,22 @@ function drawHeaderAiIcon(doc: jsPDF, cx: number, cy: number) {
   });
 }
 
-function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
+function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number, finalReviewStartPage?: number, finalReviewEndPage?: number) {
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
-  if (pageNumber === 2) {
+  const isFinalReviewPage =
+    typeof finalReviewStartPage === "number" &&
+    typeof finalReviewEndPage === "number" &&
+    pageNumber >= finalReviewStartPage &&
+    pageNumber <= finalReviewEndPage;
+  if (pageNumber === 2 || isFinalReviewPage) {
     doc.setFontSize(7.8);
-    doc.text("All identified risks are included for review and remediation.", A4_WIDTH / 2, FOOTER_TOP + 7.9, {
+    const footerNote = isFinalReviewPage
+      ? "All identified risks are included for review and final decision"
+      : "All identified risks are included for review and remediation.";
+    doc.text(footerNote, A4_WIDTH / 2, FOOTER_TOP + 7.9, {
       align: "center"
     });
     doc.setFontSize(8.2);
@@ -340,11 +350,11 @@ function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
 }
 
-function drawFooters(doc: jsPDF) {
+function drawFooters(doc: jsPDF, finalReviewStartPage?: number, finalReviewEndPage?: number) {
   const pageCount = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     doc.setPage(pageNumber);
-    drawFooter(doc, pageNumber, pageCount);
+    drawFooter(doc, pageNumber, pageCount, finalReviewStartPage, finalReviewEndPage);
   }
 }
 
@@ -1177,10 +1187,16 @@ function getMeaningfulFinalClause(row: FinalReviewRow) {
 function drawFinalReviewPages(doc: jsPDF, reportModel: ReportModel) {
   let y = drawFinalReviewPageStart(doc, reportModel, "FINAL REVIEW");
   y = drawRecommendedDecisionHero(doc, y, reportModel);
-  y += 7;
+  y += 8.2;
 
   drawSectionTitle(doc, "REVIEW SUMMARY", DASHBOARD_MARGIN, y);
-  y += 4.4;
+  y += 5.1;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.4);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text("Summary of final decisions across all identified risks:", DASHBOARD_MARGIN, y);
+  y += 4.8;
 
   drawFinalReviewSummaryTable(doc, reportModel, y);
 }
@@ -1203,9 +1219,13 @@ function drawRecommendedDecisionHero(doc: jsPDF, y: number, reportModel: ReportM
   const color = getDecisionColor(decision);
   const isHold = decision === "Hold for Review" || decision === "Reject";
   const fill = isHold ? COLORS.softAmber : decision === "Approve" ? COLORS.softGreen : COLORS.lightBluePanel;
-  const height = 31;
+  const height = 17.5;
   const x = DASHBOARD_MARGIN;
   const width = DASHBOARD_WIDTH;
+  const statBoxWidth = 70;
+  const statBoxX = x + width - statBoxWidth - 8;
+  const titleY = y + 5.4;
+  const dataY = y + 12.6;
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(tintColor(color)));
@@ -1215,39 +1235,46 @@ function drawRecommendedDecisionHero(doc: jsPDF, y: number, reportModel: ReportM
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.2);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text("RECOMMENDED DECISION", x + 9, y + 8.2);
+  doc.text("RECOMMENDED DECISION", x + 9, titleY);
 
-  const decisionX = x + (isHold ? 20 : 9);
+  const decisionX = x + (isHold ? 16 : 9);
   if (isHold) {
-    drawDecisionAlertIcon(doc, x + 12.2, y + 18.7, color);
+    drawDecisionAlertIcon(doc, x + 11.3, dataY - 1.5, color);
   }
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
+  doc.setFontSize(11.2);
   doc.setTextColor(...hexToRgb(color));
-  doc.text(decision, decisionX, y + 20.7);
+  doc.text(decision, decisionX, dataY);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.7);
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.25);
+  doc.line(statBoxX - 6, y + 3.2, statBoxX - 6, y + height - 3.2);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.6);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  doc.text("REVIEW STATUS", statBoxX, titleY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.1);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(
-    `${counts.Revised} Revised ${DETAIL_META_SEPARATOR}${counts.Accepted} Accepted ${DETAIL_META_SEPARATOR}${counts.Pending} Pending`,
-    x + 9,
-    y + 27.1
-  );
+  doc.text(`Revised: ${counts.Revised}`, statBoxX, dataY);
+  doc.text(`Accepted: ${counts.Accepted}`, statBoxX + 25, dataY);
+  doc.text(`Pending: ${counts.Pending}`, statBoxX + 53, dataY);
 
   return y + height;
 }
 
 function drawDecisionAlertIcon(doc: jsPDF, cx: number, cy: number, color: string) {
-  doc.setFillColor(...hexToRgb(tintColor(color)));
   doc.setDrawColor(...hexToRgb(color));
-  doc.setLineWidth(0.45);
-  doc.circle(cx, cy, 3.7, "FD");
+  doc.setLineWidth(0.48);
+  doc.line(cx, cy - 2.7, cx - 2.6, cy + 1.9);
+  doc.line(cx - 2.6, cy + 1.9, cx + 2.6, cy + 1.9);
+  doc.line(cx + 2.6, cy + 1.9, cx, cy - 2.7);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(6.1);
   doc.setTextColor(...hexToRgb(color));
-  doc.text("!", cx, cy + 2.15, { align: "center" });
+  doc.text("!", cx, cy + 1.25, { align: "center" });
 }
 
 function drawFinalReviewSummaryTable(doc: jsPDF, reportModel: ReportModel, y: number) {
