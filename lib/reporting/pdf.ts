@@ -2,7 +2,9 @@
 
 import jsPDF from "jspdf";
 import { getReportFileName } from "@/lib/reporting/metadata";
+import { buildPdfReportModel } from "@/lib/reporting/pdf-model";
 import type { FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
+import type { PdfReportModel } from "@/lib/reporting/pdf-model";
 import type { AnalysisSource } from "@/types/contract";
 
 const PAGE_TOP = 18;
@@ -76,27 +78,32 @@ type SummaryRiskRow = {
   index: number;
 };
 
+type PdfSummaryRiskRow = PdfReportModel["summaryRisks"][number];
+type PdfDetailedRiskRow = PdfReportModel["detailedRisks"][number];
+type PdfFinalReviewRow = PdfReportModel["finalReview"]["rows"][number];
+
 export function downloadReportPdf(reportModel: ReportModel) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pdfData = buildPdfReportModel(reportModel);
   const document = reportModel.document;
-  drawExecutiveDashboardPage(doc, reportModel);
+  drawExecutiveDashboardPage(doc, pdfData);
 
   doc.addPage();
-  drawRiskDriversSummaryPage(doc, reportModel);
+  drawRiskDriversSummaryPage(doc, reportModel, pdfData);
 
   doc.addPage();
-  drawDetailedRiskAnalysisPages(doc, reportModel);
+  drawDetailedRiskAnalysisPages(doc, reportModel, pdfData);
 
   doc.addPage();
-  drawFinalReviewPages(doc, reportModel);
+  drawFinalReviewPages(doc, reportModel, pdfData);
 
-  drawFooters(doc);
+  drawFooters(doc, pdfData);
   doc.save(getReportFileName(document.documentName));
 }
 
-function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
-  const document = reportModel.document;
-  const dashboard = getDashboardData(reportModel);
+function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
+  const metadata = pdfData.metadata;
+  const dashboard = pdfData.dashboard;
 
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
@@ -107,7 +114,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(19.5);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH, 2);
+  const titleLines = clampTextLines(doc, metadata.documentTitle, DASHBOARD_WIDTH, 2);
   titleLines.forEach((line) => {
     doc.text(line, DASHBOARD_MARGIN, y);
     y += 7.5;
@@ -117,10 +124,10 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
 
   const metadataY = y + 2.2;
   const metadataItems = [
-    { label: "Source", value: dashboard.sourceType },
-    { label: "Created", value: dashboard.documentCreated },
-    { label: "Received", value: dashboard.receivedByRiskTeam },
-    { label: "Generated", value: dashboard.reportGenerated }
+    { label: "Source", value: metadata.sourceLabel },
+    { label: "Created", value: metadata.createdDateLabel },
+    { label: "Received", value: metadata.receivedDateLabel },
+    { label: "Generated", value: metadata.generatedDateLabel }
   ];
   drawMetadataStrip(doc, DASHBOARD_MARGIN, metadataY, DASHBOARD_WIDTH, 12, metadataItems);
 
@@ -131,8 +138,8 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
   const kpiGap = 4;
   const kpiWidth = (DASHBOARD_WIDTH - kpiGap * 3) / 4;
   const kpiCards = [
-    { label: "Overall Decision", value: reportModel.overallDecision, color: getDecisionColor(reportModel.overallDecision), fill: COLORS.softAmber },
-    { label: "Overall Risk", value: document.overallRiskLevel, color: getSeverityColor(document.overallRiskLevel), fill: COLORS.softRed },
+    { label: "Overall Decision", value: dashboard.overallDecision, color: getDecisionColor(dashboard.overallDecision), fill: COLORS.softAmber },
+    { label: "Overall Risk", value: dashboard.overallRisk ?? "Not available", color: getSeverityColor(dashboard.overallRisk), fill: COLORS.softRed },
     { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy, fill: COLORS.softBlueGrey },
     { label: "Critical Risks", value: String(dashboard.criticalRisks), color: COLORS.highRed, fill: COLORS.softRed }
   ];
@@ -155,7 +162,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
     DASHBOARD_WIDTH,
     30,
     "INSIGHT",
-    dashboard.aiInsight || "Key risk concentration identified from the analyzed document.",
+    dashboard.insight,
     COLORS.lightBluePanel
   );
   y += 33;
@@ -166,7 +173,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
     DASHBOARD_WIDTH,
     38,
     "EXECUTIVE SUMMARY",
-    dashboard.executiveSummary || "Executive summary is not available.",
+    dashboard.executiveSummary,
     COLORS.lightBluePanel
   );
 
@@ -177,7 +184,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, reportModel: ReportModel) {
   const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
   y += actionsHeight + 7;
-  drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 12, dashboard.pendingDecisionCount);
+  drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 12, pdfData.finalReview.counts.pending, dashboard.statusMessage);
 }
 
 type DashboardBreakdownItem = {
@@ -324,13 +331,13 @@ function drawHeaderAiIcon(doc: jsPDF, cx: number, cy: number) {
   });
 }
 
-function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
+function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number, footer?: PdfReportModel["footer"]) {
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
-  doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
+  doc.text(footer?.left ?? "Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
   doc.setFontSize(7.8);
-  doc.text("For internal review and decision support", A4_WIDTH / 2, FOOTER_TOP + 7.9, {
+  doc.text(footer?.center ?? "For internal review and decision support", A4_WIDTH / 2, FOOTER_TOP + 7.9, {
     align: "center"
   });
   doc.setFontSize(8.2);
@@ -338,11 +345,11 @@ function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
 }
 
-function drawFooters(doc: jsPDF) {
+function drawFooters(doc: jsPDF, pdfData: PdfReportModel) {
   const pageCount = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     doc.setPage(pageNumber);
-    drawFooter(doc, pageNumber, pageCount);
+    drawFooter(doc, pageNumber, pageCount, pageNumber === 2 ? pdfData.footer : undefined);
   }
 }
 
@@ -435,7 +442,7 @@ function drawKpiCard(
   doc.text(valueLines[1], textCenterX, y + 15.6, { align: "center" });
 }
 
-function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string, background: string) {
+function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string | null, background: string) {
   drawCard(doc, x, y, width, height, background, true);
   drawCardIcon(doc, title, x + 9.5, y + 10.6);
 
@@ -450,7 +457,7 @@ function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: n
   const lineHeight = 5.3;
   const bodyY = y + 18.8;
   const maxLines = Math.max(2, Math.floor((height - 19) / lineHeight) + 1);
-  const lines = clampTextLines(doc, body, width - 25, maxLines);
+  const lines = clampTextLines(doc, body ?? "", width - 25, maxLines);
   drawWrappedText(doc, lines, x + 19, bodyY, lineHeight);
 }
 
@@ -545,13 +552,13 @@ function drawDivider(doc: jsPDF, x: number, y: number, width: number) {
   doc.line(x, y, x + width, y);
 }
 
-function drawSeverityMixCard(doc: jsPDF, x: number, y: number, width: number, height: number, dashboard: DashboardData) {
+function drawSeverityMixCard(doc: jsPDF, x: number, y: number, width: number, height: number, dashboard: PdfReportModel["dashboard"]) {
   drawCard(doc, x, y, width, height, COLORS.white, true);
   drawSectionTitle(doc, "SEVERITY MIX", x + 3, y + 8);
 
   const severities = ["High", "Medium", "Low"] as const;
   severities.forEach((severity, index) => {
-    const count = dashboard.severityMix[severity];
+    const count = getPdfSeverityMixCount(dashboard.severityMix, severity);
     const rowY = y + 16.8 + index * 9.7;
     doc.setFillColor(...hexToRgb(COLORS.lightBackground));
     doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
@@ -622,13 +629,13 @@ function drawCategoryBreakdown(
   y: number,
   width: number,
   height: number,
-  items: DashboardBreakdownItem[],
+  items: PdfReportModel["dashboard"]["categoryBreakdown"],
   totalRisks: number
 ) {
   drawCard(doc, x, y, width, height, COLORS.white, true);
   drawSectionTitle(doc, "CATEGORY BREAKDOWN", x + 3, y + 8);
 
-  const visibleItems = items.length ? items.slice(0, 5) : [{ label: "Uncategorized", count: 0 }];
+  const visibleItems = items.slice(0, 5);
   drawDonutChart(doc, x + 24.5, y + 27.2, 11.8, 5.2, visibleItems, totalRisks);
 
   visibleItems.forEach((item, index) => {
@@ -637,8 +644,8 @@ function drawCategoryBreakdown(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.3);
     doc.setTextColor(...hexToRgb(COLORS.darkText));
-    doc.text(clampSingleLine(doc, item.label, 31), x + 54, rowY);
-    const value = `${item.count} (${formatPercent(item.count, totalRisks)})`;
+    doc.text(clampSingleLine(doc, item.category, 31), x + 54, rowY);
+    const value = `${item.count} (${formatPercentage(item.percentage)})`;
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...hexToRgb(COLORS.navy));
     doc.text(value, x + width - doc.getTextWidth(value) - 4, rowY);
@@ -651,7 +658,7 @@ function drawDonutChart(
   cy: number,
   radius: number,
   lineWidth: number,
-  items: DashboardBreakdownItem[],
+  items: Array<{ count: number }>,
   total: number
 ) {
   doc.setLineWidth(lineWidth);
@@ -697,7 +704,7 @@ function polarPoint(cx: number, cy: number, radius: number, angle: number) {
 }
 
 function drawTopActions(doc: jsPDF, x: number, y: number, width: number, actions: string[]) {
-  const visibleActions = [...actions.filter(Boolean), ...TOP_ACTION_FALLBACKS].slice(0, 4);
+  const visibleActions = actions.filter(Boolean).slice(0, 4);
 
   const columnGap = 4;
   const rowGap = 3;
@@ -731,13 +738,10 @@ function drawTopActionCard(doc: jsPDF, x: number, y: number, width: number, heig
   drawWrappedText(doc, lines, textX, y + 7.5, 4.3);
 }
 
-function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: number, height: number, pendingCount: number) {
+function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: number, height: number, pendingCount: number, statusMessage: string) {
   const hasPending = pendingCount > 0;
   const fill = hasPending ? COLORS.softRed : COLORS.softGreen;
   const color = hasPending ? COLORS.highRed : COLORS.lowGreen;
-  const text = hasPending
-    ? "Pending decisions remain. Resolve pending items before finalizing."
-    : "All risk decisions have been reviewed.";
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(color));
@@ -749,12 +753,10 @@ function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: numbe
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(color));
-  doc.text(text, x + 43, y + height / 2 + 1.4);
+  doc.text(statusMessage, x + 43, y + height / 2 + 1.4);
 }
 
-function drawRiskDriversSummaryPage(doc: jsPDF, reportModel: ReportModel) {
-  const rows = getSummaryRiskRows(reportModel);
-
+function drawRiskDriversSummaryPage(doc: jsPDF, reportModel: ReportModel, pdfData: PdfReportModel) {
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
   drawHeader(doc, 0, 0, A4_WIDTH, 18);
@@ -764,12 +766,12 @@ function drawRiskDriversSummaryPage(doc: jsPDF, reportModel: ReportModel) {
 
   drawSectionTitle(doc, "KEY RISK DRIVERS (TOP 4)", DASHBOARD_MARGIN, y);
   y += 4.5;
-  y = drawRiskDriverCards(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, rows);
+  y = drawRiskDriverCards(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, pdfData.summaryRisks);
 
   y += 8;
   drawSectionTitle(doc, "ALL IDENTIFIED RISKS (SUMMARY REGISTER)", DASHBOARD_MARGIN, y);
   y += 4.2;
-  drawSummaryRiskRegister(doc, y, DASHBOARD_MARGIN, DASHBOARD_WIDTH, rows);
+  drawSummaryRiskRegister(doc, y, DASHBOARD_MARGIN, DASHBOARD_WIDTH, pdfData.summaryRisks);
 }
 
 function drawReportTitleAndMetadata(doc: jsPDF, reportModel: ReportModel) {
@@ -845,16 +847,16 @@ type DetailedRiskBlockLayout = {
   totalHeight: number;
 };
 
-function drawDetailedRiskAnalysisPages(doc: jsPDF, reportModel: ReportModel) {
+function drawDetailedRiskAnalysisPages(doc: jsPDF, reportModel: ReportModel, pdfData: PdfReportModel) {
   let y = drawDetailedRiskAnalysisPageStart(doc, reportModel, false);
 
-  if (!reportModel.finalReviewRows.length) {
+  if (!pdfData.detailedRisks.length) {
     drawEmptyDetailedRiskState(doc, y);
     return;
   }
 
-  reportModel.finalReviewRows.forEach((row, index) => {
-    const block = buildDetailedRiskBlock(row, index);
+  pdfData.detailedRisks.forEach((risk) => {
+    const block = buildDetailedRiskBlock(risk);
     y = drawDetailedRiskBlockWithPagination(doc, reportModel, y, block);
   });
 }
@@ -879,55 +881,14 @@ function drawEmptyDetailedRiskState(doc: jsPDF, y: number) {
   doc.text("No detailed risk findings are available.", DASHBOARD_MARGIN, y);
 }
 
-function buildDetailedRiskBlock(row: FinalReviewRow, index: number): DetailedRiskBlock {
-  const finding = row.finding;
-  const findingRecord = finding as unknown as Record<string, unknown>;
-  const rowRecord = row as unknown as Record<string, unknown>;
-  const title =
-    safeText(finding.riskTitle) ||
-    getFirstString(findingRecord, ["title", "risk", "name"]) ||
-    getFirstString(rowRecord, ["title", "risk", "name"]) ||
-    "Untitled risk";
-  const section =
-    safeText(finding.sectionRef) ||
-    getFirstString(findingRecord, ["section", "clauseSection"]) ||
-    getFirstString(rowRecord, ["section", "clauseSection"]) ||
-    "Section not specified";
-  const category =
-    safeText(finding.category) ||
-    getFirstString(findingRecord, ["category"]) ||
-    getFirstString(rowRecord, ["category"]) ||
-    "Uncategorized";
-  const severity =
-    getDetailedSeverity(finding.severity) ||
-    getDetailedSeverity(getFirstString(findingRecord, ["severity"])) ||
-    getDetailedSeverity(getFirstString(rowRecord, ["severity"])) ||
-    "Medium";
-  const confidence = formatDetailedConfidence(
-    typeof finding.confidence === "number" ? finding.confidence : findingRecord.confidence ?? findingRecord.aiConfidence ?? rowRecord.confidence
-  );
-  const clauseExtract =
-    getFirstString(findingRecord, ["clauseEvidence", "originalClause", "clause"]) ||
-    safeText(row.originalClause) ||
-    safeText(finding.fullClauseText) ||
-    safeText(finding.clauseSnippet) ||
-    safeText(finding.flaggedText) ||
-    "Clause evidence not available.";
-  const riskExplanation = combineRiskExplanation(finding.whyItMatters, finding.businessImpact);
-  const recommendedClause =
-    getFirstString(findingRecord, ["suggestedRevision", "suggestedClause", "finalClauseOutcome"]) ||
-    safeText(row.revisedClause) ||
-    safeText(finding.originalRecommendedDraft) ||
-    getMeaningfulFinalClause(row) ||
-    "Recommended clause not available.";
-
+function buildDetailedRiskBlock(risk: PdfDetailedRiskRow): DetailedRiskBlock {
   return {
-    title: `Risk ${index + 1}: ${toSentenceCase(title)}`,
-    meta: `${section}${DETAIL_META_SEPARATOR}${category}${DETAIL_META_SEPARATOR}${confidence}`,
-    severity,
-    clauseExtract,
-    riskExplanation,
-    recommendedClause
+    title: `Risk ${risk.number}: ${toSentenceCase(risk.title)}`,
+    meta: `${risk.sectionLabel}${DETAIL_META_SEPARATOR}${risk.category}${DETAIL_META_SEPARATOR}${risk.confidenceLabel}`,
+    severity: risk.severityLabel,
+    clauseExtract: risk.clauseExtract ?? "Clause evidence not available.",
+    riskExplanation: risk.riskExplanation ?? "Risk explanation not available.",
+    recommendedClause: risk.recommendedClause ?? "Recommended clause not available."
   };
 }
 
@@ -1147,34 +1108,9 @@ function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
   return section.variant === "quote" ? DETAIL_RECOMMENDED_BODY_Y + DETAIL_RECOMMENDED_BOTTOM_PADDING : DETAIL_TEXT_BODY_OFFSET + DETAIL_TEXT_BOTTOM_PADDING;
 }
 
-function getDetailedSeverity(value: unknown) {
-  const severity = safeText(value);
-  if (severity === "High" || severity === "Medium" || severity === "Low") return severity;
-  return "";
-}
-
-function formatDetailedConfidence(value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
-  const normalized = value <= 1 ? value * 100 : value;
-  return `${Math.round(normalized)}% confidence`;
-}
-
-function combineRiskExplanation(whyItMatters: unknown, businessImpact: unknown) {
-  const why = safeText(whyItMatters);
-  const impact = safeText(businessImpact);
-  const combined = [why, impact].filter(Boolean).join(" ");
-  return combined || "This clause may create legal, financial, operational, or compliance exposure.";
-}
-
-function getMeaningfulFinalClause(row: FinalReviewRow) {
-  const finalClause = safeText(row.finalClause);
-  if (!finalClause || finalClause === "Awaiting decision" || finalClause === "Original retained") return "";
-  return finalClause;
-}
-
-function drawFinalReviewPages(doc: jsPDF, reportModel: ReportModel) {
+function drawFinalReviewPages(doc: jsPDF, reportModel: ReportModel, pdfData: PdfReportModel) {
   let y = drawFinalReviewPageStart(doc, reportModel, "FINAL REVIEW");
-  y = drawRecommendedDecisionHero(doc, y, reportModel);
+  y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview);
   y += 8.2;
 
   drawSectionTitle(doc, "REVIEW SUMMARY", DASHBOARD_MARGIN, y);
@@ -1186,7 +1122,7 @@ function drawFinalReviewPages(doc: jsPDF, reportModel: ReportModel) {
   doc.text("Summary of final decisions across all identified risks:", DASHBOARD_MARGIN, y);
   y += 4.8;
 
-  drawFinalReviewSummaryTable(doc, reportModel, y);
+  drawFinalReviewSummaryTable(doc, reportModel, pdfData.finalReview.rows, y);
 }
 
 function drawFinalReviewPageStart(doc: jsPDF, reportModel: ReportModel, sectionTitle: string) {
@@ -1201,9 +1137,9 @@ function drawFinalReviewPageStart(doc: jsPDF, reportModel: ReportModel, sectionT
   return y + 5.5;
 }
 
-function drawRecommendedDecisionHero(doc: jsPDF, y: number, reportModel: ReportModel) {
-  const decision = getFinalReviewOverallDecision(reportModel);
-  const counts = getFinalReviewPageCounts(reportModel.finalReviewRows);
+function drawRecommendedDecisionHero(doc: jsPDF, y: number, finalReview: PdfReportModel["finalReview"]) {
+  const decision = finalReview.decision;
+  const counts = finalReview.counts;
   const color = getDecisionColor(decision);
   const isHold = decision === "Hold for Review" || decision === "Reject";
   const fill = isHold ? COLORS.softAmber : decision === "Approve" ? COLORS.softGreen : COLORS.lightBluePanel;
@@ -1246,9 +1182,9 @@ function drawRecommendedDecisionHero(doc: jsPDF, y: number, reportModel: ReportM
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.1);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(`Revised: ${counts.Revised}`, statBoxX, dataY);
-  doc.text(`Accepted: ${counts.Accepted}`, statBoxX + 25, dataY);
-  doc.text(`Pending: ${counts.Pending}`, statBoxX + 53, dataY);
+  doc.text(`Revised: ${counts.revised}`, statBoxX, dataY);
+  doc.text(`Accepted: ${counts.accepted}`, statBoxX + 25, dataY);
+  doc.text(`Pending: ${counts.pending}`, statBoxX + 53, dataY);
 
   return y + height;
 }
@@ -1265,11 +1201,11 @@ function drawDecisionAlertIcon(doc: jsPDF, cx: number, cy: number, color: string
   doc.text("!", cx, cy + 1.25, { align: "center" });
 }
 
-function drawFinalReviewSummaryTable(doc: jsPDF, reportModel: ReportModel, y: number) {
+function drawFinalReviewSummaryTable(doc: jsPDF, reportModel: ReportModel, rows: PdfFinalReviewRow[], y: number) {
   const columns = getFinalReviewTableColumns(DASHBOARD_WIDTH);
   let currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, y, columns);
 
-  reportModel.finalReviewRows.forEach((row, index) => {
+  rows.forEach((row, index) => {
     const rowHeight = getFinalReviewTableRowHeight(doc, row, columns);
 
     if (currentY + rowHeight > FINAL_REVIEW_PAGE_BOTTOM) {
@@ -1326,14 +1262,14 @@ function drawFinalReviewTableHeader(doc: jsPDF, x: number, y: number, columns: F
   return y + FINAL_REVIEW_TABLE_HEADER_HEIGHT;
 }
 
-function getFinalReviewTableRowHeight(doc: jsPDF, row: FinalReviewRow, columns: FinalReviewTableColumn[]) {
+function getFinalReviewTableRowHeight(doc: jsPDF, row: PdfFinalReviewRow, columns: FinalReviewTableColumn[]) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
 
-  const riskLines = clampTextLines(doc, getFinalReviewRiskTitle(row), columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  const riskLines = clampTextLines(doc, row.riskTitle, columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
   const outcomeLines = clampMeaningfulTextLines(
     doc,
-    getFinalReviewOutcome(row),
+    row.finalOutcome || "-",
     columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2,
     2
   );
@@ -1347,12 +1283,12 @@ function drawFinalReviewTableRow(
   x: number,
   y: number,
   columns: FinalReviewTableColumn[],
-  row: FinalReviewRow,
+  row: PdfFinalReviewRow,
   index: number
 ) {
   const height = getFinalReviewTableRowHeight(doc, row, columns);
   const fill = index % 2 === 0 ? COLORS.white : "#F9FAFB";
-  const decision = getFinalReviewRowDecision(row);
+  const decision = row.decision;
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
@@ -1373,10 +1309,10 @@ function drawFinalReviewTableRow(
   doc.setTextColor(...hexToRgb(COLORS.darkText));
 
   currentX = x;
-  doc.text(String(index + 1), currentX + columns[0].width / 2, y + height / 2 + 1.2, { align: "center" });
+  doc.text(String(row.number), currentX + columns[0].width / 2, y + height / 2 + 1.2, { align: "center" });
 
   currentX += columns[0].width;
-  const riskLines = clampTextLines(doc, getFinalReviewRiskTitle(row), columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  const riskLines = clampTextLines(doc, row.riskTitle, columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
   drawWrappedText(doc, riskLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
 
   currentX += columns[1].width;
@@ -1385,7 +1321,7 @@ function drawFinalReviewTableRow(
   currentX += columns[2].width;
   const outcomeLines = clampMeaningfulTextLines(
     doc,
-    getFinalReviewOutcome(row),
+    row.finalOutcome || "-",
     columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2,
     2
   );
@@ -1405,69 +1341,6 @@ function drawFinalReviewDecisionPill(doc: jsPDF, x: number, y: number, width: nu
   doc.text(decision, x + width / 2, y + height / 2 + 0.95, { align: "center" });
 }
 
-function getFinalReviewOverallDecision(reportModel: ReportModel) {
-  const reportRecord = reportModel as unknown as Record<string, unknown>;
-  const documentRecord = reportModel.document as unknown as Record<string, unknown>;
-  return (
-    safeText(reportRecord.overallDecision) ||
-    safeText(reportRecord.recommendedDecision) ||
-    safeText(documentRecord.recommendedDecision) ||
-    "Hold for Review"
-  );
-}
-
-function getFinalReviewPageCounts(rows: FinalReviewRow[]) {
-  return rows.reduce<Record<FinalReviewDecision, number>>(
-    (counts, row) => {
-      counts[getFinalReviewRowDecision(row)] += 1;
-      return counts;
-    },
-    { Revised: 0, Accepted: 0, Pending: 0 }
-  );
-}
-
-function getFinalReviewRowDecision(row: FinalReviewRow): FinalReviewDecision {
-  const rowRecord = row as unknown as Record<string, unknown>;
-  const value = safeText(rowRecord.decision) || safeText(rowRecord.status) || safeText(rowRecord.finalDecision);
-  const normalized = value.toLowerCase();
-
-  if (normalized === "revised" || normalized === "needs_change" || normalized === "needs change") return "Revised";
-  if (normalized === "accepted" || normalized === "accept") return "Accepted";
-  return "Pending";
-}
-
-function getFinalReviewRiskTitle(row: FinalReviewRow) {
-  const findingRecord = row.finding as unknown as Record<string, unknown>;
-  return safeText(row.finding.riskTitle) || getFirstString(findingRecord, ["title", "risk", "name"]) || "Untitled risk";
-}
-
-function getFinalReviewOutcome(row: FinalReviewRow) {
-  const decision = getFinalReviewRowDecision(row);
-
-  if (decision === "Accepted") return "No change required";
-  if (decision === "Pending") return "Requires review";
-
-  const rowRecord = row as unknown as Record<string, unknown>;
-  const finalText =
-    getFirstString(rowRecord, ["finalClause", "finalClauseOutcome", "revisedClause", "userEditedClause"]) ||
-    safeText(row.revisedClause);
-
-  if (!finalText || finalText === "Awaiting decision" || finalText === "Original retained") return "Clause updated";
-  return `Clause updated: ${buildFinalReviewOutcomePreview(finalText)}`;
-}
-
-function buildFinalReviewOutcomePreview(value: string) {
-  const normalized = safeText(value);
-  if (!normalized) return "";
-
-  const phraseMatch = normalized.match(/^(.{24,150}?[.;:])\s/);
-  const phrase = phraseMatch?.[1] || normalized;
-  const words = phrase.split(" ");
-
-  if (words.length <= 18 && phrase.length <= 150) return phrase;
-  return `${words.slice(0, 18).join(" ")}...`;
-}
-
 function quoteText(value: string) {
   const normalized = safeText(value);
   if (!normalized) return "";
@@ -1484,18 +1357,8 @@ function getSummaryRiskRows(reportModel: ReportModel): SummaryRiskRow[] {
   }));
 }
 
-function getTopRiskDriverRows(rows: SummaryRiskRow[]) {
-  return [...rows]
-    .sort(
-      (a, b) =>
-        getSeverityRank(getRiskSeverity(b.finding)) - getSeverityRank(getRiskSeverity(a.finding)) ||
-        getRiskConfidenceSortValue(b.finding) - getRiskConfidenceSortValue(a.finding)
-    )
-    .slice(0, 4);
-}
-
-function drawRiskDriverCards(doc: jsPDF, x: number, y: number, width: number, rows: SummaryRiskRow[]) {
-  const drivers = getTopRiskDriverRows(rows);
+function drawRiskDriverCards(doc: jsPDF, x: number, y: number, width: number, rows: PdfSummaryRiskRow[]) {
+  const drivers = rows.slice(0, 4);
   if (!drivers.length) return y;
 
   const columnGap = 5;
@@ -1512,10 +1375,9 @@ function drawRiskDriverCards(doc: jsPDF, x: number, y: number, width: number, ro
   return y + Math.ceil(drivers.length / 2) * cardHeight + Math.max(0, Math.ceil(drivers.length / 2) - 1) * rowGap;
 }
 
-function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, height: number, row: SummaryRiskRow) {
-  const finding = row.finding;
-  const severity = getRiskSeverity(finding);
-  const category = getRiskCategory(finding);
+function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, height: number, row: PdfSummaryRiskRow) {
+  const severity = row.severityLabel;
+  const category = row.category;
   const iconColor = getRiskCategoryIconColor(category);
   const badgeWidth = severity === "Medium" ? 19 : 15.5;
   const badgeX = x + width - badgeWidth - 4;
@@ -1534,15 +1396,15 @@ function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, hei
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.7);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  const titleLines = clampMeaningfulTextLines(doc, toSentenceCase(getRiskTitle(finding)), titleWidth, 2);
+  const titleLines = clampMeaningfulTextLines(doc, toSentenceCase(row.title), titleWidth, 2);
   drawWrappedText(doc, titleLines, titleX, y + 7.2, 3.65);
 
   let fieldY = y + (titleLines.length > 1 ? 16.2 : 12.9);
   const fieldWidth = contentRight - contentX;
   fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Category", category, 1);
-  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", toSentenceCase(getRiskIssue(finding)), 2);
-  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", toSentenceCase(getRiskImpact(finding)), 2);
-  drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Action", toSentenceCase(getRiskRecommendation(finding, row.reviewRow)), 2);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", toSentenceCase(row.issue ?? "-"), 2);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", toSentenceCase(row.impact ?? "-"), 2);
+  drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Action", toSentenceCase(row.action ?? "-"), 2);
 }
 
 function drawRiskDriverField(
@@ -1619,7 +1481,7 @@ function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: numb
   doc.circle(cx, cy + 2.4 * s, 0.28 * s, "S");
 }
 
-function drawSummaryRiskRegister(doc: jsPDF, y: number, x: number, width: number, rows: SummaryRiskRow[]) {
+function drawSummaryRiskRegister(doc: jsPDF, y: number, x: number, width: number, rows: PdfSummaryRiskRow[]) {
   const columns = getSummaryRegisterColumns(width);
   let currentY = drawSummaryRegisterHeader(doc, x, y, columns);
   let pageBottom = getRegisterTableBottom();
@@ -1698,11 +1560,11 @@ function drawSummaryRegisterHeader(
   return y + height;
 }
 
-function getSummaryRegisterRowHeight(doc: jsPDF, row: SummaryRiskRow, columns: Array<{ label: string; width: number; align: string }>) {
+function getSummaryRegisterRowHeight(doc: jsPDF, row: PdfSummaryRiskRow, columns: Array<{ label: string; width: number; align: string }>) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
   const titleColumn = columns[1];
-  const lineCount = clampTextLines(doc, getRiskTitle(row.finding), titleColumn.width - 4, 2).length;
+  const lineCount = clampTextLines(doc, row.title, titleColumn.width - 4, 2).length;
   return lineCount > 1 ? 9.6 : 7.2;
 }
 
@@ -1711,11 +1573,11 @@ function drawSummaryRegisterRow(
   x: number,
   y: number,
   columns: Array<{ label: string; width: number; align: string }>,
-  row: SummaryRiskRow
+  row: PdfSummaryRiskRow
 ) {
   const height = getSummaryRegisterRowHeight(doc, row, columns);
-  const fill = row.index % 2 === 0 ? COLORS.white : "#F9FAFB";
-  const severity = getRiskSeverity(row.finding);
+  const fill = (row.number - 1) % 2 === 0 ? COLORS.white : "#F9FAFB";
+  const severity = row.severityLabel;
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
@@ -1732,12 +1594,12 @@ function drawSummaryRegisterRow(
   });
 
   const values = [
-    String(row.index + 1),
-    getRiskTitle(row.finding),
-    getRiskCategory(row.finding),
+    String(row.number),
+    row.title,
+    row.category,
     severity,
-    getRiskConfidenceLabel(row.finding),
-    getRiskStatus(row)
+    row.confidenceLabel,
+    row.status
   ];
 
   doc.setFont("helvetica", "normal");
@@ -1903,6 +1765,16 @@ function formatPercent(count: number, total: number) {
   if (total <= 0) return "0%";
   const value = (count / total) * 100;
   return `${Number.isInteger(value) ? value : Number(value.toFixed(1))}%`;
+}
+
+function formatPercentage(value: number) {
+  return `${Number.isInteger(value) ? value : Number(value.toFixed(1))}%`;
+}
+
+function getPdfSeverityMixCount(severityMix: PdfReportModel["dashboard"]["severityMix"], severity: "High" | "Medium" | "Low") {
+  if (severity === "High") return severityMix.high;
+  if (severity === "Medium") return severityMix.medium;
+  return severityMix.low;
 }
 
 function formatOptionalDate(value: string, includeTime: boolean) {
