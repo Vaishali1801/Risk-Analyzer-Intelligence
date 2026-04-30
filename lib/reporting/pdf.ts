@@ -953,13 +953,20 @@ function drawRegisterContinuationPageStart(doc: jsPDF) {
 }
 
 function getSummaryRegisterColumns(width: number) {
+  const numberWidth = 9;
+  const categoryWidth = 24;
+  const severityWidth = 22;
+  const confidenceWidth = 24;
+  const statusWidth = 20;
+  const riskTitleWidth = width - numberWidth - categoryWidth - severityWidth - confidenceWidth - statusWidth;
+
   return [
-    { label: "#", width: 12, align: "center" },
-    { label: "Risk Title", width: width - 12 - 32 - 25 - 25 - 25, align: "left" },
-    { label: "Category", width: 32, align: "left" },
-    { label: "Severity", width: 25, align: "center" },
-    { label: "Confidence", width: 25, align: "center" },
-    { label: "Status", width: 25, align: "center" }
+    { label: "#", width: numberWidth, align: "center" },
+    { label: "Risk Title", width: riskTitleWidth, align: "left" },
+    { label: "Category", width: categoryWidth, align: "left" },
+    { label: "Severity", width: severityWidth, align: "center" },
+    { label: "Confidence", width: confidenceWidth, align: "center" },
+    { label: "Status", width: statusWidth, align: "center" }
   ];
 }
 
