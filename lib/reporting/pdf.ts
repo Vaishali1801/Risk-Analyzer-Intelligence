@@ -15,6 +15,7 @@ const DASHBOARD_MARGIN = 10;
 const DASHBOARD_WIDTH = A4_WIDTH - DASHBOARD_MARGIN * 2;
 const FOOTER_HEIGHT = 13.5;
 const FOOTER_TOP = A4_HEIGHT - FOOTER_HEIGHT;
+const REGISTER_FOOTER_BUFFER = 2.2;
 const CARD_RADIUS = 1.8;
 const BODY_LINE_HEIGHT = 5.2;
 const TABLE_LINE_HEIGHT = 4.4;
@@ -922,30 +923,32 @@ function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: numb
 function drawSummaryRiskRegister(doc: jsPDF, y: number, x: number, width: number, rows: SummaryRiskRow[]) {
   const columns = getSummaryRegisterColumns(width);
   let currentY = drawSummaryRegisterHeader(doc, x, y, columns);
-  let onPageTwo = true;
+  let pageBottom = getRegisterTableBottom();
 
-  rows.forEach((row, rowIndex) => {
+  rows.forEach((row) => {
     const rowHeight = getSummaryRegisterRowHeight(doc, row, columns);
-    const bottomLimit = onPageTwo ? FOOTER_TOP - 16 : PAGE_BOTTOM;
 
-    if (currentY + rowHeight > bottomLimit) {
-      if (onPageTwo) drawRegisterContinuesNote(doc, x, currentY, width);
+    if (currentY + rowHeight > pageBottom) {
       doc.addPage();
       currentY = drawRegisterContinuationPageStart(doc);
       currentY = drawSummaryRegisterHeader(doc, x, currentY, columns);
-      onPageTwo = false;
+      pageBottom = getRegisterTableBottom();
     }
 
-    drawSummaryRegisterRow(doc, x, currentY, columns, row, rowIndex);
+    drawSummaryRegisterRow(doc, x, currentY, columns, row);
     currentY += rowHeight;
   });
+}
+
+function getRegisterTableBottom() {
+  return FOOTER_TOP - REGISTER_FOOTER_BUFFER;
 }
 
 function drawRegisterContinuationPageStart(doc: jsPDF) {
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
   drawHeader(doc, 0, 0, A4_WIDTH, 18);
-  drawSectionTitle(doc, "ALL IDENTIFIED RISKS - CONTINUED", DASHBOARD_MARGIN, 33);
+  drawSectionTitle(doc, "ALL IDENTIFIED RISKS — CONTINUED", DASHBOARD_MARGIN, 33);
   return 39;
 }
 
@@ -966,7 +969,7 @@ function drawSummaryRegisterHeader(
   y: number,
   columns: Array<{ label: string; width: number; align: string }>
 ) {
-  const height = 7.4;
+  const height = 6.8;
   doc.setFillColor(...hexToRgb(COLORS.navy));
   doc.setDrawColor(...hexToRgb(COLORS.navy));
   doc.roundedRect(x, y, columns.reduce((sum, column) => sum + column.width, 0), height, 1.4, 1.4, "F");
@@ -977,7 +980,7 @@ function drawSummaryRegisterHeader(
   let currentX = x;
   columns.forEach((column, index) => {
     const textX = column.align === "center" ? currentX + column.width / 2 : currentX + 2.3;
-    doc.text(column.label, textX, y + 4.9, { align: column.align === "center" ? "center" : "left" });
+    doc.text(column.label, textX, y + 4.5, { align: column.align === "center" ? "center" : "left" });
     if (index > 0) {
       doc.setDrawColor(77, 95, 124);
       doc.setLineWidth(0.2);
@@ -994,7 +997,7 @@ function getSummaryRegisterRowHeight(doc: jsPDF, row: SummaryRiskRow, columns: A
   doc.setFontSize(7.6);
   const titleColumn = columns[1];
   const lineCount = clampTextLines(doc, getRiskTitle(row.finding), titleColumn.width - 4, 2).length;
-  return lineCount > 1 ? 10.8 : 8.2;
+  return lineCount > 1 ? 9.6 : 7.2;
 }
 
 function drawSummaryRegisterRow(
@@ -1002,11 +1005,10 @@ function drawSummaryRegisterRow(
   x: number,
   y: number,
   columns: Array<{ label: string; width: number; align: string }>,
-  row: SummaryRiskRow,
-  visibleIndex: number
+  row: SummaryRiskRow
 ) {
   const height = getSummaryRegisterRowHeight(doc, row, columns);
-  const fill = visibleIndex % 2 === 0 ? COLORS.white : "#F9FAFB";
+  const fill = row.index % 2 === 0 ? COLORS.white : "#F9FAFB";
   const severity = getRiskSeverity(row.finding);
 
   doc.setFillColor(...hexToRgb(fill));
@@ -1040,26 +1042,18 @@ function drawSummaryRegisterRow(
   values.forEach((value, index) => {
     const column = columns[index];
     if (index === 3) {
-      drawSeverityPill(doc, currentX + (column.width - 15.8) / 2, y + height / 2 - 2.7, 15.8, 5.4, severity);
+      drawSeverityPill(doc, currentX + (column.width - 15.2) / 2, y + height / 2 - 2.35, 15.2, 4.7, severity);
     } else if (index === 1) {
       const lines = clampTextLines(doc, value, column.width - 4, 2);
-      drawWrappedText(doc, lines, currentX + 2.3, y + 5.1, 3.4);
+      drawWrappedText(doc, lines, currentX + 2.3, y + 4.5, 3.15);
     } else {
       const textX = column.align === "center" ? currentX + column.width / 2 : currentX + 2.3;
-      doc.text(clampSingleLine(doc, value, column.width - 4), textX, y + height / 2 + 1.3, {
+      doc.text(clampSingleLine(doc, value, column.width - 4), textX, y + height / 2 + 1.15, {
         align: column.align === "center" ? "center" : "left"
       });
     }
     currentX += column.width;
   });
-}
-
-function drawRegisterContinuesNote(doc: jsPDF, x: number, y: number, width: number) {
-  if (y + 5 > FOOTER_TOP - 5) return;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.4);
-  doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text("Risk register continues on next page.", x + width, y + 5, { align: "right" });
 }
 
 function drawSeverityPill(doc: jsPDF, x: number, y: number, width: number, height: number, severity: string) {
@@ -1069,7 +1063,7 @@ function drawSeverityPill(doc: jsPDF, x: number, y: number, width: number, heigh
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.1);
   doc.setTextColor(...hexToRgb(color));
-  doc.text(severity || "Unknown", x + width / 2, y + height / 2 + 1.2, { align: "center" });
+  doc.text(severity || "Unknown", x + width / 2, y + height / 2 + 1, { align: "center" });
 }
 
 function getRiskTitle(finding: NormalizedFinding) {
