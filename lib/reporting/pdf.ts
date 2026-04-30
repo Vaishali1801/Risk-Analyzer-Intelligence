@@ -20,11 +20,19 @@ const CARD_RADIUS = 1.8;
 const BODY_LINE_HEIGHT = 5.2;
 const TABLE_LINE_HEIGHT = 4.4;
 const TABLE_CELL_VERTICAL_PADDING = 4;
-const DETAIL_PAGE_BOTTOM = FOOTER_TOP - 7;
-const DETAIL_BLOCK_GAP = 6.5;
-const DETAIL_BLOCK_PADDING = 5;
-const DETAIL_BODY_LINE_HEIGHT = 4.25;
-const DETAIL_LABEL_LINE_HEIGHT = 4;
+const DETAIL_PAGE_BOTTOM = FOOTER_TOP - 4.5;
+const DETAIL_BLOCK_GAP = 4.2;
+const DETAIL_BLOCK_PADDING = 4.3;
+const DETAIL_COLUMN_GAP = 6;
+const DETAIL_SECTION_GAP = 3;
+const DETAIL_BODY_LINE_HEIGHT = 4.15;
+const DETAIL_TITLE_LINE_HEIGHT = 4.3;
+const DETAIL_TEXT_BODY_OFFSET = 4.85;
+const DETAIL_TEXT_BOTTOM_PADDING = 3;
+const DETAIL_RECOMMENDED_TEXT_X = 6;
+const DETAIL_RECOMMENDED_LABEL_Y = 5.45;
+const DETAIL_RECOMMENDED_BODY_Y = 10.35;
+const DETAIL_RECOMMENDED_BOTTOM_PADDING = 3.2;
 const DETAIL_META_SEPARATOR = " \u2022 ";
 
 const COLORS = {
@@ -780,6 +788,24 @@ function drawReportTitleAndMetadata(doc: jsPDF, reportModel: ReportModel) {
   return metadataY + 18;
 }
 
+function drawReportTitleOnly(doc: jsPDF, reportModel: ReportModel) {
+  const document = reportModel.document;
+
+  let y = 32;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(19.5);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH, 2);
+  titleLines.forEach((line) => {
+    doc.text(line, DASHBOARD_MARGIN, y);
+    y += 7.5;
+  });
+
+  drawDivider(doc, DASHBOARD_MARGIN, y - 1.8, DASHBOARD_WIDTH);
+
+  return y + 4.6;
+}
+
 type DetailedRiskBlock = {
   title: string;
   meta: string;
@@ -793,6 +819,19 @@ type DetailedRiskSection = {
   label: string;
   lines: string[];
   variant?: "quote";
+};
+
+type DetailedRiskBlockLayout = {
+  titleLines: string[];
+  clauseLines: string[];
+  explanationLines: string[];
+  recommendedLines: string[];
+  headerHeight: number;
+  columnWidth: number;
+  recommendedWidth: number;
+  twoColumnHeight: number;
+  recommendedHeight: number;
+  totalHeight: number;
 };
 
 function drawDetailedRiskAnalysisPages(doc: jsPDF, reportModel: ReportModel) {
@@ -814,18 +853,10 @@ function drawDetailedRiskAnalysisPageStart(doc: jsPDF, reportModel: ReportModel,
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
   drawHeader(doc, 0, 0, A4_WIDTH, 18);
 
-  let y = drawReportTitleAndMetadata(doc, reportModel);
-  y += 3.8;
+  let y = drawReportTitleOnly(doc, reportModel);
 
   drawSectionTitle(doc, continued ? "DETAILED RISK ANALYSIS (CONTINUED)" : "DETAILED RISK ANALYSIS", DASHBOARD_MARGIN, y);
-  y += 5.2;
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.6);
-  doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  const subtitle =
-    "Detailed review of each identified risk, including clause evidence, risk explanation, and recommended clause improvements.";
-  y = drawWrappedText(doc, wrapText(doc, subtitle, DASHBOARD_WIDTH), DASHBOARD_MARGIN, y, 4.2) + 4.2;
+  y += 6.2;
 
   return y;
 }
@@ -909,26 +940,15 @@ function drawDetailedRiskBlockWithPagination(doc: jsPDF, reportModel: ReportMode
 }
 
 function drawDetailedRiskBlock(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, continued: boolean) {
-  const titleWidth = width - 34;
-  const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, titleWidth);
-  const headerHeight = getDetailedHeaderHeight(titleLines.length);
-  const columnGap = 7;
-  const columnWidth = (width - DETAIL_BLOCK_PADDING * 2 - columnGap) / 2;
-  const clauseLines = wrapText(doc, quoteText(block.clauseExtract), columnWidth);
-  const explanationLines = wrapText(doc, block.riskExplanation, columnWidth);
-  const recommendedWidth = width - DETAIL_BLOCK_PADDING * 2 - 6;
-  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), recommendedWidth);
-  const twoColumnHeight = Math.max(getDetailedSectionHeight(clauseLines), getDetailedSectionHeight(explanationLines));
-  const recommendedHeight = getRecommendedClauseHeight(recommendedLines, recommendedWidth);
-  const totalHeight = headerHeight + twoColumnHeight + 5 + recommendedHeight + DETAIL_BLOCK_PADDING;
+  const layout = getDetailedRiskBlockLayout(doc, block, continued, width);
 
-  drawDetailedBlockFrame(doc, x, y, width, totalHeight);
-  const contentY = drawDetailedRiskHeader(doc, x, y, width, block, titleLines);
+  drawDetailedBlockFrame(doc, x, y, width, layout.totalHeight);
+  const contentY = drawDetailedRiskHeader(doc, x, y, width, block, layout.titleLines);
   const leftX = x + DETAIL_BLOCK_PADDING;
-  const rightX = leftX + columnWidth + columnGap;
-  drawDetailedTextSection(doc, leftX, contentY, columnWidth, "Clause Extract", clauseLines);
-  drawDetailedTextSection(doc, rightX, contentY, columnWidth, "Risk Explanation", explanationLines);
-  drawRecommendedClauseSection(doc, leftX, contentY + twoColumnHeight + 3.8, recommendedWidth + 6, recommendedLines);
+  const rightX = leftX + layout.columnWidth + DETAIL_COLUMN_GAP;
+  drawDetailedTextSection(doc, leftX, contentY, layout.columnWidth, "Clause Extract", layout.clauseLines);
+  drawDetailedTextSection(doc, rightX, contentY, layout.columnWidth, "Risk Explanation", layout.explanationLines);
+  drawRecommendedClauseSection(doc, leftX, contentY + layout.twoColumnHeight + DETAIL_SECTION_GAP, layout.recommendedWidth, layout.recommendedLines);
 }
 
 function drawSplitDetailedRiskBlock(doc: jsPDF, reportModel: ReportModel, y: number, block: DetailedRiskBlock) {
@@ -1011,20 +1031,20 @@ function drawDetailedBlockFrame(doc: jsPDF, x: number, y: number, width: number,
 }
 
 function drawDetailedRiskHeader(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, titleLines: string[]) {
-  const titleY = y + 6.4;
+  const titleY = y + 5.9;
   const badgeWidth = block.severity === "Medium" ? 20 : 16.5;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10.1);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  drawWrappedText(doc, titleLines, x + DETAIL_BLOCK_PADDING, titleY, 4.45);
+  drawWrappedText(doc, titleLines, x + DETAIL_BLOCK_PADDING, titleY, DETAIL_TITLE_LINE_HEIGHT);
 
-  drawSeverityPill(doc, x + width - DETAIL_BLOCK_PADDING - badgeWidth, y + 4.1, badgeWidth, 6.7, block.severity);
+  drawSeverityPill(doc, x + width - DETAIL_BLOCK_PADDING - badgeWidth, y + 3.8, badgeWidth, 6.7, block.severity);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.8);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  const metaY = titleY + titleLines.length * 4.45 + 1.1;
+  const metaY = titleY + titleLines.length * DETAIL_TITLE_LINE_HEIGHT + 0.85;
   doc.text(clampSingleLine(doc, block.meta, width - DETAIL_BLOCK_PADDING * 2), x + DETAIL_BLOCK_PADDING, metaY);
 
   return y + getDetailedHeaderHeight(titleLines.length);
@@ -1039,7 +1059,7 @@ function drawDetailedTextSection(doc: jsPDF, x: number, y: number, width: number
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.6);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  drawWrappedText(doc, lines, x, y + 5.3, DETAIL_BODY_LINE_HEIGHT);
+  drawWrappedText(doc, lines, x, y + DETAIL_TEXT_BODY_OFFSET, DETAIL_BODY_LINE_HEIGHT);
 }
 
 function drawRecommendedClauseSection(doc: jsPDF, x: number, y: number, width: number, lines: string[]) {
@@ -1051,44 +1071,61 @@ function drawRecommendedClauseSection(doc: jsPDF, x: number, y: number, width: n
   doc.roundedRect(x, y, width, height, 1.2, 1.2, "FD");
   doc.setDrawColor(...hexToRgb(COLORS.revisedBlue));
   doc.setLineWidth(0.8);
-  doc.line(x + 3.3, y + 5.3, x + 3.3, y + height - 4);
+  doc.line(x + 3.1, y + 4.9, x + 3.1, y + height - 3.3);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.2);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text("Recommended Clause", x + 6.5, y + 5.9);
+  doc.text("Recommended Clause", x + DETAIL_RECOMMENDED_TEXT_X, y + DETAIL_RECOMMENDED_LABEL_Y);
 
   doc.setFont("helvetica", "italic");
   doc.setFontSize(8.6);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  drawWrappedText(doc, lines, x + 6.5, y + 11.4, DETAIL_BODY_LINE_HEIGHT);
+  drawWrappedText(doc, lines, x + DETAIL_RECOMMENDED_TEXT_X, y + DETAIL_RECOMMENDED_BODY_Y, DETAIL_BODY_LINE_HEIGHT);
   doc.setFont("helvetica", "normal");
 }
 
 function getDetailedRiskBlockHeight(doc: jsPDF, block: DetailedRiskBlock, continued: boolean) {
-  const titleWidth = DASHBOARD_WIDTH - 34;
+  return getDetailedRiskBlockLayout(doc, block, continued, DASHBOARD_WIDTH).totalHeight;
+}
+
+function getDetailedRiskBlockLayout(doc: jsPDF, block: DetailedRiskBlock, continued: boolean, width: number): DetailedRiskBlockLayout {
+  const titleWidth = width - 34;
   const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, titleWidth);
   const headerHeight = getDetailedHeaderHeight(titleLines.length);
-  const columnGap = 7;
-  const columnWidth = (DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - columnGap) / 2;
+  const columnWidth = (width - DETAIL_BLOCK_PADDING * 2 - DETAIL_COLUMN_GAP) / 2;
   const clauseLines = wrapText(doc, quoteText(block.clauseExtract), columnWidth);
   const explanationLines = wrapText(doc, block.riskExplanation, columnWidth);
-  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6);
+  const recommendedWidth = width - DETAIL_BLOCK_PADDING * 2;
+  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), recommendedWidth - DETAIL_RECOMMENDED_TEXT_X - 2.4);
   const twoColumnHeight = Math.max(getDetailedSectionHeight(clauseLines), getDetailedSectionHeight(explanationLines));
+  const recommendedHeight = getRecommendedClauseHeight(recommendedLines, recommendedWidth);
+  const totalHeight = headerHeight + twoColumnHeight + DETAIL_SECTION_GAP + recommendedHeight + DETAIL_BLOCK_PADDING;
 
-  return headerHeight + twoColumnHeight + 5 + getRecommendedClauseHeight(recommendedLines, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) + DETAIL_BLOCK_PADDING;
+  return {
+    titleLines,
+    clauseLines,
+    explanationLines,
+    recommendedLines,
+    headerHeight,
+    columnWidth,
+    recommendedWidth,
+    twoColumnHeight,
+    recommendedHeight,
+    totalHeight
+  };
 }
 
 function getDetailedHeaderHeight(titleLineCount: number) {
-  return 11.5 + Math.max(1, titleLineCount) * 4.45;
+  return 9.9 + Math.max(1, titleLineCount) * DETAIL_TITLE_LINE_HEIGHT;
 }
 
 function getDetailedSectionHeight(lines: string[]) {
-  return DETAIL_LABEL_LINE_HEIGHT + 1.3 + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT;
+  return DETAIL_TEXT_BODY_OFFSET + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT + DETAIL_TEXT_BOTTOM_PADDING;
 }
 
 function getRecommendedClauseHeight(lines: string[], _width: number) {
-  return 12.8 + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT;
+  return DETAIL_RECOMMENDED_BODY_Y + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT + DETAIL_RECOMMENDED_BOTTOM_PADDING;
 }
 
 function getDetailedStandaloneSectionHeight(lines: string[], variant?: "quote") {
@@ -1096,7 +1133,7 @@ function getDetailedStandaloneSectionHeight(lines: string[], variant?: "quote") 
 }
 
 function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
-  return section.variant === "quote" ? 12.8 : DETAIL_LABEL_LINE_HEIGHT + 1.3;
+  return section.variant === "quote" ? DETAIL_RECOMMENDED_BODY_Y + DETAIL_RECOMMENDED_BOTTOM_PADDING : DETAIL_TEXT_BODY_OFFSET + DETAIL_TEXT_BOTTOM_PADDING;
 }
 
 function getDetailedSeverity(value: unknown) {
