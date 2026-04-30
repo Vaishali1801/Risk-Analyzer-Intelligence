@@ -2,7 +2,7 @@
 
 import jsPDF from "jspdf";
 import { getReportFileName } from "@/lib/reporting/metadata";
-import type { FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
+import type { FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
 import type { AnalysisSource } from "@/types/contract";
 
 const PAGE_TOP = 18;
@@ -34,6 +34,12 @@ const DETAIL_RECOMMENDED_LABEL_Y = 5.45;
 const DETAIL_RECOMMENDED_BODY_Y = 10.35;
 const DETAIL_RECOMMENDED_BOTTOM_PADDING = 3.2;
 const DETAIL_META_SEPARATOR = " \u2022 ";
+const FINAL_REVIEW_PAGE_BOTTOM = FOOTER_TOP - 4;
+const FINAL_REVIEW_TABLE_HEADER_HEIGHT = 7.2;
+const FINAL_REVIEW_TABLE_ROW_MIN_HEIGHT = 8.4;
+const FINAL_REVIEW_TABLE_LINE_HEIGHT = 3.45;
+const FINAL_REVIEW_TABLE_CELL_PADDING_X = 2.2;
+const FINAL_REVIEW_TABLE_CELL_PADDING_Y = 2.6;
 
 const COLORS = {
   navy: "#071B3A",
@@ -60,6 +66,10 @@ type PdfTableColumn = {
   width: number;
 };
 
+type FinalReviewTableColumn = PdfTableColumn & {
+  align?: "left" | "center";
+};
+
 type SummaryRiskRow = {
   finding: NormalizedFinding;
   reviewRow?: FinalReviewRow;
@@ -76,6 +86,9 @@ export function downloadReportPdf(reportModel: ReportModel) {
 
   doc.addPage();
   drawDetailedRiskAnalysisPages(doc, reportModel);
+
+  doc.addPage();
+  drawFinalReviewPages(doc, reportModel);
 
   drawFooters(doc);
   doc.save(getReportFileName(document.documentName));
@@ -1159,6 +1172,285 @@ function getMeaningfulFinalClause(row: FinalReviewRow) {
   const finalClause = safeText(row.finalClause);
   if (!finalClause || finalClause === "Awaiting decision" || finalClause === "Original retained") return "";
   return finalClause;
+}
+
+function drawFinalReviewPages(doc: jsPDF, reportModel: ReportModel) {
+  let y = drawFinalReviewPageStart(doc, reportModel, "FINAL REVIEW");
+  y = drawRecommendedDecisionHero(doc, y, reportModel);
+  y += 7;
+
+  drawSectionTitle(doc, "REVIEW SUMMARY", DASHBOARD_MARGIN, y);
+  y += 4.4;
+
+  drawFinalReviewSummaryTable(doc, reportModel, y);
+}
+
+function drawFinalReviewPageStart(doc: jsPDF, reportModel: ReportModel, sectionTitle: string) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
+
+  let y = drawReportTitleAndMetadata(doc, reportModel);
+  y += 3.8;
+  drawSectionTitle(doc, sectionTitle, DASHBOARD_MARGIN, y);
+
+  return y + 5.5;
+}
+
+function drawRecommendedDecisionHero(doc: jsPDF, y: number, reportModel: ReportModel) {
+  const decision = getFinalReviewOverallDecision(reportModel);
+  const counts = getFinalReviewPageCounts(reportModel.finalReviewRows);
+  const color = getDecisionColor(decision);
+  const isHold = decision === "Hold for Review" || decision === "Reject";
+  const fill = isHold ? COLORS.softAmber : decision === "Approve" ? COLORS.softGreen : COLORS.lightBluePanel;
+  const height = 31;
+  const x = DASHBOARD_MARGIN;
+  const width = DASHBOARD_WIDTH;
+
+  doc.setFillColor(...hexToRgb(fill));
+  doc.setDrawColor(...hexToRgb(tintColor(color)));
+  doc.setLineWidth(0.32);
+  doc.roundedRect(x, y, width, height, 1.8, 1.8, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  doc.text("RECOMMENDED DECISION", x + 9, y + 8.2);
+
+  const decisionX = x + (isHold ? 20 : 9);
+  if (isHold) {
+    drawDecisionAlertIcon(doc, x + 12.2, y + 18.7, color);
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(...hexToRgb(color));
+  doc.text(decision, decisionX, y + 20.7);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.7);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text(
+    `${counts.Revised} Revised ${DETAIL_META_SEPARATOR}${counts.Accepted} Accepted ${DETAIL_META_SEPARATOR}${counts.Pending} Pending`,
+    x + 9,
+    y + 27.1
+  );
+
+  return y + height;
+}
+
+function drawDecisionAlertIcon(doc: jsPDF, cx: number, cy: number, color: string) {
+  doc.setFillColor(...hexToRgb(tintColor(color)));
+  doc.setDrawColor(...hexToRgb(color));
+  doc.setLineWidth(0.45);
+  doc.circle(cx, cy, 3.7, "FD");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...hexToRgb(color));
+  doc.text("!", cx, cy + 2.15, { align: "center" });
+}
+
+function drawFinalReviewSummaryTable(doc: jsPDF, reportModel: ReportModel, y: number) {
+  const columns = getFinalReviewTableColumns(DASHBOARD_WIDTH);
+  let currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, y, columns);
+
+  reportModel.finalReviewRows.forEach((row, index) => {
+    const rowHeight = getFinalReviewTableRowHeight(doc, row, columns);
+
+    if (currentY + rowHeight > FINAL_REVIEW_PAGE_BOTTOM) {
+      doc.addPage();
+      currentY = drawFinalReviewPageStart(doc, reportModel, "REVIEW SUMMARY \u2014 CONTINUED");
+      currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, currentY, columns);
+    }
+
+    drawFinalReviewTableRow(doc, DASHBOARD_MARGIN, currentY, columns, row, index);
+    currentY += rowHeight;
+  });
+}
+
+function getFinalReviewTableColumns(width: number): FinalReviewTableColumn[] {
+  const numberWidth = 10;
+  const decisionWidth = 28;
+  const riskWidth = 68;
+  const outcomeWidth = width - numberWidth - riskWidth - decisionWidth;
+
+  return [
+    { label: "#", width: numberWidth, align: "center" },
+    { label: "Risk", width: riskWidth, align: "left" },
+    { label: "Decision", width: decisionWidth, align: "center" },
+    { label: "Final Outcome", width: outcomeWidth, align: "left" }
+  ];
+}
+
+function drawFinalReviewTableHeader(doc: jsPDF, x: number, y: number, columns: FinalReviewTableColumn[]) {
+  const width = columns.reduce((sum, column) => sum + column.width, 0);
+
+  doc.setFillColor(...hexToRgb(COLORS.navy));
+  doc.setDrawColor(...hexToRgb(COLORS.navy));
+  doc.setLineWidth(0.24);
+  doc.roundedRect(x, y, width, FINAL_REVIEW_TABLE_HEADER_HEIGHT, 1.3, 1.3, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.8);
+  doc.setTextColor(...hexToRgb(COLORS.white));
+
+  let currentX = x;
+  columns.forEach((column, index) => {
+    if (index > 0) {
+      doc.setDrawColor(77, 95, 124);
+      doc.setLineWidth(0.2);
+      doc.line(currentX, y, currentX, y + FINAL_REVIEW_TABLE_HEADER_HEIGHT);
+    }
+
+    const align = column.align === "center" ? "center" : "left";
+    const textX = align === "center" ? currentX + column.width / 2 : currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X;
+    doc.text(column.label, textX, y + 4.75, { align });
+    currentX += column.width;
+  });
+
+  return y + FINAL_REVIEW_TABLE_HEADER_HEIGHT;
+}
+
+function getFinalReviewTableRowHeight(doc: jsPDF, row: FinalReviewRow, columns: FinalReviewTableColumn[]) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+
+  const riskLines = clampTextLines(doc, getFinalReviewRiskTitle(row), columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  const outcomeLines = clampMeaningfulTextLines(
+    doc,
+    getFinalReviewOutcome(row),
+    columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2,
+    2
+  );
+  const lineCount = Math.max(riskLines.length, outcomeLines.length, 1);
+
+  return Math.max(FINAL_REVIEW_TABLE_ROW_MIN_HEIGHT, lineCount * FINAL_REVIEW_TABLE_LINE_HEIGHT + FINAL_REVIEW_TABLE_CELL_PADDING_Y * 2);
+}
+
+function drawFinalReviewTableRow(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  columns: FinalReviewTableColumn[],
+  row: FinalReviewRow,
+  index: number
+) {
+  const height = getFinalReviewTableRowHeight(doc, row, columns);
+  const fill = index % 2 === 0 ? COLORS.white : "#F9FAFB";
+  const decision = getFinalReviewRowDecision(row);
+
+  doc.setFillColor(...hexToRgb(fill));
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.22);
+  doc.rect(x, y, columns.reduce((sum, column) => sum + column.width, 0), height, "FD");
+
+  let currentX = x;
+  columns.forEach((column, columnIndex) => {
+    if (columnIndex > 0) {
+      doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+      doc.line(currentX, y, currentX, y + height);
+    }
+    currentX += column.width;
+  });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+
+  currentX = x;
+  doc.text(String(index + 1), currentX + columns[0].width / 2, y + height / 2 + 1.2, { align: "center" });
+
+  currentX += columns[0].width;
+  const riskLines = clampTextLines(doc, getFinalReviewRiskTitle(row), columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  drawWrappedText(doc, riskLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
+
+  currentX += columns[1].width;
+  drawFinalReviewDecisionPill(doc, currentX + (columns[2].width - 20.2) / 2, y + height / 2 - 2.45, 20.2, 4.9, decision);
+
+  currentX += columns[2].width;
+  const outcomeLines = clampMeaningfulTextLines(
+    doc,
+    getFinalReviewOutcome(row),
+    columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2,
+    2
+  );
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  drawWrappedText(doc, outcomeLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
+}
+
+function drawFinalReviewDecisionPill(doc: jsPDF, x: number, y: number, width: number, height: number, decision: FinalReviewDecision) {
+  const color = getDecisionColor(decision);
+  doc.setFillColor(...hexToRgb(tintColor(color)));
+  doc.roundedRect(x, y, width, height, 1.5, 1.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.8);
+  doc.setTextColor(...hexToRgb(color));
+  doc.text(decision, x + width / 2, y + height / 2 + 0.95, { align: "center" });
+}
+
+function getFinalReviewOverallDecision(reportModel: ReportModel) {
+  const reportRecord = reportModel as unknown as Record<string, unknown>;
+  const documentRecord = reportModel.document as unknown as Record<string, unknown>;
+  return (
+    safeText(reportRecord.overallDecision) ||
+    safeText(reportRecord.recommendedDecision) ||
+    safeText(documentRecord.recommendedDecision) ||
+    "Hold for Review"
+  );
+}
+
+function getFinalReviewPageCounts(rows: FinalReviewRow[]) {
+  return rows.reduce<Record<FinalReviewDecision, number>>(
+    (counts, row) => {
+      counts[getFinalReviewRowDecision(row)] += 1;
+      return counts;
+    },
+    { Revised: 0, Accepted: 0, Pending: 0 }
+  );
+}
+
+function getFinalReviewRowDecision(row: FinalReviewRow): FinalReviewDecision {
+  const rowRecord = row as unknown as Record<string, unknown>;
+  const value = safeText(rowRecord.decision) || safeText(rowRecord.status) || safeText(rowRecord.finalDecision);
+  const normalized = value.toLowerCase();
+
+  if (normalized === "revised" || normalized === "needs_change" || normalized === "needs change") return "Revised";
+  if (normalized === "accepted" || normalized === "accept") return "Accepted";
+  return "Pending";
+}
+
+function getFinalReviewRiskTitle(row: FinalReviewRow) {
+  const findingRecord = row.finding as unknown as Record<string, unknown>;
+  return safeText(row.finding.riskTitle) || getFirstString(findingRecord, ["title", "risk", "name"]) || "Untitled risk";
+}
+
+function getFinalReviewOutcome(row: FinalReviewRow) {
+  const decision = getFinalReviewRowDecision(row);
+
+  if (decision === "Accepted") return "No change required";
+  if (decision === "Pending") return "Requires review";
+
+  const rowRecord = row as unknown as Record<string, unknown>;
+  const finalText =
+    getFirstString(rowRecord, ["finalClause", "finalClauseOutcome", "revisedClause", "userEditedClause"]) ||
+    safeText(row.revisedClause);
+
+  if (!finalText || finalText === "Awaiting decision" || finalText === "Original retained") return "Clause updated";
+  return `Clause updated: ${buildFinalReviewOutcomePreview(finalText)}`;
+}
+
+function buildFinalReviewOutcomePreview(value: string) {
+  const normalized = safeText(value);
+  if (!normalized) return "";
+
+  const phraseMatch = normalized.match(/^(.{24,150}?[.;:])\s/);
+  const phrase = phraseMatch?.[1] || normalized;
+  const words = phrase.split(" ");
+
+  if (words.length <= 18 && phrase.length <= 150) return phrase;
+  return `${words.slice(0, 18).join(" ")}...`;
 }
 
 function quoteText(value: string) {
