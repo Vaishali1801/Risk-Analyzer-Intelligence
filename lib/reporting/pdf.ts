@@ -802,7 +802,7 @@ function drawRiskDriverCards(doc: jsPDF, x: number, y: number, width: number, ro
   const columnGap = 5;
   const rowGap = 5;
   const cardWidth = (width - columnGap) / 2;
-  const cardHeight = 48.5;
+  const cardHeight = 44.5;
 
   drivers.forEach((row, index) => {
     const column = index % 2;
@@ -820,32 +820,30 @@ function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, hei
   const iconColor = getRiskCategoryIconColor(category);
   const badgeWidth = severity === "Medium" ? 19 : 15.5;
   const badgeX = x + width - badgeWidth - 4;
-  const contentX = x + 28;
+  const iconX = x + 7.6;
+  const iconY = y + 7.8;
+  const titleX = x + 12.7;
+  const contentX = x + 5.4;
   const contentRight = x + width - 4;
-  const titleWidth = Math.max(24, badgeX - contentX - 3);
+  const titleWidth = Math.max(26, badgeX - titleX - 3);
 
   drawCard(doc, x, y, width, height, COLORS.white, true);
-  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
-  doc.setLineWidth(0.25);
-  doc.line(x + 23, y + 8, x + 23, y + height - 8);
 
-  doc.setFillColor(...hexToRgb(tintColor(iconColor)));
-  doc.circle(x + 11.5, y + 18.8, 7.8, "F");
-  drawRiskCategoryIcon(doc, category, x + 11.5, y + 18.8, iconColor);
+  drawRiskCategoryIcon(doc, category, iconX, iconY, iconColor, 0.46);
   drawSeverityPill(doc, badgeX, y + 4, badgeWidth, 6.6, severity);
+  drawRiskDriverCategoryBadge(doc, badgeX, y + 11.6, badgeWidth, category);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.7);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  const titleLines = clampTextLines(doc, getRiskTitle(finding), titleWidth, 2);
-  drawWrappedText(doc, titleLines, contentX, y + 8.2, 3.8);
+  const titleLines = clampMeaningfulTextLines(doc, toSentenceCase(getRiskTitle(finding)), titleWidth, 2);
+  drawWrappedText(doc, titleLines, titleX, y + 7.2, 3.65);
 
-  let fieldY = y + (titleLines.length > 1 ? 17.2 : 13.5);
+  let fieldY = y + (titleLines.length > 1 ? 17.1 : 14);
   const fieldWidth = contentRight - contentX;
-  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Category", category, 1);
-  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", getRiskIssue(finding), 2);
-  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", getRiskImpact(finding), 1);
-  drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Recommendation", getRiskRecommendation(finding, row.reviewRow), 1);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", toSentenceCase(getRiskIssue(finding)), 2);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", toSentenceCase(getRiskImpact(finding)), 2);
+  drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Action", toSentenceCase(getRiskRecommendation(finding, row.reviewRow)), 2);
 }
 
 function drawRiskDriverField(
@@ -863,61 +861,70 @@ function drawRiskDriverField(
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.text(labelText, x, y);
 
-  const valueX = x + (label === "Recommendation" ? 19.5 : 13.2);
+  const labelWidth = 12.5;
+  const valueX = x + labelWidth;
   const valueWidth = width - (valueX - x);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const lines = clampTextLines(doc, value, valueWidth, maxLines);
-  drawWrappedText(doc, lines, valueX, y, 3.7);
-  return y + Math.max(1, lines.length) * 3.7 + 1.1;
+  const lines = clampMeaningfulTextLines(doc, value, valueWidth, maxLines);
+  drawWrappedText(doc, lines, valueX, y, 3.35);
+  return y + Math.max(1, lines.length) * 3.35 + 1;
 }
 
-function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: number, color: string) {
+function drawRiskDriverCategoryBadge(doc: jsPDF, x: number, y: number, width: number, category: string) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text(clampSingleLine(doc, category, width), x + width / 2, y + 3.2, { align: "center" });
+}
+
+function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: number, color: string, scale = 1) {
+  const s = scale;
   doc.setDrawColor(...hexToRgb(color));
   doc.setTextColor(...hexToRgb(color));
-  doc.setLineWidth(0.55);
+  doc.setLineWidth(0.55 * s);
 
   if (category === "Financial") {
-    doc.roundedRect(cx - 3.1, cy - 4.1, 6.2, 8.2, 0.8, 0.8, "S");
-    doc.line(cx + 1.2, cy - 4.1, cx + 3.1, cy - 2.2);
+    doc.roundedRect(cx - 3.1 * s, cy - 4.1 * s, 6.2 * s, 8.2 * s, 0.8 * s, 0.8 * s, "S");
+    doc.line(cx + 1.2 * s, cy - 4.1 * s, cx + 3.1 * s, cy - 2.2 * s);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.4);
-    doc.text("$", cx - 1.5, cy + 2.3);
+    doc.setFontSize(6.4 * s);
+    doc.text("$", cx - 1.5 * s, cy + 2.3 * s);
     return;
   }
 
   if (category === "Operational") {
-    doc.circle(cx, cy, 4, "S");
-    doc.line(cx, cy, cx, cy - 2.4);
-    doc.line(cx, cy, cx + 2, cy + 1.4);
+    doc.circle(cx, cy, 4 * s, "S");
+    doc.line(cx, cy, cx, cy - 2.4 * s);
+    doc.line(cx, cy, cx + 2 * s, cy + 1.4 * s);
     return;
   }
 
   if (category === "Compliance") {
-    doc.ellipse(cx, cy - 2.6, 3.6, 1.4, "S");
-    doc.line(cx - 3.6, cy - 2.6, cx - 3.6, cy + 2.6);
-    doc.line(cx + 3.6, cy - 2.6, cx + 3.6, cy + 2.6);
-    doc.ellipse(cx, cy + 2.6, 3.6, 1.4, "S");
-    doc.roundedRect(cx + 0.9, cy + 0.1, 3.6, 3.2, 0.5, 0.5, "S");
-    doc.line(cx + 2.7, cy + 0.1, cx + 2.7, cy - 1);
+    doc.ellipse(cx, cy - 2.6 * s, 3.6 * s, 1.4 * s, "S");
+    doc.line(cx - 3.6 * s, cy - 2.6 * s, cx - 3.6 * s, cy + 2.6 * s);
+    doc.line(cx + 3.6 * s, cy - 2.6 * s, cx + 3.6 * s, cy + 2.6 * s);
+    doc.ellipse(cx, cy + 2.6 * s, 3.6 * s, 1.4 * s, "S");
+    doc.roundedRect(cx + 0.9 * s, cy + 0.1 * s, 3.6 * s, 3.2 * s, 0.5 * s, 0.5 * s, "S");
+    doc.line(cx + 2.7 * s, cy + 0.1 * s, cx + 2.7 * s, cy - 1 * s);
     return;
   }
 
   if (category === "Technical") {
-    doc.roundedRect(cx - 4, cy - 3.2, 8, 5.8, 0.7, 0.7, "S");
-    doc.line(cx - 1.6, cy + 4.1, cx + 1.6, cy + 4.1);
-    doc.line(cx, cy + 2.6, cx, cy + 4.1);
+    doc.roundedRect(cx - 4 * s, cy - 3.2 * s, 8 * s, 5.8 * s, 0.7 * s, 0.7 * s, "S");
+    doc.line(cx - 1.6 * s, cy + 4.1 * s, cx + 1.6 * s, cy + 4.1 * s);
+    doc.line(cx, cy + 2.6 * s, cx, cy + 4.1 * s);
     return;
   }
 
-  doc.line(cx, cy - 4.2, cx + 3.6, cy - 2.4);
-  doc.line(cx + 3.6, cy - 2.4, cx + 2.9, cy + 2.6);
-  doc.line(cx + 2.9, cy + 2.6, cx, cy + 4.2);
-  doc.line(cx, cy + 4.2, cx - 2.9, cy + 2.6);
-  doc.line(cx - 2.9, cy + 2.6, cx - 3.6, cy - 2.4);
-  doc.line(cx - 3.6, cy - 2.4, cx, cy - 4.2);
-  doc.line(cx, cy - 1.8, cx, cy + 1.2);
-  doc.circle(cx, cy + 2.4, 0.28, "S");
+  doc.line(cx, cy - 4.2 * s, cx + 3.6 * s, cy - 2.4 * s);
+  doc.line(cx + 3.6 * s, cy - 2.4 * s, cx + 2.9 * s, cy + 2.6 * s);
+  doc.line(cx + 2.9 * s, cy + 2.6 * s, cx, cy + 4.2 * s);
+  doc.line(cx, cy + 4.2 * s, cx - 2.9 * s, cy + 2.6 * s);
+  doc.line(cx - 2.9 * s, cy + 2.6 * s, cx - 3.6 * s, cy - 2.4 * s);
+  doc.line(cx - 3.6 * s, cy - 2.4 * s, cx, cy - 4.2 * s);
+  doc.line(cx, cy - 1.8 * s, cx, cy + 1.2 * s);
+  doc.circle(cx, cy + 2.4 * s, 0.28 * s, "S");
 }
 
 function drawSummaryRiskRegister(doc: jsPDF, y: number, x: number, width: number, rows: SummaryRiskRow[]) {
@@ -1240,6 +1247,15 @@ function clampTextLines(doc: jsPDF, value: string, maxWidth: number, maxLines: n
   return visibleLines;
 }
 
+function clampMeaningfulTextLines(doc: jsPDF, value: string, maxWidth: number, maxLines: number) {
+  const lines = wrapText(doc, value, maxWidth);
+  if (lines.length <= maxLines) return lines;
+
+  const visibleLines = lines.slice(0, maxLines);
+  visibleLines[maxLines - 1] = addWordEllipsisToFit(doc, visibleLines[maxLines - 1], maxWidth);
+  return visibleLines;
+}
+
 function clampSingleLine(doc: jsPDF, value: string, maxWidth: number) {
   const normalized = safeText(value);
   if (doc.getTextWidth(normalized) <= maxWidth) return normalized;
@@ -1253,6 +1269,38 @@ function addEllipsisToFit(doc: jsPDF, value: string, maxWidth: number) {
     text = text.slice(0, -1).trimEnd();
   }
   return text ? `${text}${ellipsis}` : ellipsis;
+}
+
+function addWordEllipsisToFit(doc: jsPDF, value: string, maxWidth: number) {
+  const ellipsis = "...";
+  const normalized = safeText(value);
+  const words = normalized.split(" ").filter(Boolean);
+  let text = words.length > 1 ? words.join(" ") : normalized;
+
+  while (words.length > 1 && doc.getTextWidth(`${text}${ellipsis}`) > maxWidth) {
+    words.pop();
+    text = words.join(" ");
+  }
+
+  if (doc.getTextWidth(`${text}${ellipsis}`) <= maxWidth) return text ? `${text}${ellipsis}` : ellipsis;
+  return addEllipsisToFit(doc, normalized, maxWidth);
+}
+
+function toSentenceCase(value: string) {
+  const normalized = safeText(value);
+  if (!normalized) return normalized;
+
+  const lowerCased = normalized
+    .split(" ")
+    .map((word, index) => {
+      if (index === 0) return word.toLowerCase();
+      if (/^[A-Z0-9&/-]{2,}$/.test(word)) return word;
+      if (/[a-z][A-Z]/.test(word)) return word;
+      return word.toLowerCase();
+    })
+    .join(" ");
+
+  return `${lowerCased.charAt(0).toUpperCase()}${lowerCased.slice(1)}`;
 }
 
 function tintColor(color: string) {
