@@ -20,6 +20,12 @@ const CARD_RADIUS = 1.8;
 const BODY_LINE_HEIGHT = 5.2;
 const TABLE_LINE_HEIGHT = 4.4;
 const TABLE_CELL_VERTICAL_PADDING = 4;
+const DETAIL_PAGE_BOTTOM = FOOTER_TOP - 7;
+const DETAIL_BLOCK_GAP = 6.5;
+const DETAIL_BLOCK_PADDING = 5;
+const DETAIL_BODY_LINE_HEIGHT = 4.25;
+const DETAIL_LABEL_LINE_HEIGHT = 4;
+const DETAIL_META_SEPARATOR = " \u2022 ";
 
 const COLORS = {
   navy: "#071B3A",
@@ -30,6 +36,7 @@ const COLORS = {
   lightBluePanel: "#EFF6FF",
   softAmber: "#FFFBEB",
   softBlueGrey: "#F8FAFC",
+  softBlueBorder: "#BFDBFE",
   highRed: "#DC2626",
   mediumAmber: "#F59E0B",
   lowGreen: "#16A34A",
@@ -60,10 +67,7 @@ export function downloadReportPdf(reportModel: ReportModel) {
   drawRiskDriversSummaryPage(doc, reportModel);
 
   doc.addPage();
-  let y = PAGE_TOP;
-  y = writeDetailedRiskReviews(doc, y, reportModel.finalReviewRows);
-  y = writeFinalReviewTable(doc, y, reportModel.finalReviewRows);
-  y = writeNextActions(doc, y, document.nextActions);
+  drawDetailedRiskAnalysisPages(doc, reportModel);
 
   drawFooters(doc);
   doc.save(getReportFileName(document.documentName));
@@ -774,6 +778,357 @@ function drawReportTitleAndMetadata(doc: jsPDF, reportModel: ReportModel) {
   ]);
 
   return metadataY + 18;
+}
+
+type DetailedRiskBlock = {
+  title: string;
+  meta: string;
+  severity: string;
+  clauseExtract: string;
+  riskExplanation: string;
+  recommendedClause: string;
+};
+
+type DetailedRiskSection = {
+  label: string;
+  lines: string[];
+  variant?: "quote";
+};
+
+function drawDetailedRiskAnalysisPages(doc: jsPDF, reportModel: ReportModel) {
+  let y = drawDetailedRiskAnalysisPageStart(doc, reportModel, false);
+
+  if (!reportModel.finalReviewRows.length) {
+    drawEmptyDetailedRiskState(doc, y);
+    return;
+  }
+
+  reportModel.finalReviewRows.forEach((row, index) => {
+    const block = buildDetailedRiskBlock(row, index);
+    y = drawDetailedRiskBlockWithPagination(doc, reportModel, y, block);
+  });
+}
+
+function drawDetailedRiskAnalysisPageStart(doc: jsPDF, reportModel: ReportModel, continued: boolean) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
+
+  let y = drawReportTitleAndMetadata(doc, reportModel);
+  y += 3.8;
+
+  drawSectionTitle(doc, continued ? "DETAILED RISK ANALYSIS (CONTINUED)" : "DETAILED RISK ANALYSIS", DASHBOARD_MARGIN, y);
+  y += 5.2;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.6);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  const subtitle =
+    "Detailed review of each identified risk, including clause evidence, risk explanation, and recommended clause improvements.";
+  y = drawWrappedText(doc, wrapText(doc, subtitle, DASHBOARD_WIDTH), DASHBOARD_MARGIN, y, 4.2) + 4.2;
+
+  return y;
+}
+
+function drawEmptyDetailedRiskState(doc: jsPDF, y: number) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.2);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text("No detailed risk findings are available.", DASHBOARD_MARGIN, y);
+}
+
+function buildDetailedRiskBlock(row: FinalReviewRow, index: number): DetailedRiskBlock {
+  const finding = row.finding;
+  const findingRecord = finding as unknown as Record<string, unknown>;
+  const rowRecord = row as unknown as Record<string, unknown>;
+  const title =
+    safeText(finding.riskTitle) ||
+    getFirstString(findingRecord, ["title", "risk", "name"]) ||
+    getFirstString(rowRecord, ["title", "risk", "name"]) ||
+    "Untitled risk";
+  const section =
+    safeText(finding.sectionRef) ||
+    getFirstString(findingRecord, ["section", "clauseSection"]) ||
+    getFirstString(rowRecord, ["section", "clauseSection"]) ||
+    "Section not specified";
+  const category =
+    safeText(finding.category) ||
+    getFirstString(findingRecord, ["category"]) ||
+    getFirstString(rowRecord, ["category"]) ||
+    "Uncategorized";
+  const severity =
+    getDetailedSeverity(finding.severity) ||
+    getDetailedSeverity(getFirstString(findingRecord, ["severity"])) ||
+    getDetailedSeverity(getFirstString(rowRecord, ["severity"])) ||
+    "Medium";
+  const confidence = formatDetailedConfidence(
+    typeof finding.confidence === "number" ? finding.confidence : findingRecord.confidence ?? findingRecord.aiConfidence ?? rowRecord.confidence
+  );
+  const clauseExtract =
+    getFirstString(findingRecord, ["clauseEvidence", "originalClause", "clause"]) ||
+    safeText(row.originalClause) ||
+    safeText(finding.fullClauseText) ||
+    safeText(finding.clauseSnippet) ||
+    safeText(finding.flaggedText) ||
+    "Clause evidence not available.";
+  const riskExplanation = combineRiskExplanation(finding.whyItMatters, finding.businessImpact);
+  const recommendedClause =
+    getFirstString(findingRecord, ["suggestedRevision", "suggestedClause", "finalClauseOutcome"]) ||
+    safeText(row.revisedClause) ||
+    safeText(finding.originalRecommendedDraft) ||
+    getMeaningfulFinalClause(row) ||
+    "Recommended clause not available.";
+
+  return {
+    title: `Risk ${index + 1}: ${toSentenceCase(title)}`,
+    meta: `${section}${DETAIL_META_SEPARATOR}${category}${DETAIL_META_SEPARATOR}${confidence}`,
+    severity,
+    clauseExtract,
+    riskExplanation,
+    recommendedClause
+  };
+}
+
+function drawDetailedRiskBlockWithPagination(doc: jsPDF, reportModel: ReportModel, y: number, block: DetailedRiskBlock) {
+  const fullHeight = getDetailedRiskBlockHeight(doc, block, false);
+
+  if (y + fullHeight <= DETAIL_PAGE_BOTTOM) {
+    drawDetailedRiskBlock(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, block, false);
+    return y + fullHeight + DETAIL_BLOCK_GAP;
+  }
+
+  doc.addPage();
+  y = drawDetailedRiskAnalysisPageStart(doc, reportModel, true);
+
+  if (y + fullHeight <= DETAIL_PAGE_BOTTOM) {
+    drawDetailedRiskBlock(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, block, false);
+    return y + fullHeight + DETAIL_BLOCK_GAP;
+  }
+
+  return drawSplitDetailedRiskBlock(doc, reportModel, y, block);
+}
+
+function drawDetailedRiskBlock(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, continued: boolean) {
+  const titleWidth = width - 34;
+  const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, titleWidth);
+  const headerHeight = getDetailedHeaderHeight(titleLines.length);
+  const columnGap = 7;
+  const columnWidth = (width - DETAIL_BLOCK_PADDING * 2 - columnGap) / 2;
+  const clauseLines = wrapText(doc, quoteText(block.clauseExtract), columnWidth);
+  const explanationLines = wrapText(doc, block.riskExplanation, columnWidth);
+  const recommendedWidth = width - DETAIL_BLOCK_PADDING * 2 - 6;
+  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), recommendedWidth);
+  const twoColumnHeight = Math.max(getDetailedSectionHeight(clauseLines), getDetailedSectionHeight(explanationLines));
+  const recommendedHeight = getRecommendedClauseHeight(recommendedLines, recommendedWidth);
+  const totalHeight = headerHeight + twoColumnHeight + 5 + recommendedHeight + DETAIL_BLOCK_PADDING;
+
+  drawDetailedBlockFrame(doc, x, y, width, totalHeight);
+  const contentY = drawDetailedRiskHeader(doc, x, y, width, block, titleLines);
+  const leftX = x + DETAIL_BLOCK_PADDING;
+  const rightX = leftX + columnWidth + columnGap;
+  drawDetailedTextSection(doc, leftX, contentY, columnWidth, "Clause Extract", clauseLines);
+  drawDetailedTextSection(doc, rightX, contentY, columnWidth, "Risk Explanation", explanationLines);
+  drawRecommendedClauseSection(doc, leftX, contentY + twoColumnHeight + 3.8, recommendedWidth + 6, recommendedLines);
+}
+
+function drawSplitDetailedRiskBlock(doc: jsPDF, reportModel: ReportModel, y: number, block: DetailedRiskBlock) {
+  const sections: DetailedRiskSection[] = [
+    { label: "Clause Extract", lines: wrapText(doc, quoteText(block.clauseExtract), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
+    { label: "Risk Explanation", lines: wrapText(doc, block.riskExplanation, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
+    { label: "Recommended Clause", lines: wrapText(doc, quoteText(block.recommendedClause), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6), variant: "quote" }
+  ];
+  let currentY = y;
+  let continued = false;
+
+  sections.forEach((section) => {
+    let lineOffset = 0;
+
+    while (lineOffset < section.lines.length) {
+      const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, DASHBOARD_WIDTH - 34);
+      const headerHeight = getDetailedHeaderHeight(titleLines.length);
+      const availableForSection = DETAIL_PAGE_BOTTOM - currentY - headerHeight - DETAIL_BLOCK_PADDING - getDetailedChunkSectionChromeHeight(section);
+
+      if (availableForSection < DETAIL_BODY_LINE_HEIGHT * 2) {
+        doc.addPage();
+        currentY = drawDetailedRiskAnalysisPageStart(doc, reportModel, true);
+        continued = true;
+        continue;
+      }
+
+      const linesPerPage = Math.max(1, Math.floor(availableForSection / DETAIL_BODY_LINE_HEIGHT));
+      const lines = section.lines.slice(lineOffset, lineOffset + linesPerPage);
+      const chunkHeight = getDetailedHeaderHeight(titleLines.length) + getDetailedStandaloneSectionHeight(lines, section.variant) + DETAIL_BLOCK_PADDING;
+
+      if (currentY + chunkHeight > DETAIL_PAGE_BOTTOM) {
+        doc.addPage();
+        currentY = drawDetailedRiskAnalysisPageStart(doc, reportModel, true);
+        continued = true;
+        continue;
+      }
+
+      drawDetailedSectionChunk(doc, DASHBOARD_MARGIN, currentY, DASHBOARD_WIDTH, block, titleLines, section.label, lines, section.variant);
+      currentY += chunkHeight + DETAIL_BLOCK_GAP;
+      lineOffset += lines.length;
+      continued = true;
+    }
+  });
+
+  return currentY;
+}
+
+function drawDetailedSectionChunk(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  block: DetailedRiskBlock,
+  titleLines: string[],
+  label: string,
+  lines: string[],
+  variant?: "quote"
+) {
+  const headerHeight = getDetailedHeaderHeight(titleLines.length);
+  const sectionHeight = getDetailedStandaloneSectionHeight(lines, variant);
+  const totalHeight = headerHeight + sectionHeight + DETAIL_BLOCK_PADDING;
+  drawDetailedBlockFrame(doc, x, y, width, totalHeight);
+  const contentY = drawDetailedRiskHeader(doc, x, y, width, block, titleLines);
+  const contentX = x + DETAIL_BLOCK_PADDING;
+  const contentWidth = width - DETAIL_BLOCK_PADDING * 2;
+
+  if (variant === "quote") {
+    drawRecommendedClauseSection(doc, contentX, contentY, contentWidth, lines);
+    return;
+  }
+
+  drawDetailedTextSection(doc, contentX, contentY, contentWidth, label, lines);
+}
+
+function drawDetailedBlockFrame(doc: jsPDF, x: number, y: number, width: number, height: number) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.25);
+  doc.roundedRect(x, y, width, height, 1.2, 1.2, "FD");
+}
+
+function drawDetailedRiskHeader(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, titleLines: string[]) {
+  const titleY = y + 6.4;
+  const badgeWidth = block.severity === "Medium" ? 20 : 16.5;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.1);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  drawWrappedText(doc, titleLines, x + DETAIL_BLOCK_PADDING, titleY, 4.45);
+
+  drawSeverityPill(doc, x + width - DETAIL_BLOCK_PADDING - badgeWidth, y + 4.1, badgeWidth, 6.7, block.severity);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.8);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  const metaY = titleY + titleLines.length * 4.45 + 1.1;
+  doc.text(clampSingleLine(doc, block.meta, width - DETAIL_BLOCK_PADDING * 2), x + DETAIL_BLOCK_PADDING, metaY);
+
+  return y + getDetailedHeaderHeight(titleLines.length);
+}
+
+function drawDetailedTextSection(doc: jsPDF, x: number, y: number, width: number, label: string, lines: string[]) {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  doc.text(label, x, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.6);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  drawWrappedText(doc, lines, x, y + 5.3, DETAIL_BODY_LINE_HEIGHT);
+}
+
+function drawRecommendedClauseSection(doc: jsPDF, x: number, y: number, width: number, lines: string[]) {
+  const height = getRecommendedClauseHeight(lines, width);
+
+  doc.setFillColor(...hexToRgb(COLORS.lightBluePanel));
+  doc.setDrawColor(...hexToRgb(COLORS.softBlueBorder));
+  doc.setLineWidth(0.24);
+  doc.roundedRect(x, y, width, height, 1.2, 1.2, "FD");
+  doc.setDrawColor(...hexToRgb(COLORS.revisedBlue));
+  doc.setLineWidth(0.8);
+  doc.line(x + 3.3, y + 5.3, x + 3.3, y + height - 4);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  doc.text("Recommended Clause", x + 6.5, y + 5.9);
+
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8.6);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  drawWrappedText(doc, lines, x + 6.5, y + 11.4, DETAIL_BODY_LINE_HEIGHT);
+  doc.setFont("helvetica", "normal");
+}
+
+function getDetailedRiskBlockHeight(doc: jsPDF, block: DetailedRiskBlock, continued: boolean) {
+  const titleWidth = DASHBOARD_WIDTH - 34;
+  const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, titleWidth);
+  const headerHeight = getDetailedHeaderHeight(titleLines.length);
+  const columnGap = 7;
+  const columnWidth = (DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - columnGap) / 2;
+  const clauseLines = wrapText(doc, quoteText(block.clauseExtract), columnWidth);
+  const explanationLines = wrapText(doc, block.riskExplanation, columnWidth);
+  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6);
+  const twoColumnHeight = Math.max(getDetailedSectionHeight(clauseLines), getDetailedSectionHeight(explanationLines));
+
+  return headerHeight + twoColumnHeight + 5 + getRecommendedClauseHeight(recommendedLines, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) + DETAIL_BLOCK_PADDING;
+}
+
+function getDetailedHeaderHeight(titleLineCount: number) {
+  return 11.5 + Math.max(1, titleLineCount) * 4.45;
+}
+
+function getDetailedSectionHeight(lines: string[]) {
+  return DETAIL_LABEL_LINE_HEIGHT + 1.3 + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT;
+}
+
+function getRecommendedClauseHeight(lines: string[], _width: number) {
+  return 12.8 + Math.max(1, lines.length) * DETAIL_BODY_LINE_HEIGHT;
+}
+
+function getDetailedStandaloneSectionHeight(lines: string[], variant?: "quote") {
+  return variant === "quote" ? getRecommendedClauseHeight(lines, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) : getDetailedSectionHeight(lines);
+}
+
+function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
+  return section.variant === "quote" ? 12.8 : DETAIL_LABEL_LINE_HEIGHT + 1.3;
+}
+
+function getDetailedSeverity(value: unknown) {
+  const severity = safeText(value);
+  if (severity === "High" || severity === "Medium" || severity === "Low") return severity;
+  return "";
+}
+
+function formatDetailedConfidence(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
+  const normalized = value <= 1 ? value * 100 : value;
+  return `${Math.round(normalized)}% confidence`;
+}
+
+function combineRiskExplanation(whyItMatters: unknown, businessImpact: unknown) {
+  const why = safeText(whyItMatters);
+  const impact = safeText(businessImpact);
+  const combined = [why, impact].filter(Boolean).join(" ");
+  return combined || "This clause may create legal, financial, operational, or compliance exposure.";
+}
+
+function getMeaningfulFinalClause(row: FinalReviewRow) {
+  const finalClause = safeText(row.finalClause);
+  if (!finalClause || finalClause === "Awaiting decision" || finalClause === "Original retained") return "";
+  return finalClause;
+}
+
+function quoteText(value: string) {
+  const normalized = safeText(value);
+  if (!normalized) return "";
+  if (/^".*"$/.test(normalized)) return normalized;
+  return `"${normalized}"`;
 }
 
 function getSummaryRiskRows(reportModel: ReportModel): SummaryRiskRow[] {
