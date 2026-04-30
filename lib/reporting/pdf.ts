@@ -88,11 +88,9 @@ export function downloadReportPdf(reportModel: ReportModel) {
   drawDetailedRiskAnalysisPages(doc, reportModel);
 
   doc.addPage();
-  const finalReviewStartPage = doc.getNumberOfPages();
   drawFinalReviewPages(doc, reportModel);
-  const finalReviewEndPage = doc.getNumberOfPages();
 
-  drawFooters(doc, finalReviewStartPage, finalReviewEndPage);
+  drawFooters(doc);
   doc.save(getReportFileName(document.documentName));
 }
 
@@ -326,35 +324,25 @@ function drawHeaderAiIcon(doc: jsPDF, cx: number, cy: number) {
   });
 }
 
-function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number, finalReviewStartPage?: number, finalReviewEndPage?: number) {
+function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
-  const isFinalReviewPage =
-    typeof finalReviewStartPage === "number" &&
-    typeof finalReviewEndPage === "number" &&
-    pageNumber >= finalReviewStartPage &&
-    pageNumber <= finalReviewEndPage;
-  if (pageNumber === 2 || isFinalReviewPage) {
-    doc.setFontSize(7.8);
-    const footerNote = isFinalReviewPage
-      ? "All identified risks are included for review and final decision"
-      : "All identified risks are included for review and remediation.";
-    doc.text(footerNote, A4_WIDTH / 2, FOOTER_TOP + 7.9, {
-      align: "center"
-    });
-    doc.setFontSize(8.2);
-  }
+  doc.setFontSize(7.8);
+  doc.text("For internal review and decision support", A4_WIDTH / 2, FOOTER_TOP + 7.9, {
+    align: "center"
+  });
+  doc.setFontSize(8.2);
   const pageText = `Page ${pageNumber} of ${totalPages}`;
   doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
 }
 
-function drawFooters(doc: jsPDF, finalReviewStartPage?: number, finalReviewEndPage?: number) {
+function drawFooters(doc: jsPDF) {
   const pageCount = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     doc.setPage(pageNumber);
-    drawFooter(doc, pageNumber, pageCount, finalReviewStartPage, finalReviewEndPage);
+    drawFooter(doc, pageNumber, pageCount);
   }
 }
 
