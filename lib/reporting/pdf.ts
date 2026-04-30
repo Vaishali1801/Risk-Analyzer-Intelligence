@@ -820,18 +820,17 @@ function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, hei
   const iconColor = getRiskCategoryIconColor(category);
   const badgeWidth = severity === "Medium" ? 19 : 15.5;
   const badgeX = x + width - badgeWidth - 4;
-  const iconX = x + 7.6;
-  const iconY = y + 7.8;
-  const titleX = x + 12.7;
+  const iconX = x + 8;
+  const iconY = y + 8.7;
+  const titleX = x + 14;
   const contentX = x + 5.4;
   const contentRight = x + width - 4;
   const titleWidth = Math.max(26, badgeX - titleX - 3);
 
   drawCard(doc, x, y, width, height, COLORS.white, true);
 
-  drawRiskCategoryIcon(doc, category, iconX, iconY, iconColor, 0.46);
+  drawRiskCategoryIcon(doc, category, iconX, iconY, iconColor, 0.62);
   drawSeverityPill(doc, badgeX, y + 4, badgeWidth, 6.6, severity);
-  drawRiskDriverCategoryBadge(doc, badgeX, y + 11.6, badgeWidth, category);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.7);
@@ -839,8 +838,9 @@ function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, hei
   const titleLines = clampMeaningfulTextLines(doc, toSentenceCase(getRiskTitle(finding)), titleWidth, 2);
   drawWrappedText(doc, titleLines, titleX, y + 7.2, 3.65);
 
-  let fieldY = y + (titleLines.length > 1 ? 17.1 : 14);
+  let fieldY = y + (titleLines.length > 1 ? 16.2 : 12.9);
   const fieldWidth = contentRight - contentX;
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Category", category, 1);
   fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", toSentenceCase(getRiskIssue(finding)), 2);
   fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", toSentenceCase(getRiskImpact(finding)), 2);
   drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Action", toSentenceCase(getRiskRecommendation(finding, row.reviewRow)), 2);
@@ -869,13 +869,6 @@ function drawRiskDriverField(
   const lines = clampMeaningfulTextLines(doc, value, valueWidth, maxLines);
   drawWrappedText(doc, lines, valueX, y, 3.35);
   return y + Math.max(1, lines.length) * 3.35 + 1;
-}
-
-function drawRiskDriverCategoryBadge(doc: jsPDF, x: number, y: number, width: number, category: string) {
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
-  doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(clampSingleLine(doc, category, width), x + width / 2, y + 3.2, { align: "center" });
 }
 
 function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: number, color: string, scale = 1) {
