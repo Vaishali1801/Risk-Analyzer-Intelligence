@@ -44,15 +44,22 @@ type PdfTableColumn = {
   width: number;
 };
 
+type SummaryRiskRow = {
+  finding: NormalizedFinding;
+  reviewRow?: FinalReviewRow;
+  index: number;
+};
+
 export function downloadReportPdf(reportModel: ReportModel) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const document = reportModel.document;
   drawExecutiveDashboardPage(doc, reportModel);
 
   doc.addPage();
-  let y = PAGE_TOP;
+  drawRiskDriversSummaryPage(doc, reportModel);
 
-  y = writeRiskRegister(doc, y, reportModel.finalReviewRows);
+  doc.addPage();
+  let y = PAGE_TOP;
   y = writeDetailedRiskReviews(doc, y, reportModel.finalReviewRows);
   y = writeFinalReviewTable(doc, y, reportModel.finalReviewRows);
   y = writeNextActions(doc, y, document.nextActions);
@@ -296,6 +303,13 @@ function drawFooter(doc: jsPDF, pageNumber: number, totalPages: number) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
   doc.text("Confidential", DASHBOARD_MARGIN, FOOTER_TOP + 7.9);
+  if (pageNumber === 2) {
+    doc.setFontSize(7.8);
+    doc.text("All identified risks are included for review and remediation.", A4_WIDTH / 2, FOOTER_TOP + 7.9, {
+      align: "center"
+    });
+    doc.setFontSize(8.2);
+  }
   const pageText = `Page ${pageNumber} of ${totalPages}`;
   doc.text(pageText, DASHBOARD_MARGIN + DASHBOARD_WIDTH - doc.getTextWidth(pageText), FOOTER_TOP + 7.9);
 }
@@ -712,6 +726,410 @@ function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: numbe
   doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(color));
   doc.text(text, x + 43, y + height / 2 + 1.4);
+}
+
+function drawRiskDriversSummaryPage(doc: jsPDF, reportModel: ReportModel) {
+  const rows = getSummaryRiskRows(reportModel);
+
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
+
+  let y = drawReportTitleAndMetadata(doc, reportModel);
+  y += 3.5;
+
+  drawSectionTitle(doc, "KEY RISK DRIVERS (TOP 4)", DASHBOARD_MARGIN, y);
+  y += 4.5;
+  y = drawRiskDriverCards(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, rows);
+
+  y += 8;
+  drawSectionTitle(doc, "ALL IDENTIFIED RISKS (SUMMARY REGISTER)", DASHBOARD_MARGIN, y);
+  y += 4.2;
+  drawSummaryRiskRegister(doc, y, DASHBOARD_MARGIN, DASHBOARD_WIDTH, rows);
+}
+
+function drawReportTitleAndMetadata(doc: jsPDF, reportModel: ReportModel) {
+  const document = reportModel.document;
+  const dashboard = getDashboardData(reportModel);
+
+  let y = 32;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(19.5);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  const titleLines = clampTextLines(doc, safeText(document.documentName) || "Risk Review Report", DASHBOARD_WIDTH, 2);
+  titleLines.forEach((line) => {
+    doc.text(line, DASHBOARD_MARGIN, y);
+    y += 7.5;
+  });
+
+  drawDivider(doc, DASHBOARD_MARGIN, y - 1.8, DASHBOARD_WIDTH);
+
+  const metadataY = y + 2.2;
+  drawMetadataStrip(doc, DASHBOARD_MARGIN, metadataY, DASHBOARD_WIDTH, 12, [
+    { label: "Source", value: dashboard.sourceType },
+    { label: "Created", value: dashboard.documentCreated },
+    { label: "Received", value: dashboard.receivedByRiskTeam },
+    { label: "Generated", value: dashboard.reportGenerated }
+  ]);
+
+  return metadataY + 18;
+}
+
+function getSummaryRiskRows(reportModel: ReportModel): SummaryRiskRow[] {
+  const rowsByRiskId = new Map(reportModel.finalReviewRows.map((row) => [row.finding.riskId, row]));
+  return reportModel.document.findings.map((finding, index) => ({
+    finding,
+    reviewRow: rowsByRiskId.get(finding.riskId),
+    index
+  }));
+}
+
+function getTopRiskDriverRows(rows: SummaryRiskRow[]) {
+  return [...rows]
+    .sort(
+      (a, b) =>
+        getSeverityRank(getRiskSeverity(b.finding)) - getSeverityRank(getRiskSeverity(a.finding)) ||
+        getRiskConfidenceSortValue(b.finding) - getRiskConfidenceSortValue(a.finding)
+    )
+    .slice(0, 4);
+}
+
+function drawRiskDriverCards(doc: jsPDF, x: number, y: number, width: number, rows: SummaryRiskRow[]) {
+  const drivers = getTopRiskDriverRows(rows);
+  if (!drivers.length) return y;
+
+  const columnGap = 5;
+  const rowGap = 5;
+  const cardWidth = (width - columnGap) / 2;
+  const cardHeight = 48.5;
+
+  drivers.forEach((row, index) => {
+    const column = index % 2;
+    const cardRow = Math.floor(index / 2);
+    drawRiskDriverCard(doc, x + column * (cardWidth + columnGap), y + cardRow * (cardHeight + rowGap), cardWidth, cardHeight, row);
+  });
+
+  return y + Math.ceil(drivers.length / 2) * cardHeight + Math.max(0, Math.ceil(drivers.length / 2) - 1) * rowGap;
+}
+
+function drawRiskDriverCard(doc: jsPDF, x: number, y: number, width: number, height: number, row: SummaryRiskRow) {
+  const finding = row.finding;
+  const severity = getRiskSeverity(finding);
+  const category = getRiskCategory(finding);
+  const iconColor = getRiskCategoryIconColor(category);
+  const badgeWidth = severity === "Medium" ? 19 : 15.5;
+  const badgeX = x + width - badgeWidth - 4;
+  const contentX = x + 28;
+  const contentRight = x + width - 4;
+  const titleWidth = Math.max(24, badgeX - contentX - 3);
+
+  drawCard(doc, x, y, width, height, COLORS.white, true);
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.25);
+  doc.line(x + 23, y + 8, x + 23, y + height - 8);
+
+  doc.setFillColor(...hexToRgb(tintColor(iconColor)));
+  doc.circle(x + 11.5, y + 18.8, 7.8, "F");
+  drawRiskCategoryIcon(doc, category, x + 11.5, y + 18.8, iconColor);
+  drawSeverityPill(doc, badgeX, y + 4, badgeWidth, 6.6, severity);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.7);
+  doc.setTextColor(...hexToRgb(COLORS.navy));
+  const titleLines = clampTextLines(doc, getRiskTitle(finding), titleWidth, 2);
+  drawWrappedText(doc, titleLines, contentX, y + 8.2, 3.8);
+
+  let fieldY = y + (titleLines.length > 1 ? 17.2 : 13.5);
+  const fieldWidth = contentRight - contentX;
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Category", category, 1);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Issue", getRiskIssue(finding), 2);
+  fieldY = drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Impact", getRiskImpact(finding), 1);
+  drawRiskDriverField(doc, contentX, fieldY, fieldWidth, "Recommendation", getRiskRecommendation(finding, row.reviewRow), 1);
+}
+
+function drawRiskDriverField(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  label: string,
+  value: string,
+  maxLines: number
+) {
+  const labelText = `${label}:`;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.2);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text(labelText, x, y);
+
+  const valueX = x + (label === "Recommendation" ? 19.5 : 13.2);
+  const valueWidth = width - (valueX - x);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  const lines = clampTextLines(doc, value, valueWidth, maxLines);
+  drawWrappedText(doc, lines, valueX, y, 3.7);
+  return y + Math.max(1, lines.length) * 3.7 + 1.1;
+}
+
+function drawRiskCategoryIcon(doc: jsPDF, category: string, cx: number, cy: number, color: string) {
+  doc.setDrawColor(...hexToRgb(color));
+  doc.setTextColor(...hexToRgb(color));
+  doc.setLineWidth(0.55);
+
+  if (category === "Financial") {
+    doc.roundedRect(cx - 3.1, cy - 4.1, 6.2, 8.2, 0.8, 0.8, "S");
+    doc.line(cx + 1.2, cy - 4.1, cx + 3.1, cy - 2.2);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.4);
+    doc.text("$", cx - 1.5, cy + 2.3);
+    return;
+  }
+
+  if (category === "Operational") {
+    doc.circle(cx, cy, 4, "S");
+    doc.line(cx, cy, cx, cy - 2.4);
+    doc.line(cx, cy, cx + 2, cy + 1.4);
+    return;
+  }
+
+  if (category === "Compliance") {
+    doc.ellipse(cx, cy - 2.6, 3.6, 1.4, "S");
+    doc.line(cx - 3.6, cy - 2.6, cx - 3.6, cy + 2.6);
+    doc.line(cx + 3.6, cy - 2.6, cx + 3.6, cy + 2.6);
+    doc.ellipse(cx, cy + 2.6, 3.6, 1.4, "S");
+    doc.roundedRect(cx + 0.9, cy + 0.1, 3.6, 3.2, 0.5, 0.5, "S");
+    doc.line(cx + 2.7, cy + 0.1, cx + 2.7, cy - 1);
+    return;
+  }
+
+  if (category === "Technical") {
+    doc.roundedRect(cx - 4, cy - 3.2, 8, 5.8, 0.7, 0.7, "S");
+    doc.line(cx - 1.6, cy + 4.1, cx + 1.6, cy + 4.1);
+    doc.line(cx, cy + 2.6, cx, cy + 4.1);
+    return;
+  }
+
+  doc.line(cx, cy - 4.2, cx + 3.6, cy - 2.4);
+  doc.line(cx + 3.6, cy - 2.4, cx + 2.9, cy + 2.6);
+  doc.line(cx + 2.9, cy + 2.6, cx, cy + 4.2);
+  doc.line(cx, cy + 4.2, cx - 2.9, cy + 2.6);
+  doc.line(cx - 2.9, cy + 2.6, cx - 3.6, cy - 2.4);
+  doc.line(cx - 3.6, cy - 2.4, cx, cy - 4.2);
+  doc.line(cx, cy - 1.8, cx, cy + 1.2);
+  doc.circle(cx, cy + 2.4, 0.28, "S");
+}
+
+function drawSummaryRiskRegister(doc: jsPDF, y: number, x: number, width: number, rows: SummaryRiskRow[]) {
+  const columns = getSummaryRegisterColumns(width);
+  let currentY = drawSummaryRegisterHeader(doc, x, y, columns);
+  let onPageTwo = true;
+
+  rows.forEach((row, rowIndex) => {
+    const rowHeight = getSummaryRegisterRowHeight(doc, row, columns);
+    const bottomLimit = onPageTwo ? FOOTER_TOP - 16 : PAGE_BOTTOM;
+
+    if (currentY + rowHeight > bottomLimit) {
+      if (onPageTwo) drawRegisterContinuesNote(doc, x, currentY, width);
+      doc.addPage();
+      currentY = drawRegisterContinuationPageStart(doc);
+      currentY = drawSummaryRegisterHeader(doc, x, currentY, columns);
+      onPageTwo = false;
+    }
+
+    drawSummaryRegisterRow(doc, x, currentY, columns, row, rowIndex);
+    currentY += rowHeight;
+  });
+}
+
+function drawRegisterContinuationPageStart(doc: jsPDF) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
+  drawSectionTitle(doc, "ALL IDENTIFIED RISKS - CONTINUED", DASHBOARD_MARGIN, 33);
+  return 39;
+}
+
+function getSummaryRegisterColumns(width: number) {
+  return [
+    { label: "#", width: 12, align: "center" },
+    { label: "Risk Title", width: width - 12 - 32 - 25 - 25 - 25, align: "left" },
+    { label: "Category", width: 32, align: "left" },
+    { label: "Severity", width: 25, align: "center" },
+    { label: "Confidence", width: 25, align: "center" },
+    { label: "Status", width: 25, align: "center" }
+  ];
+}
+
+function drawSummaryRegisterHeader(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  columns: Array<{ label: string; width: number; align: string }>
+) {
+  const height = 7.4;
+  doc.setFillColor(...hexToRgb(COLORS.navy));
+  doc.setDrawColor(...hexToRgb(COLORS.navy));
+  doc.roundedRect(x, y, columns.reduce((sum, column) => sum + column.width, 0), height, 1.4, 1.4, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.7);
+  doc.setTextColor(...hexToRgb(COLORS.white));
+  let currentX = x;
+  columns.forEach((column, index) => {
+    const textX = column.align === "center" ? currentX + column.width / 2 : currentX + 2.3;
+    doc.text(column.label, textX, y + 4.9, { align: column.align === "center" ? "center" : "left" });
+    if (index > 0) {
+      doc.setDrawColor(77, 95, 124);
+      doc.setLineWidth(0.2);
+      doc.line(currentX, y, currentX, y + height);
+    }
+    currentX += column.width;
+  });
+
+  return y + height;
+}
+
+function getSummaryRegisterRowHeight(doc: jsPDF, row: SummaryRiskRow, columns: Array<{ label: string; width: number; align: string }>) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.6);
+  const titleColumn = columns[1];
+  const lineCount = clampTextLines(doc, getRiskTitle(row.finding), titleColumn.width - 4, 2).length;
+  return lineCount > 1 ? 10.8 : 8.2;
+}
+
+function drawSummaryRegisterRow(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  columns: Array<{ label: string; width: number; align: string }>,
+  row: SummaryRiskRow,
+  visibleIndex: number
+) {
+  const height = getSummaryRegisterRowHeight(doc, row, columns);
+  const fill = visibleIndex % 2 === 0 ? COLORS.white : "#F9FAFB";
+  const severity = getRiskSeverity(row.finding);
+
+  doc.setFillColor(...hexToRgb(fill));
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.22);
+  doc.rect(x, y, columns.reduce((sum, column) => sum + column.width, 0), height, "FD");
+
+  let currentX = x;
+  columns.forEach((column, index) => {
+    if (index > 0) {
+      doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+      doc.line(currentX, y, currentX, y + height);
+    }
+    currentX += column.width;
+  });
+
+  const values = [
+    String(row.index + 1),
+    getRiskTitle(row.finding),
+    getRiskCategory(row.finding),
+    severity,
+    getRiskConfidenceLabel(row.finding),
+    getRiskStatus(row)
+  ];
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.6);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  currentX = x;
+
+  values.forEach((value, index) => {
+    const column = columns[index];
+    if (index === 3) {
+      drawSeverityPill(doc, currentX + (column.width - 15.8) / 2, y + height / 2 - 2.7, 15.8, 5.4, severity);
+    } else if (index === 1) {
+      const lines = clampTextLines(doc, value, column.width - 4, 2);
+      drawWrappedText(doc, lines, currentX + 2.3, y + 5.1, 3.4);
+    } else {
+      const textX = column.align === "center" ? currentX + column.width / 2 : currentX + 2.3;
+      doc.text(clampSingleLine(doc, value, column.width - 4), textX, y + height / 2 + 1.3, {
+        align: column.align === "center" ? "center" : "left"
+      });
+    }
+    currentX += column.width;
+  });
+}
+
+function drawRegisterContinuesNote(doc: jsPDF, x: number, y: number, width: number) {
+  if (y + 5 > FOOTER_TOP - 5) return;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.4);
+  doc.setTextColor(...hexToRgb(COLORS.mutedText));
+  doc.text("Risk register continues on next page.", x + width, y + 5, { align: "right" });
+}
+
+function drawSeverityPill(doc: jsPDF, x: number, y: number, width: number, height: number, severity: string) {
+  const color = getSeverityColor(severity);
+  doc.setFillColor(...hexToRgb(tintColor(color)));
+  doc.roundedRect(x, y, width, height, 1.5, 1.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.1);
+  doc.setTextColor(...hexToRgb(color));
+  doc.text(severity || "Unknown", x + width / 2, y + height / 2 + 1.2, { align: "center" });
+}
+
+function getRiskTitle(finding: NormalizedFinding) {
+  return safeText(finding.riskTitle) || "Untitled risk";
+}
+
+function getRiskCategory(finding: NormalizedFinding) {
+  return safeText(finding.category) || "Uncategorized";
+}
+
+function getRiskSeverity(finding: NormalizedFinding) {
+  return safeText(finding.severity) || "Unknown";
+}
+
+function getRiskConfidence(finding: NormalizedFinding) {
+  return typeof finding.confidence === "number" && Number.isFinite(finding.confidence) ? finding.confidence : null;
+}
+
+function getRiskConfidenceSortValue(finding: NormalizedFinding) {
+  return getRiskConfidence(finding) ?? -1;
+}
+
+function getRiskConfidenceLabel(finding: NormalizedFinding) {
+  const confidence = getRiskConfidence(finding);
+  return confidence === null ? "—" : `${Math.round(confidence * 100)}%`;
+}
+
+function getRiskStatus(row: SummaryRiskRow) {
+  const decision = safeText(row.reviewRow?.decision);
+  if (!decision || decision === "Pending") return "Open";
+  return decision;
+}
+
+function getRiskIssue(finding: NormalizedFinding) {
+  return (
+    safeText(finding.clauseSnippet) ||
+    safeText(finding.flaggedText) ||
+    safeText(finding.whyItMatters) ||
+    getRiskTitle(finding) ||
+    "Issue identified in the reviewed document."
+  );
+}
+
+function getRiskImpact(finding: NormalizedFinding) {
+  return safeText(finding.businessImpact) || "May create commercial, legal, or operational exposure.";
+}
+
+function getRiskRecommendation(finding: NormalizedFinding, row?: FinalReviewRow) {
+  const finalClause = safeText(row?.finalClause);
+  if (row?.decision === "Revised" && finalClause) return finalClause;
+  return safeText(finding.originalRecommendedDraft) || "Review and revise before approval.";
+}
+
+function getRiskCategoryIconColor(category: string) {
+  if (category === "Financial") return COLORS.highRed;
+  if (category === "Operational") return COLORS.mediumAmber;
+  if (category === "Compliance") return COLORS.lowGreen;
+  if (category === "Technical") return COLORS.revisedBlue;
+  if (category === "Legal") return COLORS.highRed;
+  return COLORS.mutedText;
 }
 
 function drawCard(doc: jsPDF, x: number, y: number, width: number, height: number, fillColor: string, shadow = false) {
