@@ -175,7 +175,7 @@ export function RiskFindingsTable({
   }, [isSearchOpen, onSearchChange]);
 
   return (
-    <Card className="border-slate-300/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.06)]">
+    <Card className="border-slate-200/90 bg-white/95 shadow-[0_14px_34px_rgba(15,23,42,0.055)]">
       <CardContent className="space-y-4 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -239,7 +239,7 @@ export function RiskFindingsTable({
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[1.05rem] border border-slate-300/80 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.04)]">
+        <div className="overflow-hidden rounded-[1.05rem] border border-slate-200/90 bg-slate-50/45 shadow-[0_8px_20px_rgba(15,23,42,0.035)]">
           <div className="space-y-2.5 p-3 md:hidden">
             {risks.length ? (
               risks.map((risk, index) => {

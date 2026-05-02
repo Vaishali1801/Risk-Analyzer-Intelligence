@@ -755,12 +755,12 @@ export function AnalysisWorkspace() {
         </nav>
       </header>
 
-      <div className="mx-auto max-w-7xl space-y-5 px-5 py-5">
+      <div className="mx-auto max-w-7xl space-y-8 px-5 py-7">
         <section id="summary">
-          <Card className="border-slate-200 bg-white/95 shadow-sm">
-            <CardContent className="space-y-4 p-5">
+          <Card className="border-slate-300/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(248,250,252,0.96)_58%,rgba(239,246,255,0.9)_100%)] shadow-[0_22px_56px_rgba(15,23,42,0.1)]">
+            <CardContent className="space-y-5 p-6 sm:p-7">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-950">Decision snapshot</h2>
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Decision snapshot</h2>
 
                 <button
                   type="button"
@@ -775,6 +775,7 @@ export function AnalysisWorkspace() {
                 <div className="grid min-w-[56rem] grid-cols-4 gap-2.5">
                   <PrimarySummaryCard
                     label="Risk Level"
+                    tone="primary"
                     valueClassName="min-h-[1.75rem] flex items-center"
                     value={
                       <RiskLevelValue level={summaryRiskLevel} />
@@ -782,6 +783,7 @@ export function AnalysisWorkspace() {
                   />
                   <PrimarySummaryCard
                     label="Sections Flagged"
+                    tone="secondary"
                     value={
                       <div className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
                         <span className="text-[1.58rem] font-semibold leading-none tabular-nums text-slate-950">
@@ -798,6 +800,7 @@ export function AnalysisWorkspace() {
                   />
                   <PrimarySummaryCard
                     label="Severity"
+                    tone="secondary"
                     value={
                       <div className="flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-[0.9rem] text-slate-700">
                         <InlineSeverityStat tone="high" count={documentModel.summary.severityMix.High} label="High" />
@@ -808,6 +811,7 @@ export function AnalysisWorkspace() {
                   />
                   <PrimarySummaryCard
                     label="Risk Mix"
+                    tone="tertiary"
                     headerAccessory={
                       riskMixSummary?.hasHiddenCategories ? (
                         <div className="shrink-0">
@@ -843,9 +847,9 @@ export function AnalysisWorkspace() {
 
               {isLayerSummaryExpanded ? (
                 <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3">
-                    <p className="text-[0.97rem] leading-6 text-slate-700">
-                      <span className="mr-2 inline-flex text-[0.74rem] font-semibold uppercase tracking-[0.15em] text-slate-800">
+                  <div className="rounded-2xl border border-blue-100/90 border-l-4 border-l-blue-500/80 bg-blue-50/55 px-5 py-4 shadow-[0_12px_28px_rgba(37,99,235,0.07)]">
+                    <p className="text-[1.02rem] leading-7 text-slate-700">
+                      <span className="mr-2 inline-flex text-[0.76rem] font-semibold uppercase tracking-[0.15em] text-blue-800">
                         AI Insight:
                       </span>
                       <span>{summaryInsight}</span>
@@ -864,6 +868,7 @@ export function AnalysisWorkspace() {
                             <TopCriticalRiskPill
                               key={risk.id}
                               label={risk.label}
+                              severity={documentModel.findings.find((finding) => finding.riskId === risk.id)?.severity}
                               onClick={() => handleTopCriticalRiskClick(risk.id)}
                             />
                           ))}
@@ -898,7 +903,7 @@ export function AnalysisWorkspace() {
           </Card>
         </section>
 
-        <section id="risks" className="space-y-5">
+        <section id="risks" className="space-y-6">
           <RiskFindingsTable
             risks={filteredRisks}
             totalRiskCount={documentModel.findings.length}
@@ -923,10 +928,10 @@ export function AnalysisWorkspace() {
           />
         </section>
 
-        <section id="final-review" className="space-y-3">
+        <section id="final-review" className="space-y-4">
           <h2 className="text-xl font-semibold tracking-tight text-slate-950">Final Review</h2>
 
-          <Card className="overflow-hidden border-slate-200 bg-white/95 shadow-[0_18px_44px_rgba(15,23,42,0.07)]">
+          <Card className="overflow-hidden border-slate-300/80 bg-white/95 shadow-[0_22px_52px_rgba(15,23,42,0.09)]">
             <CardContent className="p-0">
               <div className="grid gap-4 border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="min-w-0">
@@ -1186,17 +1191,35 @@ function PrimarySummaryCard({
   label,
   value,
   valueClassName,
-  headerAccessory
+  headerAccessory,
+  tone = "secondary"
 }: {
   label: string;
   value: ReactNode;
   valueClassName?: string;
   headerAccessory?: ReactNode;
+  tone?: "primary" | "secondary" | "tertiary";
 }) {
   return (
-    <div className="flex min-h-[4.15rem] flex-col justify-between rounded-[1rem] border border-slate-200/80 bg-white px-3.5 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] ring-1 ring-slate-950/[0.02]">
+    <div
+      className={cn(
+        "flex min-h-[4.15rem] flex-col justify-between rounded-[1rem] border px-3.5 py-2.5 ring-1 ring-slate-950/[0.02]",
+        tone === "primary"
+          ? "border-slate-300 bg-white shadow-[0_16px_34px_rgba(15,23,42,0.1)]"
+          : tone === "tertiary"
+            ? "border-slate-200/80 bg-slate-50/75 shadow-[0_6px_16px_rgba(15,23,42,0.035)]"
+            : "border-slate-200/90 bg-white/95 shadow-[0_10px_22px_rgba(15,23,42,0.055)]"
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[0.8rem] font-medium uppercase tracking-[0.14em] text-slate-700">{label}</span>
+        <span
+          className={cn(
+            "text-[0.8rem] uppercase tracking-[0.14em]",
+            tone === "primary" ? "font-semibold text-slate-900" : "font-medium text-slate-700"
+          )}
+        >
+          {label}
+        </span>
         {headerAccessory}
       </div>
       <div className={cn("min-w-0 flex min-h-[1.65rem] items-center text-left", valueClassName)}>{value}</div>
@@ -1258,16 +1281,29 @@ function RiskMixLine({
   );
 }
 
-function TopCriticalRiskPill({ label, onClick }: { label: string; onClick: () => void }) {
+function TopCriticalRiskPill({ label, severity, onClick }: { label: string; severity?: Severity | "Unknown"; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-8 cursor-pointer items-center rounded-full border border-slate-300/80 bg-slate-50/85 px-3 py-1.5 text-left text-[0.82rem] font-medium leading-tight text-slate-700 shadow-[0_4px_10px_rgba(15,23,42,0.035)] transition hover:border-slate-500 hover:bg-white hover:text-slate-950 active:translate-y-px active:border-slate-600"
+        "inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-slate-300/80 bg-white/90 px-3.5 py-2 text-left text-[0.86rem] font-semibold leading-tight text-slate-700 shadow-[0_7px_16px_rgba(15,23,42,0.055)] transition hover:-translate-y-0.5 hover:border-slate-500 hover:bg-white hover:text-slate-950 hover:shadow-[0_12px_24px_rgba(15,23,42,0.09)] active:translate-y-px active:border-slate-600"
       )}
       title={label}
     >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white",
+          severity === "High"
+            ? "bg-rose-500"
+            : severity === "Medium"
+              ? "bg-amber-400"
+              : severity === "Low"
+                ? "bg-emerald-500"
+                : "bg-slate-400"
+        )}
+      />
       <span>{label}</span>
     </button>
   );
