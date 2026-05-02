@@ -88,11 +88,16 @@ export type PdfFooter = {
   center: "For internal review and decision support";
 };
 
+const DEFAULT_FINAL_OUTCOME_BY_DECISION: Record<"Accepted" | "Pending", string> = {
+  Accepted: "Original retained",
+  Pending: "Awaiting decision"
+};
+
 export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
   const document = reportModel.document;
   const finalReviewRowsByRiskId = new Map(reportModel.finalReviewRows.map((row) => [row.finding.riskId, row]));
   const totalRisks = document.findings.length;
-  const counts = getPdfFinalReviewCounts(reportModel.finalReviewRows);
+  const counts = getPdfFinalReviewCounts(document.findings, finalReviewRowsByRiskId);
 
   return {
     metadata: {
@@ -133,12 +138,16 @@ export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
         accepted: counts.Accepted,
         pending: counts.Pending
       },
-      rows: reportModel.finalReviewRows.map((row, index) => ({
-        number: index + 1,
-        riskTitle: getTextOrFallback(row.finding.riskTitle, "Untitled risk"),
-        decision: getPdfDecision(row),
-        finalOutcome: getPdfFinalOutcome(row)
-      }))
+      rows: document.findings.map((finding, index) => {
+        const row = finalReviewRowsByRiskId.get(finding.riskId);
+
+        return {
+          number: index + 1,
+          riskTitle: getTextOrFallback(finding.riskTitle, "Untitled risk"),
+          decision: getPdfDecision(row),
+          finalOutcome: getPdfFinalOutcome(row)
+        };
+      })
     },
     footer: {
       left: "Confidential",
@@ -182,9 +191,10 @@ function buildPdfDetailedRisk(finding: NormalizedFinding, reviewRow: FinalReview
   };
 }
 
-function getPdfFinalReviewCounts(rows: FinalReviewRow[]) {
-  return rows.reduce<Record<FinalReviewDecision, number>>(
-    (counts, row) => {
+function getPdfFinalReviewCounts(findings: NormalizedFinding[], rowsByRiskId: Map<string, FinalReviewRow>) {
+  return findings.reduce<Record<FinalReviewDecision, number>>(
+    (counts, finding) => {
+      const row = rowsByRiskId.get(finding.riskId);
       const decision = getPdfDecision(row);
       if (decision !== "\u2014") {
         counts[decision] += 1;
@@ -236,17 +246,22 @@ function getRiskExplanation(finding: NormalizedFinding) {
   return parts.length ? parts.join(" ") : null;
 }
 
-function getPdfFinalOutcome(row: FinalReviewRow) {
+function getPdfFinalOutcome(row: FinalReviewRow | undefined) {
   const decision = getPdfDecision(row);
 
-  if (decision === "Revised") return getFinalClauseText(row) ?? getNullableText(row.finalClause) ?? "\u2014";
+  if (decision === "Revised") return getFinalClauseText(row) ?? getNullableText(row?.finalClause) ?? "\u2014";
+  if (decision === "Accepted" || decision === "Pending") return getFinalOutcomeText(row, decision) ?? "\u2014";
 
-  return getNullableText(row.finalClause) ?? "\u2014";
+  return "\u2014";
 }
 
 function getFinalClauseText(row: FinalReviewRow | undefined) {
   if (!row) return null;
   return getFirstNullableText([row.revisedClause, row.finalClause]);
+}
+
+function getFinalOutcomeText(row: FinalReviewRow | undefined, decision: "Accepted" | "Pending") {
+  return getNullableText(row?.finalClause) ?? DEFAULT_FINAL_OUTCOME_BY_DECISION[decision];
 }
 
 function getPdfDecision(row: FinalReviewRow | undefined): PdfDecision {
