@@ -2,6 +2,8 @@ import type { ContractAnalysis } from "@/types/contract";
 import { applyDecisionLogic } from "@/lib/ai/decision";
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
 
+export const demoDocumentTitle = "Website Design and Digital Services Agreement";
+
 export const demoContractText = `DEMO CONTRACT AGREEMENT
 Website Design and Digital Services Agreement
 
@@ -216,7 +218,7 @@ This Agreement is governed by the laws of the State of Illinois, USA.
 For international engagements, applicable local regulations may also apply.`;
 
 export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysisSchema.parse({
-  contractTitle: "Bright Digital Design / Metro Coffee Roasters Website Design Agreement",
+  contractTitle: demoDocumentTitle,
   executiveSummary:
     "The agreement presents a high-risk profile because payment rights, termination economics, uncapped supplier indemnities, audit rights, and data obligations are materially broad or internally inconsistent. The recommended position is to renegotiate before signature, focusing first on payment certainty, liability allocation, audit scope, and post-termination data handling.",
   aiInsight:

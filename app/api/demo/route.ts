@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoAnalysis, demoContractText } from "@/data/demo-contract";
+import { demoAnalysis, demoContractText, demoDocumentTitle } from "@/data/demo-contract";
 import { analyzeContract } from "@/lib/ai/analyzeContract";
 import { preprocessContractText } from "@/lib/parsers/preprocess";
 import type { AnalysisSource, ContractAnalysis } from "@/types/contract";
@@ -22,7 +22,7 @@ function buildDemoPayload(analysis: ContractAnalysis, extractedCharacters: numbe
   return {
     analysisId: null,
     analysis,
-    source: buildDemoSource(analysis.contractTitle || demoAnalysis.contractTitle, extractedCharacters)
+    source: buildDemoSource(demoDocumentTitle, extractedCharacters)
   };
 }
 
