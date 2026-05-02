@@ -2,6 +2,7 @@ import type { FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportMode
 import type { AnalysisSource } from "@/types/contract";
 
 export type PdfSeverity = "High" | "Medium" | "Low" | null;
+export type PdfDecision = FinalReviewDecision | "\u2014";
 
 export type PdfReportModel = {
   metadata: PdfMetadata;
@@ -48,7 +49,7 @@ export type PdfSummaryRisk = {
   severity: PdfSeverity;
   severityLabel: string;
   confidenceLabel: string;
-  status: FinalReviewDecision;
+  status: PdfDecision;
   issue: string | null;
   impact: string | null;
   action: string | null;
@@ -77,7 +78,7 @@ export type PdfFinalReview = {
   rows: Array<{
     number: number;
     riskTitle: string;
-    decision: FinalReviewDecision;
+    decision: PdfDecision;
     finalOutcome: string;
   }>;
 };
@@ -155,7 +156,7 @@ function buildPdfSummaryRisk(finding: NormalizedFinding, reviewRow: FinalReviewR
     title: getTextOrFallback(finding.riskTitle, "Untitled risk"),
     category: getTextOrFallback(finding.category, "Uncategorized"),
     severity,
-    severityLabel: severity ?? "Not available",
+    severityLabel: severity ?? "\u2014",
     confidenceLabel: formatConfidenceLabel(finding.confidence),
     status: decision,
     issue: getFirstNullableText([finding.clauseSnippet, finding.flaggedText, finding.whyItMatters]),
@@ -173,7 +174,7 @@ function buildPdfDetailedRisk(finding: NormalizedFinding, reviewRow: FinalReview
     sectionLabel: getTextOrFallback(finding.sectionRef, "Not available"),
     category: getTextOrFallback(finding.category, "Uncategorized"),
     severity,
-    severityLabel: severity ?? "Not available",
+    severityLabel: severity ?? "\u2014",
     confidenceLabel: formatConfidenceLabel(finding.confidence),
     clauseExtract: getFirstNullableText([finding.fullClauseText, finding.clauseSnippet, finding.flaggedText]),
     riskExplanation: getRiskExplanation(finding),
@@ -184,7 +185,10 @@ function buildPdfDetailedRisk(finding: NormalizedFinding, reviewRow: FinalReview
 function getPdfFinalReviewCounts(rows: FinalReviewRow[]) {
   return rows.reduce<Record<FinalReviewDecision, number>>(
     (counts, row) => {
-      counts[getPdfDecision(row)] += 1;
+      const decision = getPdfDecision(row);
+      if (decision !== "\u2014") {
+        counts[decision] += 1;
+      }
       return counts;
     },
     { Revised: 0, Accepted: 0, Pending: 0 }
@@ -213,15 +217,17 @@ function getPdfStatusMessage(counts: Record<FinalReviewDecision, number>, totalR
 
 function getPdfRiskAction(finding: NormalizedFinding, row: FinalReviewRow | undefined) {
   const decision = getPdfDecision(row);
-  if (decision === "Accepted") return "No change required";
+  if (decision === "Accepted") return getNullableText(row?.finalClause);
   if (decision === "Revised") return getFinalClauseText(row);
+  if (decision === "\u2014") return null;
   return getNullableText(finding.originalRecommendedDraft);
 }
 
 function getPdfRecommendedClause(finding: NormalizedFinding, row: FinalReviewRow | undefined) {
   const decision = getPdfDecision(row);
-  if (decision === "Accepted") return null;
+  if (decision === "Accepted") return getNullableText(row?.finalClause);
   if (decision === "Revised") return getFinalClauseText(row);
+  if (decision === "\u2014") return null;
   return getNullableText(finding.originalRecommendedDraft);
 }
 
@@ -233,22 +239,20 @@ function getRiskExplanation(finding: NormalizedFinding) {
 function getPdfFinalOutcome(row: FinalReviewRow) {
   const decision = getPdfDecision(row);
 
-  if (decision === "Accepted") return "No change required";
-  if (decision === "Pending") return "Pending review";
+  if (decision === "Revised") return getFinalClauseText(row) ?? getNullableText(row.finalClause) ?? "\u2014";
 
-  return getFinalClauseText(row) ?? "Not available";
+  return getNullableText(row.finalClause) ?? "\u2014";
 }
 
 function getFinalClauseText(row: FinalReviewRow | undefined) {
   if (!row) return null;
-
-  const rowRecord = row as unknown as Record<string, unknown>;
-  return getFirstNullableText([rowRecord.userEditedClause, row.revisedClause, row.finalClause, rowRecord.finalClauseOutcome]);
+  return getFirstNullableText([row.revisedClause, row.finalClause]);
 }
 
-function getPdfDecision(row: FinalReviewRow | undefined): FinalReviewDecision {
+function getPdfDecision(row: FinalReviewRow | undefined): PdfDecision {
+  if (!row) return "Pending";
   if (row?.decision === "Revised" || row?.decision === "Accepted" || row?.decision === "Pending") return row.decision;
-  return "Pending";
+  return "\u2014";
 }
 
 function getPdfSeverity(value: unknown): PdfSeverity {
