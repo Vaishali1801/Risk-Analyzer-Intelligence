@@ -704,16 +704,31 @@ export function AnalysisWorkspace() {
 
   return (
     <main className="min-h-screen">
-      <header className="sticky top-0 z-40 bg-slate-50/95 shadow-[0_1px_6px_rgba(15,23,42,0.04)] backdrop-blur">
-        <div ref={mainHeaderRowRef} className="border-b border-slate-200/70">
+      <header className="sticky top-0 z-40 shadow-[0_10px_26px_rgba(7,27,58,0.22)]">
+        <div ref={mainHeaderRowRef} className="border-b border-white/10 bg-[#071B3A] text-white">
           <div className="mx-auto flex max-w-7xl flex-col gap-2.5 px-5 py-2.5 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[1.6rem] font-semibold tracking-tight text-slate-950">Risk Analysis Results</h1>
+              <h1 className="flex items-center gap-3 text-[1.6rem] font-semibold tracking-tight text-white">
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="h-7 w-7 shrink-0 text-white"
+                  fill="none"
+                >
+                  <path d="M7.6 7.8 12 12m4.4-4.2L12 12m-4.5 4.3L12 12m4.6 4.2L12 12M7.6 7.8h8.8M7.5 16.3h9.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="7.6" cy="7.8" r="1.45" fill="currentColor" />
+                  <circle cx="16.4" cy="7.8" r="1.45" fill="currentColor" />
+                  <circle cx="7.5" cy="16.3" r="1.45" fill="currentColor" />
+                  <circle cx="16.6" cy="16.2" r="1.45" fill="currentColor" />
+                  <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                </svg>
+                <span>AI Risk Analyzer</span>
+              </h1>
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2.5 lg:justify-end">
               <div className="min-w-0 max-w-full lg:max-w-[22rem]">
-                <p className="truncate text-sm font-medium text-slate-700" title={documentName}>{documentName}</p>
+                <p className="truncate text-sm font-medium text-white/75" title={documentName}>{documentName}</p>
               </div>
 
               <div className="flex items-center justify-end">
@@ -722,7 +737,7 @@ export function AnalysisWorkspace() {
                   variant="default"
                   size="sm"
                   onClick={() => downloadReportPdf(reportModel)}
-                  className="h-8.5 bg-slate-950 px-3 text-white hover:bg-slate-800"
+                  className="h-8.5 bg-white px-3 text-[#071B3A] shadow-sm hover:bg-blue-50"
                 >
                   Download
                 </Button>
@@ -731,7 +746,7 @@ export function AnalysisWorkspace() {
           </div>
         </div>
 
-        <nav ref={tabRowRef} aria-label="Analysis sections" className="border-b border-slate-200/70">
+        <nav ref={tabRowRef} aria-label="Analysis sections" className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-7xl px-5">
             <div className="flex items-center gap-6 overflow-x-auto">
               {sectionTabs.map((tab) => (
@@ -743,8 +758,8 @@ export function AnalysisWorkspace() {
                   className={cn(
                     "inline-flex h-11 items-center border-b-2 text-sm font-medium whitespace-nowrap transition-colors",
                     activeSection === tab.id
-                      ? "border-slate-950 text-slate-950"
-                      : "border-transparent text-slate-500 hover:text-slate-700"
+                      ? "border-[#071B3A] text-[#071B3A]"
+                      : "border-transparent text-slate-500 hover:text-slate-900"
                   )}
                 >
                   {tab.label}
@@ -928,11 +943,13 @@ export function AnalysisWorkspace() {
           />
         </section>
 
-        <section id="final-review" className="space-y-4">
-          <h2 className="text-xl font-semibold tracking-tight text-slate-950">Final Review</h2>
-
+        <section id="final-review">
           <Card className="overflow-hidden border-slate-300/80 bg-white/95 shadow-[0_22px_52px_rgba(15,23,42,0.09)]">
             <CardContent className="p-0">
+              <div className="px-4 pt-4 sm:px-5">
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Final Review</h2>
+              </div>
+
               <div className="grid gap-4 border-b border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_62%,#eef2f7_100%)] px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="min-w-0">
                   <p className="text-[0.74rem] font-semibold uppercase tracking-[0.16em] text-slate-600">Recommended Decision</p>

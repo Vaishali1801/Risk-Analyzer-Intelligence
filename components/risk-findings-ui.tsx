@@ -176,10 +176,10 @@ export function RiskFindingsTable({
 
   return (
     <Card className="border-slate-200/90 bg-white/95 shadow-[0_14px_34px_rgba(15,23,42,0.055)]">
-      <CardContent className="space-y-4 p-5">
+      <CardContent className="space-y-5 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-950">Risk Register</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Risk Register</h2>
             <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[0.72rem] font-medium tabular-nums text-slate-500">
               {formatFindingsCount(risks.length)}
             </div>
