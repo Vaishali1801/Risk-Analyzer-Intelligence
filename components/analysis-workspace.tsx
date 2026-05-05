@@ -48,13 +48,118 @@ import {
 } from "@/components/risk-findings-ui";
 import type { ContractAnalysis, Severity } from "@/types/contract";
 
-type SectionId = "summary" | "risks" | "final-review";
+type SectionId = "summary" | "gaps-recommendations" | "risks" | "final-review";
 type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
+type GapClauseAction = "Must Add" | "Negotiate" | "Optional";
+type GapClauseImpact = "High" | "Medium" | "Low";
+
+type GapClauseRecommendation = {
+  id: string;
+  title: string;
+  action: GapClauseAction;
+  impact: GapClauseImpact;
+  whyThisMatters: string;
+  suggestedFix: string;
+};
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
+  { id: "gaps-recommendations", label: "Gaps & Recommendations" },
   { id: "risks", label: "Risks" },
   { id: "final-review", label: "Final Review" }
+];
+
+const gapActionFilters: GapClauseAction[] = ["Must Add", "Negotiate", "Optional"];
+
+const mockGapClauseRecommendations: GapClauseRecommendation[] = [
+  {
+    id: "gap-confidentiality",
+    title: "Confidentiality Survival Period",
+    action: "Must Add",
+    impact: "High",
+    whyThisMatters: "Sensitive information may lose protection immediately after termination.",
+    suggestedFix: "Add a survival period that keeps confidentiality obligations in force after the agreement ends."
+  },
+  {
+    id: "gap-liability-cap",
+    title: "Liability Cap",
+    action: "Must Add",
+    impact: "High",
+    whyThisMatters: "Uncapped liability can create exposure beyond the expected value of the contract.",
+    suggestedFix: "Include a clear aggregate cap with any agreed exclusions stated separately."
+  },
+  {
+    id: "gap-data-security",
+    title: "Data Security Obligations",
+    action: "Must Add",
+    impact: "High",
+    whyThisMatters: "The contract does not set baseline controls for handling business or customer data.",
+    suggestedFix: "Add minimum security standards, breach notification timing, and cooperation duties."
+  },
+  {
+    id: "gap-termination-assistance",
+    title: "Termination Assistance",
+    action: "Must Add",
+    impact: "Medium",
+    whyThisMatters: "A sudden service stop can interrupt transition planning and business continuity.",
+    suggestedFix: "Require reasonable transition support for a defined period after termination."
+  },
+  {
+    id: "gap-indemnity-scope",
+    title: "Indemnity Scope",
+    action: "Negotiate",
+    impact: "High",
+    whyThisMatters: "Broad indemnities may shift responsibility for issues outside a party's control.",
+    suggestedFix: "Limit indemnity to direct third-party claims caused by breach, negligence, or willful misconduct."
+  },
+  {
+    id: "gap-payment-disputes",
+    title: "Payment Dispute Process",
+    action: "Negotiate",
+    impact: "Medium",
+    whyThisMatters: "Disputed invoices can trigger payment delays without a defined resolution path.",
+    suggestedFix: "Add notice, escalation, and partial-payment language for undisputed amounts."
+  },
+  {
+    id: "gap-audit-rights",
+    title: "Audit Rights",
+    action: "Negotiate",
+    impact: "Medium",
+    whyThisMatters: "Unlimited audit rights may disrupt operations or expose unrelated records.",
+    suggestedFix: "Define audit frequency, notice, confidentiality, and scope limits."
+  },
+  {
+    id: "gap-subcontractors",
+    title: "Subcontractor Controls",
+    action: "Negotiate",
+    impact: "Medium",
+    whyThisMatters: "Subcontracting without controls can weaken accountability for performance and data handling.",
+    suggestedFix: "Require prior notice, equivalent obligations, and continued responsibility for subcontractor acts."
+  },
+  {
+    id: "gap-governance-meetings",
+    title: "Governance Check-ins",
+    action: "Optional",
+    impact: "Low",
+    whyThisMatters: "Regular review points can catch delivery issues before they become disputes.",
+    suggestedFix: "Add quarterly business reviews for performance, roadmap, and open action items."
+  },
+  {
+    id: "gap-escalation-path",
+    title: "Escalation Path",
+    action: "Optional",
+    impact: "Low",
+    whyThisMatters: "Operational disagreements may take longer to resolve without named escalation levels.",
+    suggestedFix: "Define manager and executive escalation steps with target response times."
+  },
+  {
+    id: "gap-notice-format",
+    title: "Notice Format",
+    action: "Optional",
+    impact: "Low",
+    whyThisMatters: "Ambiguous notice methods can create avoidable disputes about whether notice was effective.",
+    suggestedFix: "Specify accepted delivery methods, recipients, and when notice is deemed received."
+  }
 ];
 
 const SECTION_OFFSET_PADDING_PX = 16;
@@ -87,6 +192,8 @@ export function AnalysisWorkspace() {
   const [expandedFinalReviewRiskId, setExpandedFinalReviewRiskId] = useState<string | null>(null);
   const [isReviewFinalized, setIsReviewFinalized] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
+  const [activeGapAction, setActiveGapAction] = useState<GapClauseAction>("Must Add");
+  const [isGapListExpanded, setIsGapListExpanded] = useState(false);
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
@@ -539,6 +646,20 @@ export function AnalysisWorkspace() {
       .map(([name, count]) => ({ name: name as SafeRiskCategory, count }))
       .sort((a, b) => b.count - a.count);
   }, [documentModel]);
+  const gapRecommendationCounts = useMemo(() => {
+    return gapActionFilters.reduce<Record<GapClauseAction, number>>(
+      (counts, action) => {
+        counts[action] = mockGapClauseRecommendations.filter((clause) => clause.action === action).length;
+        return counts;
+      },
+      { "Must Add": 0, Negotiate: 0, Optional: 0 }
+    );
+  }, []);
+  const activeGapClauses = useMemo(() => {
+    return mockGapClauseRecommendations.filter((clause) => clause.action === activeGapAction);
+  }, [activeGapAction]);
+  const visibleGapClauses = isGapListExpanded ? activeGapClauses : activeGapClauses.slice(0, 3);
+  const hasMoreGapClauses = activeGapClauses.length > visibleGapClauses.length;
 
   useEffect(() => {
     if (!documentModel || !reviewSessionKey) return;
@@ -596,6 +717,10 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     setIsReviewFinalized(false);
   }, [reviewByRiskId]);
+
+  useEffect(() => {
+    setIsGapListExpanded(false);
+  }, [activeGapAction]);
 
   useEffect(() => {
     if (!analysis) return;
@@ -918,6 +1043,47 @@ export function AnalysisWorkspace() {
           </Card>
         </section>
 
+        <section id="gaps-recommendations">
+          <Card className="border-slate-300/80 bg-white/95 shadow-[0_22px_52px_rgba(15,23,42,0.09)]">
+            <CardContent className="space-y-5 p-6 sm:p-7">
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Gaps & Recommendations</h2>
+
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+                {gapActionFilters.map((action) => (
+                  <GapFilterCard
+                    key={action}
+                    action={action}
+                    count={gapRecommendationCounts[action]}
+                    selected={activeGapAction === action}
+                    onClick={() => setActiveGapAction(action)}
+                  />
+                ))}
+              </div>
+
+              <div className="text-sm font-medium text-slate-600">Showing: {activeGapAction} Clauses</div>
+
+              <div className="space-y-3">
+                {visibleGapClauses.map((clause) => (
+                  <GapClauseCard key={clause.id} clause={clause} />
+                ))}
+              </div>
+
+              {hasMoreGapClauses ? (
+                <div className="pt-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsGapListExpanded(true)}
+                  >
+                    Show more
+                  </Button>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </section>
+
         <section id="risks" className="space-y-6">
           <RiskFindingsTable
             risks={filteredRisks}
@@ -1145,6 +1311,104 @@ function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; a
       {children}
     </span>
   );
+}
+
+function GapFilterCard({
+  action,
+  count,
+  selected,
+  onClick
+}: {
+  action: GapClauseAction;
+  count: number;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={cn(
+        "flex min-h-[4rem] min-w-0 items-center justify-between gap-4 rounded-[1rem] border px-4 py-3 text-left shadow-[0_8px_18px_rgba(15,23,42,0.045)] transition sm:min-w-[12rem]",
+        selected
+          ? "border-slate-400 bg-white text-slate-950 shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
+          : "border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-950"
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span
+          aria-hidden="true"
+          className={cn("h-2.5 w-2.5 shrink-0 rounded-full", getGapActionDotClassName(action))}
+        />
+        <span className="truncate text-sm font-semibold">{action}</span>
+      </span>
+      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-slate-600">
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function GapClauseCard({ clause }: { clause: GapClauseRecommendation }) {
+  return (
+    <article className="rounded-[1rem] border border-slate-200/90 bg-slate-50/70 p-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-[0.86rem] font-semibold leading-5 text-slate-950">{clause.title}</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <GapActionBadge action={clause.action} />
+            <GapImpactBadge impact={clause.impact} />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <GapClauseDetail label="Why this matters" value={clause.whyThisMatters} />
+        <GapClauseDetail label="Suggested fix" value={clause.suggestedFix} />
+      </div>
+    </article>
+  );
+}
+
+function GapActionBadge({ action }: { action: GapClauseAction }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold",
+        action === "Must Add"
+          ? "border-rose-200 bg-rose-50 text-rose-700"
+          : action === "Negotiate"
+            ? "border-amber-200 bg-amber-50 text-amber-700"
+            : "border-slate-200 bg-slate-100 text-slate-600"
+      )}
+    >
+      {action}
+    </span>
+  );
+}
+
+function GapImpactBadge({ impact }: { impact: GapClauseImpact }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[0.72rem] font-semibold text-slate-500">
+      Impact: {impact}
+    </span>
+  );
+}
+
+function GapClauseDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <p className="mt-1 text-sm leading-6 text-slate-700">{value}</p>
+    </div>
+  );
+}
+
+function getGapActionDotClassName(action: GapClauseAction) {
+  if (action === "Must Add") return "bg-rose-500";
+  if (action === "Negotiate") return "bg-amber-400";
+  return "bg-slate-400";
 }
 
 function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision }) {
