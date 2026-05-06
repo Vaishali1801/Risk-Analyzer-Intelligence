@@ -1048,7 +1048,7 @@ export function AnalysisWorkspace() {
             <CardContent className="space-y-5 p-6 sm:p-7">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Gaps & Recommendations</h2>
 
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap">
+              <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-1">
                 {gapActionFilters.map((action) => (
                   <GapFilterCard
                     key={action}
@@ -1059,8 +1059,6 @@ export function AnalysisWorkspace() {
                   />
                 ))}
               </div>
-
-              <div className="text-sm font-medium text-slate-600">Showing: {activeGapAction} Clauses</div>
 
               <div className="space-y-3">
                 {visibleGapClauses.map((clause) => (
@@ -1330,22 +1328,14 @@ function GapFilterCard({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        "flex min-h-[4rem] min-w-0 items-center justify-between gap-4 rounded-[1rem] border px-4 py-3 text-left shadow-[0_8px_18px_rgba(15,23,42,0.045)] transition sm:min-w-[12rem]",
+        "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm transition",
         selected
-          ? "border-slate-400 bg-white text-slate-950 shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-          : "border-slate-200 bg-slate-50/70 text-slate-600 hover:border-slate-300 hover:bg-white hover:text-slate-950"
+          ? getGapFilterActiveClassName(action)
+          : "border-transparent bg-transparent font-medium text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
       )}
     >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <span
-          aria-hidden="true"
-          className={cn("h-2.5 w-2.5 shrink-0 rounded-full", getGapActionDotClassName(action))}
-        />
-        <span className="truncate text-sm font-semibold">{action}</span>
-      </span>
-      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[0.72rem] font-semibold tabular-nums text-slate-600">
-        {count}
-      </span>
+      <span className="font-semibold">{action}</span>
+      <span className="tabular-nums">({count})</span>
     </button>
   );
 }
@@ -1405,10 +1395,10 @@ function GapClauseDetail({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getGapActionDotClassName(action: GapClauseAction) {
-  if (action === "Must Add") return "bg-rose-500";
-  if (action === "Negotiate") return "bg-amber-400";
-  return "bg-slate-400";
+function getGapFilterActiveClassName(action: GapClauseAction) {
+  if (action === "Must Add") return "border-rose-300 bg-rose-100 text-rose-800 shadow-sm";
+  if (action === "Negotiate") return "border-amber-300 bg-amber-100 text-amber-800 shadow-sm";
+  return "border-slate-300 bg-white text-slate-950 shadow-sm";
 }
 
 function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision }) {
