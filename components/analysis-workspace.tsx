@@ -1405,9 +1405,16 @@ function GapImpactBadge({ impact }: { impact: GapClauseImpact }) {
 
 function GapClauseDetail({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
-    <div>
-      <div className="text-[0.75rem] font-semibold tracking-[0.02em] text-slate-500">{label}</div>
-      <p className={cn("mt-2 text-sm leading-7 text-slate-700", emphasis ? "font-medium text-slate-800" : null)}>{value}</p>
+    <div
+      className={cn(
+        "rounded-[0.85rem] border p-3.5",
+        emphasis ? "border-blue-100 bg-blue-50/50" : "border-slate-200 bg-white/60"
+      )}
+    >
+      <div className={cn("text-[0.78rem] font-semibold tracking-normal", emphasis ? "text-slate-700" : "text-slate-600")}>
+        {label}
+      </div>
+      <p className={cn("mt-2 text-sm leading-6", emphasis ? "font-medium text-slate-800" : "text-slate-700")}>{value}</p>
     </div>
   );
 }
