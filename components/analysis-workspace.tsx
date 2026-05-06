@@ -1348,17 +1348,15 @@ function GapFilterCard({
 function GapClauseCard({ clause }: { clause: GapClauseRecommendation }) {
   return (
     <article className="rounded-[1rem] border border-slate-200/90 bg-slate-50/70 p-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)]">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="text-[0.86rem] font-semibold leading-5 text-slate-950">{clause.title}</h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <GapActionBadge action={clause.action} />
-            <GapImpactBadge impact={clause.impact} />
-          </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="min-w-0 text-[0.86rem] font-semibold leading-5 text-slate-950">{clause.title}</h3>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          <GapActionBadge action={clause.action} />
+          <GapImpactBadge impact={clause.impact} />
         </div>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 grid gap-4 md:grid-cols-2">
         <GapClauseDetail label="Why this matters" value={clause.whyThisMatters} />
         <GapClauseDetail label="Suggested fix" value={clause.suggestedFix} />
       </div>
