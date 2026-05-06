@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, ChevronDown, CircleAlert, Download, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Download, Info, Scale, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1322,6 +1322,8 @@ function GapFilterCard({
   selected: boolean;
   onClick: () => void;
 }) {
+  const Icon = getGapFilterIcon(action);
+
   return (
     <button
       type="button"
@@ -1334,7 +1336,10 @@ function GapFilterCard({
           : "border-transparent bg-transparent font-medium text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
       )}
     >
-      <span className="font-semibold">{action}</span>
+      <span className="flex items-center gap-2 whitespace-nowrap">
+        <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={2} />
+        <span className="font-semibold">{action}</span>
+      </span>
       <span className="tabular-nums">({count})</span>
     </button>
   );
@@ -1399,6 +1404,12 @@ function getGapFilterActiveClassName(action: GapClauseAction) {
   if (action === "Must Add") return "border-rose-300 bg-rose-100 text-rose-800 shadow-sm";
   if (action === "Negotiate") return "border-amber-300 bg-amber-100 text-amber-800 shadow-sm";
   return "border-slate-300 bg-white text-slate-950 shadow-sm";
+}
+
+function getGapFilterIcon(action: GapClauseAction) {
+  if (action === "Must Add") return ShieldAlert;
+  if (action === "Negotiate") return Scale;
+  return Info;
 }
 
 function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision }) {
