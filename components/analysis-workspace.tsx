@@ -1333,7 +1333,7 @@ function GapFilterCard({
         "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm transition",
         selected
           ? getGapFilterActiveClassName(action)
-          : "border-transparent bg-transparent font-medium text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
+          : getGapFilterInactiveClassName(action)
       )}
     >
       <span className="flex items-center gap-2 whitespace-nowrap">
@@ -1347,18 +1347,23 @@ function GapFilterCard({
 
 function GapClauseCard({ clause }: { clause: GapClauseRecommendation }) {
   return (
-    <article className="rounded-[1rem] border border-slate-200/90 bg-slate-50/70 p-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)]">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="min-w-0 text-[0.86rem] font-semibold leading-5 text-slate-950">{clause.title}</h3>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+    <article
+      className={cn(
+        "rounded-[1rem] border border-l-4 border-slate-200/90 bg-slate-50/70 p-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)]",
+        getGapCardAccentClassName(clause.action)
+      )}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="min-w-0 text-[0.95rem] font-semibold leading-6 text-slate-950">{clause.title}</h3>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
           <GapActionBadge action={clause.action} />
           <GapImpactBadge impact={clause.impact} />
         </div>
       </div>
 
-      <div className="mt-3 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-2 md:gap-5">
         <GapClauseDetail label="Why this matters" value={clause.whyThisMatters} />
-        <GapClauseDetail label="Suggested fix" value={clause.suggestedFix} />
+        <GapClauseDetail label="Suggested fix" value={clause.suggestedFix} emphasis />
       </div>
     </article>
   );
@@ -1368,12 +1373,12 @@ function GapActionBadge({ action }: { action: GapClauseAction }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold",
+        "inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.72rem] font-bold",
         action === "Must Add"
-          ? "border-rose-200 bg-rose-50 text-rose-700"
+          ? "border-rose-300 bg-rose-50 text-rose-800"
           : action === "Negotiate"
-            ? "border-amber-200 bg-amber-50 text-amber-700"
-            : "border-slate-200 bg-slate-100 text-slate-600"
+            ? "border-amber-300 bg-amber-50 text-amber-800"
+            : "border-slate-300 bg-slate-100 text-slate-700"
       )}
     >
       {action}
@@ -1383,25 +1388,46 @@ function GapActionBadge({ action }: { action: GapClauseAction }) {
 
 function GapImpactBadge({ impact }: { impact: GapClauseImpact }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[0.72rem] font-semibold text-slate-500">
-      Impact: {impact}
+    <span
+      className={cn(
+        "inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.72rem] font-bold",
+        impact === "High"
+          ? "border-rose-200 bg-rose-50/80 text-rose-700"
+          : impact === "Medium"
+            ? "border-amber-200 bg-amber-50/80 text-amber-700"
+            : "border-slate-300 bg-slate-100 text-slate-700"
+      )}
+    >
+      {impact} Impact
     </span>
   );
 }
 
-function GapClauseDetail({ label, value }: { label: string; value: string }) {
+function GapClauseDetail({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <div>
-      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <p className="mt-1 text-sm leading-6 text-slate-700">{value}</p>
+      <div className="text-[0.75rem] font-semibold tracking-[0.02em] text-slate-500">{label}</div>
+      <p className={cn("mt-2 text-sm leading-7 text-slate-700", emphasis ? "font-medium text-slate-800" : null)}>{value}</p>
     </div>
   );
 }
 
 function getGapFilterActiveClassName(action: GapClauseAction) {
-  if (action === "Must Add") return "border-rose-300 bg-rose-100 text-rose-800 shadow-sm";
-  if (action === "Negotiate") return "border-amber-300 bg-amber-100 text-amber-800 shadow-sm";
-  return "border-slate-300 bg-white text-slate-950 shadow-sm";
+  if (action === "Must Add") return "border-rose-300 bg-rose-100 text-rose-800 font-bold shadow-sm";
+  if (action === "Negotiate") return "border-amber-300 bg-amber-100 text-amber-800 font-bold shadow-sm";
+  return "border-slate-300 bg-slate-100 text-slate-800 font-bold shadow-sm";
+}
+
+function getGapFilterInactiveClassName(action: GapClauseAction) {
+  if (action === "Must Add") return "border-transparent bg-rose-50/30 font-medium text-rose-700/75 hover:border-rose-200 hover:bg-rose-50";
+  if (action === "Negotiate") return "border-transparent bg-amber-50/30 font-medium text-amber-700/75 hover:border-amber-200 hover:bg-amber-50";
+  return "border-transparent bg-slate-50/70 font-medium text-slate-600 hover:border-slate-200 hover:bg-slate-100";
+}
+
+function getGapCardAccentClassName(action: GapClauseAction) {
+  if (action === "Must Add") return "border-l-rose-300";
+  if (action === "Negotiate") return "border-l-amber-300";
+  return "border-l-slate-300";
 }
 
 function getGapFilterIcon(action: GapClauseAction) {
