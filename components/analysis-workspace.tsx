@@ -46,21 +46,12 @@ import {
   type RiskReviewStatus,
   type RiskSortKey
 } from "@/components/risk-findings-ui";
-import type { ContractAnalysis, Severity } from "@/types/contract";
+import type { ContractAnalysis, GapAnalysisItem, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "gaps-recommendations" | "risks" | "final-review";
 type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
-type GapClauseAction = "Must Add" | "Negotiate" | "Optional";
-type GapClauseImpact = "High" | "Medium" | "Low";
-
-type GapClauseRecommendation = {
-  id: string;
-  title: string;
-  action: GapClauseAction;
-  impact: GapClauseImpact;
-  whyThisMatters: string;
-  suggestedFix: string;
-};
+type GapClauseAction = GapAnalysisItem["action"];
+type GapClauseImpact = GapAnalysisItem["impact"];
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -556,8 +547,8 @@ export function AnalysisWorkspace() {
       .sort((a, b) => b.count - a.count);
   }, [documentModel]);
   const gapRecommendations = useMemo(() => {
-    return getGapRecommendations(analysis);
-  }, [analysis]);
+    return documentModel?.gapAnalysis ?? [];
+  }, [documentModel]);
   const gapRecommendationCounts = useMemo(() => {
     return gapActionFilters.reduce<Record<GapClauseAction, number>>(
       (counts, action) => {
@@ -1290,7 +1281,7 @@ function GapFilterCard({
   );
 }
 
-function GapClauseCard({ clause }: { clause: GapClauseRecommendation }) {
+function GapClauseCard({ clause }: { clause: GapAnalysisItem }) {
   return (
     <article
       className={cn(
@@ -1299,7 +1290,7 @@ function GapClauseCard({ clause }: { clause: GapClauseRecommendation }) {
       )}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="min-w-0 text-[0.95rem] font-semibold leading-6 text-slate-950">{clause.title}</h3>
+        <h3 className="min-w-0 text-[0.95rem] font-semibold leading-6 text-slate-950">{clause.clauseName}</h3>
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
           <GapActionBadge action={clause.action} />
           <GapImpactBadge impact={clause.impact} />
@@ -1574,55 +1565,6 @@ function ExecutiveSummaryItem({ label, value }: { label: string; value: string }
       <div className="min-w-0 text-sm leading-[1.52rem] text-slate-700">{value}</div>
     </div>
   );
-}
-
-function getGapRecommendations(analysis: ContractAnalysis | undefined): GapClauseRecommendation[] {
-  const gapAnalysis = (analysis as { gapAnalysis?: unknown } | undefined)?.gapAnalysis;
-  if (!Array.isArray(gapAnalysis)) return [];
-
-  return gapAnalysis.reduce<GapClauseRecommendation[]>((recommendations, item, index) => {
-    const record = getObjectRecord(item);
-    if (!record) return recommendations;
-
-    const action = getSafeGapAction(record.action);
-    const impact = getSafeGapImpact(record.impact);
-    const title = normalizeReviewText(record.title);
-    const whyThisMatters = normalizeReviewText(record.whyThisMatters);
-    const suggestedFix = normalizeReviewText(record.suggestedFix);
-
-    if (!action || !impact || !title || !whyThisMatters || !suggestedFix) return recommendations;
-
-    recommendations.push({
-      id: normalizeReviewText(record.id) || `gap-${index + 1}`,
-      title,
-      action,
-      impact,
-      whyThisMatters,
-      suggestedFix
-    });
-
-    return recommendations;
-  }, []);
-}
-
-function getObjectRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function getSafeGapAction(value: unknown): GapClauseAction | null {
-  const normalizedValue = normalizeReviewText(value).toLowerCase().replace(/[\s_-]+/g, "");
-  if (normalizedValue === "mustadd") return "Must Add";
-  if (normalizedValue === "negotiate") return "Negotiate";
-  if (normalizedValue === "optional") return "Optional";
-  return null;
-}
-
-function getSafeGapImpact(value: unknown): GapClauseImpact | null {
-  const normalizedValue = normalizeReviewText(value).toLowerCase();
-  if (normalizedValue === "high") return "High";
-  if (normalizedValue === "medium") return "Medium";
-  if (normalizedValue === "low") return "Low";
-  return null;
 }
 
 function getReviewDraftValue(value: unknown) {

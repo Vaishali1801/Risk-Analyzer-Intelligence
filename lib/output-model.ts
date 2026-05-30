@@ -1,6 +1,6 @@
 import { RISK_CATEGORIES, severityRank, severityStyles } from "@/constants/risk";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
-import type { AnalysisSource, ContractAnalysis, DecisionRecommendation, RiskCategory, Severity } from "@/types/contract";
+import type { AnalysisSource, ContractAnalysis, DecisionRecommendation, GapAnalysisItem, RiskCategory, Severity } from "@/types/contract";
 
 export type ReviewStatus = "pending" | "needs_change" | "accepted";
 export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
@@ -46,6 +46,7 @@ export type NormalizedDocumentAnalysis = {
   overallRiskLevel: Severity;
   overallDecision: DecisionRecommendation;
   findings: NormalizedFinding[];
+  gapAnalysis: GapAnalysisItem[];
   topCriticalRiskIds: string[];
   summary: {
     totalRiskCount: number;
@@ -132,6 +133,7 @@ export function normalizeOutputAnalysis(
     overallRiskLevel: getOverallRiskLevel(findings, analysis.overallRiskLevel),
     overallDecision: analysis.decisionRecommendation,
     findings,
+    gapAnalysis: analysis.gapAnalysis ?? [],
     topCriticalRiskIds: topCriticalRisks.map((finding) => finding.riskId),
     summary
   };
