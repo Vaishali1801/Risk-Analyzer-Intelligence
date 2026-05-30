@@ -71,97 +71,6 @@ const sectionTabs: { id: SectionId; label: string }[] = [
 
 const gapActionFilters: GapClauseAction[] = ["Must Add", "Negotiate", "Optional"];
 
-const mockGapClauseRecommendations: GapClauseRecommendation[] = [
-  {
-    id: "gap-confidentiality",
-    title: "Confidentiality Survival Period",
-    action: "Must Add",
-    impact: "High",
-    whyThisMatters: "Sensitive information may lose protection immediately after termination.",
-    suggestedFix: "Add a survival period that keeps confidentiality obligations in force after the agreement ends."
-  },
-  {
-    id: "gap-liability-cap",
-    title: "Liability Cap",
-    action: "Must Add",
-    impact: "High",
-    whyThisMatters: "Uncapped liability can create exposure beyond the expected value of the contract.",
-    suggestedFix: "Include a clear aggregate cap with any agreed exclusions stated separately."
-  },
-  {
-    id: "gap-data-security",
-    title: "Data Security Obligations",
-    action: "Must Add",
-    impact: "High",
-    whyThisMatters: "The contract does not set baseline controls for handling business or customer data.",
-    suggestedFix: "Add minimum security standards, breach notification timing, and cooperation duties."
-  },
-  {
-    id: "gap-termination-assistance",
-    title: "Termination Assistance",
-    action: "Must Add",
-    impact: "Medium",
-    whyThisMatters: "A sudden service stop can interrupt transition planning and business continuity.",
-    suggestedFix: "Require reasonable transition support for a defined period after termination."
-  },
-  {
-    id: "gap-indemnity-scope",
-    title: "Indemnity Scope",
-    action: "Negotiate",
-    impact: "High",
-    whyThisMatters: "Broad indemnities may shift responsibility for issues outside a party's control.",
-    suggestedFix: "Limit indemnity to direct third-party claims caused by breach, negligence, or willful misconduct."
-  },
-  {
-    id: "gap-payment-disputes",
-    title: "Payment Dispute Process",
-    action: "Negotiate",
-    impact: "Medium",
-    whyThisMatters: "Disputed invoices can trigger payment delays without a defined resolution path.",
-    suggestedFix: "Add notice, escalation, and partial-payment language for undisputed amounts."
-  },
-  {
-    id: "gap-audit-rights",
-    title: "Audit Rights",
-    action: "Negotiate",
-    impact: "Medium",
-    whyThisMatters: "Unlimited audit rights may disrupt operations or expose unrelated records.",
-    suggestedFix: "Define audit frequency, notice, confidentiality, and scope limits."
-  },
-  {
-    id: "gap-subcontractors",
-    title: "Subcontractor Controls",
-    action: "Negotiate",
-    impact: "Medium",
-    whyThisMatters: "Subcontracting without controls can weaken accountability for performance and data handling.",
-    suggestedFix: "Require prior notice, equivalent obligations, and continued responsibility for subcontractor acts."
-  },
-  {
-    id: "gap-governance-meetings",
-    title: "Governance Check-ins",
-    action: "Optional",
-    impact: "Low",
-    whyThisMatters: "Regular review points can catch delivery issues before they become disputes.",
-    suggestedFix: "Add quarterly business reviews for performance, roadmap, and open action items."
-  },
-  {
-    id: "gap-escalation-path",
-    title: "Escalation Path",
-    action: "Optional",
-    impact: "Low",
-    whyThisMatters: "Operational disagreements may take longer to resolve without named escalation levels.",
-    suggestedFix: "Define manager and executive escalation steps with target response times."
-  },
-  {
-    id: "gap-notice-format",
-    title: "Notice Format",
-    action: "Optional",
-    impact: "Low",
-    whyThisMatters: "Ambiguous notice methods can create avoidable disputes about whether notice was effective.",
-    suggestedFix: "Specify accepted delivery methods, recipients, and when notice is deemed received."
-  }
-];
-
 const SECTION_OFFSET_PADDING_PX = 16;
 const SECTION_ACTIVE_TOLERANCE_PX = 12;
 const SECTION_NAVIGATION_SETTLE_DELAY_MS = 450;
@@ -646,20 +555,39 @@ export function AnalysisWorkspace() {
       .map(([name, count]) => ({ name: name as SafeRiskCategory, count }))
       .sort((a, b) => b.count - a.count);
   }, [documentModel]);
+  const gapRecommendations = useMemo(() => {
+    return getGapRecommendations(analysis);
+  }, [analysis]);
   const gapRecommendationCounts = useMemo(() => {
     return gapActionFilters.reduce<Record<GapClauseAction, number>>(
       (counts, action) => {
-        counts[action] = mockGapClauseRecommendations.filter((clause) => clause.action === action).length;
+        counts[action] = gapRecommendations.filter((clause) => clause.action === action).length;
         return counts;
       },
       { "Must Add": 0, Negotiate: 0, Optional: 0 }
     );
-  }, []);
+  }, [gapRecommendations]);
+  const availableGapActionFilters = useMemo(() => {
+    return gapActionFilters.filter((action) => gapRecommendationCounts[action] > 0);
+  }, [gapRecommendationCounts]);
+  const firstAvailableGapAction = availableGapActionFilters[0] ?? null;
+  const selectedGapAction =
+    firstAvailableGapAction && gapRecommendationCounts[activeGapAction] > 0
+      ? activeGapAction
+      : firstAvailableGapAction;
+  const hasGapRecommendations = gapRecommendations.length > 0;
   const activeGapClauses = useMemo(() => {
-    return mockGapClauseRecommendations.filter((clause) => clause.action === activeGapAction);
-  }, [activeGapAction]);
+    if (!selectedGapAction) return [];
+    return gapRecommendations.filter((clause) => clause.action === selectedGapAction);
+  }, [gapRecommendations, selectedGapAction]);
   const visibleGapClauses = isGapListExpanded ? activeGapClauses : activeGapClauses.slice(0, 3);
   const hasMoreGapClauses = activeGapClauses.length > visibleGapClauses.length;
+
+  useEffect(() => {
+    if (!firstAvailableGapAction || gapRecommendationCounts[activeGapAction] > 0) return;
+
+    setActiveGapAction(firstAvailableGapAction);
+  }, [activeGapAction, firstAvailableGapAction, gapRecommendationCounts]);
 
   useEffect(() => {
     if (!documentModel || !reviewSessionKey) return;
@@ -1048,36 +976,42 @@ export function AnalysisWorkspace() {
             <CardContent className="space-y-5 p-6 sm:p-7">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Gaps & Recommendations</h2>
 
-              <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-1">
-                {gapActionFilters.map((action) => (
-                  <GapFilterCard
-                    key={action}
-                    action={action}
-                    count={gapRecommendationCounts[action]}
-                    selected={activeGapAction === action}
-                    onClick={() => setActiveGapAction(action)}
-                  />
-                ))}
-              </div>
+              {hasGapRecommendations ? (
+                <>
+                  <div className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-100/80 p-1">
+                    {availableGapActionFilters.map((action) => (
+                      <GapFilterCard
+                        key={action}
+                        action={action}
+                        count={gapRecommendationCounts[action]}
+                        selected={selectedGapAction === action}
+                        onClick={() => setActiveGapAction(action)}
+                      />
+                    ))}
+                  </div>
 
-              <div className="space-y-3">
-                {visibleGapClauses.map((clause) => (
-                  <GapClauseCard key={clause.id} clause={clause} />
-                ))}
-              </div>
+                  <div className="space-y-3">
+                    {visibleGapClauses.map((clause) => (
+                      <GapClauseCard key={clause.id} clause={clause} />
+                    ))}
+                  </div>
 
-              {hasMoreGapClauses ? (
-                <div className="pt-1">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setIsGapListExpanded(true)}
-                  >
-                    Show more
-                  </Button>
-                </div>
-              ) : null}
+                  {hasMoreGapClauses ? (
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setIsGapListExpanded(true)}
+                      >
+                        Show more
+                      </Button>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <GapRecommendationsEmptyState />
+              )}
             </CardContent>
           </Card>
         </section>
@@ -1308,6 +1242,17 @@ function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; a
     <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left")}>
       {children}
     </span>
+  );
+}
+
+function GapRecommendationsEmptyState() {
+  return (
+    <div className="rounded-[0.95rem] border border-slate-200 bg-slate-50/80 p-4">
+      <h3 className="text-sm font-semibold text-slate-950">No significant gaps identified</h3>
+      <p className="mt-1.5 text-sm leading-6 text-slate-600">
+        The document appears to contain the key elements typically expected for this document type.
+      </p>
+    </div>
   );
 }
 
@@ -1629,6 +1574,55 @@ function ExecutiveSummaryItem({ label, value }: { label: string; value: string }
       <div className="min-w-0 text-sm leading-[1.52rem] text-slate-700">{value}</div>
     </div>
   );
+}
+
+function getGapRecommendations(analysis: ContractAnalysis | undefined): GapClauseRecommendation[] {
+  const gapAnalysis = (analysis as { gapAnalysis?: unknown } | undefined)?.gapAnalysis;
+  if (!Array.isArray(gapAnalysis)) return [];
+
+  return gapAnalysis.reduce<GapClauseRecommendation[]>((recommendations, item, index) => {
+    const record = getObjectRecord(item);
+    if (!record) return recommendations;
+
+    const action = getSafeGapAction(record.action);
+    const impact = getSafeGapImpact(record.impact);
+    const title = normalizeReviewText(record.title);
+    const whyThisMatters = normalizeReviewText(record.whyThisMatters);
+    const suggestedFix = normalizeReviewText(record.suggestedFix);
+
+    if (!action || !impact || !title || !whyThisMatters || !suggestedFix) return recommendations;
+
+    recommendations.push({
+      id: normalizeReviewText(record.id) || `gap-${index + 1}`,
+      title,
+      action,
+      impact,
+      whyThisMatters,
+      suggestedFix
+    });
+
+    return recommendations;
+  }, []);
+}
+
+function getObjectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function getSafeGapAction(value: unknown): GapClauseAction | null {
+  const normalizedValue = normalizeReviewText(value).toLowerCase().replace(/[\s_-]+/g, "");
+  if (normalizedValue === "mustadd") return "Must Add";
+  if (normalizedValue === "negotiate") return "Negotiate";
+  if (normalizedValue === "optional") return "Optional";
+  return null;
+}
+
+function getSafeGapImpact(value: unknown): GapClauseImpact | null {
+  const normalizedValue = normalizeReviewText(value).toLowerCase();
+  if (normalizedValue === "high") return "High";
+  if (normalizedValue === "medium") return "Medium";
+  if (normalizedValue === "low") return "Low";
+  return null;
 }
 
 function getReviewDraftValue(value: unknown) {
