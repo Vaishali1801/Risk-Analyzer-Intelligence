@@ -40,6 +40,12 @@ export type PdfDashboard = {
   executiveSummary: string | null;
   topActions: string[];
   statusMessage: string;
+  gapSummary: {
+    mustAdd: number;
+    negotiate: number;
+    optional: number;
+    total: number;
+  };
 };
 
 export type PdfSummaryRisk = {
@@ -121,7 +127,8 @@ export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
       insight: getNullableText(document.aiInsight),
       executiveSummary: getNullableText(document.executiveSummary),
       topActions: document.nextActions.map((action) => getNullableText(action)).filter((action): action is string => Boolean(action)),
-      statusMessage: getPdfStatusMessage(counts, totalRisks)
+      statusMessage: getPdfStatusMessage(counts, totalRisks),
+      gapSummary: getPdfGapSummary(reportModel)
     },
     summaryRisks: document.findings.map((finding, index) => {
       const reviewRow = finalReviewRowsByRiskId.get(finding.riskId);
@@ -215,6 +222,19 @@ function getPdfCategoryBreakdown(reportModel: ReportModel) {
       percentage: totalRisks > 0 ? (count / totalRisks) * 100 : 0
     }))
     .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+}
+
+function getPdfGapSummary(reportModel: ReportModel): PdfDashboard["gapSummary"] {
+  return reportModel.document.gapAnalysis.reduce<PdfDashboard["gapSummary"]>(
+    (summary, gap) => {
+      if (gap.action === "Must Add") summary.mustAdd += 1;
+      if (gap.action === "Negotiate") summary.negotiate += 1;
+      if (gap.action === "Optional") summary.optional += 1;
+      summary.total += 1;
+      return summary;
+    },
+    { mustAdd: 0, negotiate: 0, optional: 0, total: 0 }
+  );
 }
 
 function getPdfStatusMessage(counts: Record<FinalReviewDecision, number>, totalRisks: number) {

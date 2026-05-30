@@ -206,7 +206,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
   const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
   y += actionsHeight + 7;
-  drawDecisionWarningStrip(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, 12, pdfData.finalReview.counts.pending, dashboard.statusMessage);
+  drawGapAnalysisSummarySection(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.gapSummary);
 }
 
 function drawHeader(doc: jsPDF, x: number, y: number, width: number, height: number) {
@@ -613,6 +613,62 @@ function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: numbe
   doc.setFontSize(9.2);
   doc.setTextColor(...hexToRgb(color));
   doc.text(statusMessage, x + 43, y + height / 2 + 1.4);
+}
+
+function drawGapAnalysisSummarySection(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  summary: PdfReportModel["dashboard"]["gapSummary"]
+) {
+  drawSectionTitle(doc, "GAP ANALYSIS SUMMARY", x, y);
+
+  if (summary.total <= 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.7);
+    doc.setTextColor(...hexToRgb(COLORS.darkText));
+    doc.text("No significant gaps identified.", x, y + 6);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.1);
+    doc.setTextColor(...hexToRgb(COLORS.mutedText));
+    const support = "The document appears to contain the key elements typically expected for this document type.";
+    doc.text(clampSingleLine(doc, support, width), x, y + 11);
+    return;
+  }
+
+  const countItems = [
+    { label: "Must Add", count: summary.mustAdd, color: COLORS.highRed, fill: COLORS.softRed },
+    { label: "Negotiate", count: summary.negotiate, color: COLORS.mediumAmber, fill: COLORS.softAmber },
+    { label: "Optional", count: summary.optional, color: COLORS.mutedText, fill: COLORS.softBlueGrey }
+  ];
+  let pillX = x;
+
+  countItems.forEach((item) => {
+    const text = `${item.label} (${item.count})`;
+    const pillWidth = doc.getTextWidth(text) + 7.2;
+    drawGapSummaryPill(doc, pillX, y + 4.5, pillWidth, text, item.color, item.fill);
+    pillX += pillWidth + 3;
+  });
+
+  const gapLabel = summary.total === 1 ? "gap" : "gaps";
+  const message = `${summary.total} significant ${gapLabel} identified. See Gaps & Recommendations section for details.`;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  doc.text(clampSingleLine(doc, message, width), x, y + 14);
+}
+
+function drawGapSummaryPill(doc: jsPDF, x: number, y: number, width: number, text: string, color: string, fill: string) {
+  doc.setFillColor(...hexToRgb(fill));
+  doc.setDrawColor(...hexToRgb(color));
+  doc.setLineWidth(0.22);
+  doc.roundedRect(x, y, width, 5.8, 1.4, 1.4, "FD");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.6);
+  doc.setTextColor(...hexToRgb(color));
+  doc.text(text, x + 3.6, y + 4);
 }
 
 function drawRiskDriversSummaryPage(doc: jsPDF, pdfData: PdfReportModel) {

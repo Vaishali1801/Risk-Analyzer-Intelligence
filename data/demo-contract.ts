@@ -251,6 +251,108 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
     "Limit audit rights to reasonable notice, defined scope, confidentiality safeguards, and security-sensitive boundaries.",
     "Add transition, data return, backup retention, and deletion notice obligations."
   ],
+  gapAnalysis: [
+    {
+      id: "GAP-1",
+      clauseName: "Data Security and Incident Notification Clause",
+      action: "Must Add",
+      impact: "High",
+      whyThisMatters:
+        "The agreement creates broad supplier responsibility for data incidents but does not define specific security controls, breach notification timelines, or incident response obligations.",
+      suggestedFix:
+        "Add a clause defining minimum security controls, incident notification timelines, cooperation duties, and responsibility boundaries for data-related incidents."
+    },
+    {
+      id: "GAP-2",
+      clauseName: "Acceptance Criteria and Deemed Acceptance Clause",
+      action: "Must Add",
+      impact: "Medium",
+      whyThisMatters:
+        "The contract allows the client to withhold payment pending internal review, but it does not define objective acceptance criteria or a deemed acceptance timeline.",
+      suggestedFix:
+        "Add objective acceptance criteria, review timelines, and deemed acceptance if the client does not reject deliverables with specific reasons within an agreed period."
+    },
+    {
+      id: "GAP-3",
+      clauseName: "Audit Scope and Notice Procedure",
+      action: "Must Add",
+      impact: "High",
+      whyThisMatters:
+        "The client may audit supplier systems, records, subcontractors, and controls at any time without prior notice, but the agreement does not define reasonable limits or procedures.",
+      suggestedFix:
+        "Add audit notice requirements, frequency limits, confidentiality protections, scope boundaries, and rules for audits of subcontractors or security controls."
+    },
+    {
+      id: "GAP-4",
+      clauseName: "Client Dependency and Delay Protection Clause",
+      action: "Negotiate",
+      impact: "Medium",
+      whyThisMatters:
+        "The agreement mentions client delays but does not fully protect the supplier from cost, resourcing, or schedule impacts caused by late approvals, content, or third-party inputs.",
+      suggestedFix:
+        "Add language confirming that client-caused delays extend timelines, may require repricing, and relieve the supplier from responsibility for affected milestones."
+    },
+    {
+      id: "GAP-5",
+      clauseName: "Third-Party Tools Responsibility Matrix",
+      action: "Negotiate",
+      impact: "High",
+      whyThisMatters:
+        "The website may rely on plugins, APIs, hosting, analytics, or infrastructure services, but responsibilities for selection, licensing, security, outages, and costs are not clearly allocated.",
+      suggestedFix:
+        "Add a responsibility matrix clarifying ownership of third-party tools, licensing costs, security obligations, outage responsibility, and approval requirements."
+    },
+    {
+      id: "GAP-6",
+      clauseName: "Post-Termination Transition Assistance Clause",
+      action: "Optional",
+      impact: "Low",
+      whyThisMatters:
+        "The agreement states that hosted files may be deleted after 30 days, but it does not clearly define any transition support, handover process, or assistance fees.",
+      suggestedFix:
+        "Add optional transition assistance terms covering handover support, export format, timelines, fees, and responsibilities after termination or project completion."
+    },
+    {
+      id: "GAP-7",
+      clauseName: "Data Retention and Deletion Procedure",
+      action: "Must Add",
+      impact: "Medium",
+      whyThisMatters:
+        "The agreement allows supplier-hosted files and stored content to be deleted after 30 days, but it does not define a clear retention, backup, or deletion procedure.",
+      suggestedFix:
+        "Add a data retention and deletion clause covering notice, backup handling, retention period, deletion confirmation, and recovery responsibilities."
+    },
+    {
+      id: "GAP-8",
+      clauseName: "Subcontractor Approval and Responsibility Clause",
+      action: "Negotiate",
+      impact: "Medium",
+      whyThisMatters:
+        "The agreement permits reliance on third-party tools and vendors but does not clearly define subcontractor approval, oversight, or responsibility for subcontracted work.",
+      suggestedFix:
+        "Add subcontractor approval requirements, responsibility for subcontractor acts, and restrictions on sharing confidential or client data with subcontractors."
+    },
+    {
+      id: "GAP-9",
+      clauseName: "Warranty Period for Defects",
+      action: "Negotiate",
+      impact: "Medium",
+      whyThisMatters:
+        "The agreement includes testing and launch activities but does not define a post-launch defect correction period for issues arising from delivered work.",
+      suggestedFix:
+        "Add a limited warranty period requiring correction of defects caused by supplier work within an agreed timeframe after launch."
+    },
+    {
+      id: "GAP-10",
+      clauseName: "Portfolio Use Approval Process",
+      action: "Optional",
+      impact: "Low",
+      whyThisMatters:
+        "The supplier may display completed work in its portfolio and marketing materials, but the agreement does not define approval rights or confidentiality limits.",
+      suggestedFix:
+        "Add a portfolio use approval process requiring client consent before using logos, screenshots, business names, or confidential project details."
+    }
+  ],
   risks: [
     {
       id: "RISK-1",
