@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, type MouseEvent, type ReactNode, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, ChevronDown, CircleAlert, Download, Info, Scale, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleAlert, Download, Info, Scale, ShieldAlert, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -58,7 +58,10 @@ type GapRegisterRow = GapAnalysisItem & {
   aiConfidence?: unknown;
   status?: unknown;
   recommendedClause?: unknown;
+  clauseVariants?: unknown;
 };
+type GapAskAiVariantKey = "balanced" | "detailed" | "alternative" | "protective";
+type GapReviewDecision = "accepted" | "rejected";
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -68,6 +71,12 @@ const sectionTabs: { id: SectionId; label: string }[] = [
 ];
 
 const gapActionFilters: GapClauseAction[] = ["Must Add", "Negotiate", "Optional"];
+const gapAskAiOptions: { key: GapAskAiVariantKey; label: string }[] = [
+  { key: "balanced", label: "Make More Balanced" },
+  { key: "detailed", label: "Make More Detailed" },
+  { key: "alternative", label: "Generate Alternative Version" },
+  { key: "protective", label: "Make More Protective" }
+];
 
 const SECTION_OFFSET_PADDING_PX = 16;
 const SECTION_ACTIVE_TOLERANCE_PX = 12;
@@ -100,6 +109,8 @@ export function AnalysisWorkspace() {
   const [isReviewFinalized, setIsReviewFinalized] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [activeGapAction, setActiveGapAction] = useState<GapClauseAction>("Must Add");
+  const [selectedGapId, setSelectedGapId] = useState("");
+  const [gapReviewById, setGapReviewById] = useState<Record<string, GapReviewDecision>>({});
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
@@ -501,7 +512,6 @@ export function AnalysisWorkspace() {
     if (!documentModel) return undefined;
     return documentModel.findings.find((risk) => risk.riskId === selectedRiskId);
   }, [documentModel, selectedRiskId]);
-
   const filteredRisks = useMemo(() => {
     if (!documentModel) return [];
 
@@ -577,6 +587,10 @@ export function AnalysisWorkspace() {
     if (!selectedGapAction) return [];
     return gapRecommendations.filter((clause) => clause.action === selectedGapAction);
   }, [gapRecommendations, selectedGapAction]);
+  const selectedGap = useMemo(() => {
+    if (!selectedGapId) return undefined;
+    return gapRecommendations.find((gap) => gap.id === selectedGapId);
+  }, [gapRecommendations, selectedGapId]);
 
   useEffect(() => {
     if (!firstAvailableGapAction || gapRecommendationCounts[activeGapAction] > 0) return;
@@ -981,7 +995,7 @@ export function AnalysisWorkspace() {
                     ))}
                   </div>
 
-                  <GapRegisterTable gaps={activeGapClauses} />
+                  <GapRegisterTable gaps={activeGapClauses} reviewById={gapReviewById} onOpenGap={(gap) => setSelectedGapId(gap.id)} />
                 </>
               ) : (
                 <GapRecommendationsEmptyState />
@@ -1181,6 +1195,15 @@ export function AnalysisWorkspace() {
         }}
       />
 
+      <GapReviewPanel
+        open={Boolean(selectedGap)}
+        gap={selectedGap}
+        reviewDecision={selectedGap ? gapReviewById[selectedGap.id] : undefined}
+        onClose={() => setSelectedGapId("")}
+        onAccept={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "accepted" }))}
+        onReject={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "rejected" }))}
+      />
+
       {isRiskMixPopoverOpen && riskMixPopoverPosition
         ? createPortal(
             <div
@@ -1264,16 +1287,25 @@ function GapFilterCard({
   );
 }
 
-function GapRegisterTable({ gaps }: { gaps: GapAnalysisItem[] }) {
+function GapRegisterTable({
+  gaps,
+  reviewById,
+  onOpenGap
+}: {
+  gaps: GapAnalysisItem[];
+  reviewById: Record<string, GapReviewDecision>;
+  onOpenGap: (gap: GapAnalysisItem) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-[1.05rem] border border-slate-200/90 bg-slate-50/45 shadow-[0_8px_20px_rgba(15,23,42,0.035)]">
       <div className="overflow-x-auto">
-        <table className="min-w-[760px] w-full table-fixed border-separate border-spacing-0">
+        <table className="min-w-[880px] w-full table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col className="w-[38%]" />
-            <col className="w-[16%]" />
+            <col className="w-[34%]" />
             <col className="w-[14%]" />
-            <col className="w-[16%]" />
+            <col className="w-[12%]" />
+            <col className="w-[15%]" />
+            <col className="w-[13%]" />
             <col className="w-[16%]" />
           </colgroup>
           <thead>
@@ -1293,13 +1325,27 @@ function GapRegisterTable({ gaps }: { gaps: GapAnalysisItem[] }) {
               <th className="border-b border-slate-300/80 px-3 py-1.5">
                 <TableHeaderLabel align="center">Status</TableHeaderLabel>
               </th>
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">Action</TableHeaderLabel>
+              </th>
             </tr>
           </thead>
           <tbody>
             {gaps.map((gap) => {
               const row = gap as GapRegisterRow;
+              const status = reviewById[gap.id] ? getGapReviewDecisionLabel(reviewById[gap.id]) : getGapStatusLabel(row.status);
               return (
-                <tr key={gap.id} className="group bg-white transition hover:bg-slate-50/90">
+                <tr
+                  key={gap.id}
+                  onClick={() => onOpenGap(gap)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    onOpenGap(gap);
+                  }}
+                  tabIndex={0}
+                  className="group cursor-pointer bg-white transition hover:bg-slate-50/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900/20"
+                >
                   <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                     <div
                       className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
@@ -1321,7 +1367,21 @@ function GapRegisterTable({ gaps }: { gaps: GapAnalysisItem[] }) {
                   </td>
                   <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                     <div className="flex justify-center">
-                      <GapStatusBadge status={getGapStatusLabel(row.status)} />
+                      <GapStatusBadge status={status} />
+                    </div>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onOpenGap(gap);
+                        }}
+                        className="inline-flex min-h-0 items-center justify-center rounded-full border border-slate-200 bg-white px-2 py-1 text-[0.75rem] font-semibold leading-none text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
+                      >
+                        Draft Clause
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1347,6 +1407,191 @@ function GapStatusBadge({ status }: { status: string }) {
     <Badge className={cn("gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", getGapStatusBadgeClassName(status))}>
       {status}
     </Badge>
+  );
+}
+
+function GapReviewPanel({
+  open,
+  gap,
+  reviewDecision,
+  onClose,
+  onAccept,
+  onReject
+}: {
+  open: boolean;
+  gap?: GapAnalysisItem;
+  reviewDecision?: GapReviewDecision;
+  onClose: () => void;
+  onAccept: (gap: GapAnalysisItem) => void;
+  onReject: (gap: GapAnalysisItem) => void;
+}) {
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const askAiRef = useRef<HTMLDivElement | null>(null);
+  const [activeVariant, setActiveVariant] = useState<GapAskAiVariantKey | null>(null);
+  const [variantMessage, setVariantMessage] = useState("");
+  const row = gap as GapRegisterRow | undefined;
+  const category = row ? getGapCategoryLabel(row) : "General";
+  const confidence = row ? formatGapAiConfidence(row.aiConfidence) : "\u2014";
+  const status = reviewDecision ? getGapReviewDecisionLabel(reviewDecision) : getGapStatusLabel(row?.status);
+  const baseRecommendedClause = getGapRecommendedClause(row);
+  const activeVariantText = row && activeVariant ? getGapClauseVariant(row, activeVariant) : "";
+  const hasActiveVariant = Boolean(activeVariantText);
+  const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open || !gap) return;
+
+    setActiveVariant(null);
+    setVariantMessage("");
+    window.requestAnimationFrame(() => {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, [gap?.id, open]);
+
+  if (!gap || !row) return null;
+
+  return createPortal(
+    <div className={cn("fixed inset-0 z-[140] transition-opacity duration-300", open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0")}>
+      <button
+        type="button"
+        aria-label="Close gap review panel"
+        onClick={onClose}
+        className={cn("absolute inset-0 bg-slate-950/6 backdrop-blur-[0.5px] transition-opacity duration-300", open ? "opacity-100" : "opacity-0")}
+      />
+
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${gap.clauseName} gap review panel`}
+        aria-hidden={!open}
+        className={cn(
+          "absolute inset-y-0 right-0 h-full w-full max-w-full border-l border-slate-200 bg-white shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out sm:max-w-[44rem] lg:max-w-[52vw]",
+          open ? "translate-x-0" : "translate-x-full"
+        )}
+      >
+        <div className="flex h-full flex-col">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-3.5 sm:px-6">
+            <div className="min-w-0 space-y-2.5">
+              <div className="text-[0.72rem] font-bold tracking-[0.08em] text-slate-700">Gap Review</div>
+              <div className="min-w-0">
+                <h2 className="text-[1.22rem] font-semibold tracking-tight text-slate-950 sm:text-[1.38rem]">{gap.clauseName}</h2>
+                <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 text-[0.72rem] font-semibold text-slate-600 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">{category}</span>
+                  <Badge className={cn("shrink-0 gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", getSafeSeverityStyles(gap.impact), getGapImpactBadgeAccentClassName(gap.impact))}>
+                    {gap.impact}
+                  </Badge>
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 tabular-nums">{confidence}</span>
+                  <GapStatusBadge status={status} />
+                </div>
+              </div>
+            </div>
+
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5">
+            <GapPanelSection title="Why This Matters">
+              <p className="text-sm leading-7 text-slate-700">{normalizeReviewText(gap.whyThisMatters) || "No rationale provided."}</p>
+            </GapPanelSection>
+
+            <GapPanelSection title="Suggested Fix">
+              <p className="text-sm leading-7 text-slate-700">{normalizeReviewText(gap.suggestedFix) || "No suggested fix provided."}</p>
+            </GapPanelSection>
+
+            <GapPanelSection title="Recommended Clause">
+              <div className="whitespace-pre-wrap rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm leading-7 text-slate-700">
+                {displayedRecommendedClause}
+              </div>
+            </GapPanelSection>
+
+            <GapPanelSection
+              title="Ask AI"
+              className="border-slate-300 bg-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
+              titleClassName="text-[0.92rem] font-bold tracking-[0.01em] text-slate-900"
+            >
+              <div ref={askAiRef} className="space-y-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {gapAskAiOptions.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      onClick={() => {
+                        const variant = getGapClauseVariant(row, option.key);
+                        setActiveVariant(option.key);
+                        setVariantMessage(variant ? "" : "AI rewrite is not available yet for this item.");
+                      }}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
+                        activeVariant === option.key && hasActiveVariant
+                          ? "border-slate-950 bg-slate-950 text-white"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {variantMessage ? <div className="text-sm font-medium leading-6 text-amber-700">{variantMessage}</div> : null}
+              </div>
+            </GapPanelSection>
+
+            <GapPanelSection title="Review Actions">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" onClick={() => onAccept(gap)} className="h-9 rounded-full px-3.5">
+                  Accept
+                </Button>
+                <Button type="button" variant="secondary" size="sm" onClick={() => onReject(gap)} className="h-9 rounded-full px-3.5">
+                  Reject
+                </Button>
+                {reviewDecision ? <span className="text-sm font-medium text-slate-500">Current decision: {getGapReviewDecisionLabel(reviewDecision)}</span> : null}
+              </div>
+            </GapPanelSection>
+          </div>
+        </div>
+      </aside>
+    </div>,
+    document.body
+  );
+}
+
+function GapPanelSection({
+  title,
+  children,
+  className,
+  titleClassName
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+  titleClassName?: string;
+}) {
+  return (
+    <section className={cn("rounded-[1.1rem] border border-slate-200 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.045)]", className)}>
+      <div className={cn("mb-3 text-[0.88rem] font-semibold tracking-tight text-slate-900", titleClassName)}>{title}</div>
+      {children}
+    </section>
   );
 }
 
@@ -1383,11 +1628,33 @@ function getGapStatusLabel(value: unknown) {
   return normalizeReviewText(value) || "Pending";
 }
 
+function getGapReviewDecisionLabel(decision: GapReviewDecision) {
+  return decision === "accepted" ? "Accepted" : "Rejected";
+}
+
 function getGapStatusBadgeClassName(status: string) {
   const normalizedStatus = status.toLowerCase().replace(/[\s_-]+/g, " ");
   if (normalizedStatus === "accepted" || normalizedStatus === "accept") return "border-emerald-300 bg-emerald-50 text-emerald-700";
+  if (normalizedStatus === "rejected" || normalizedStatus === "reject") return "border-rose-300 bg-rose-50 text-rose-700";
   if (normalizedStatus === "needs change" || normalizedStatus === "revised" || normalizedStatus === "revise") return "border-amber-300 bg-amber-50 text-amber-700";
   return "border-slate-300 bg-slate-100 text-slate-700";
+}
+
+function getGapRecommendedClause(gap?: GapRegisterRow) {
+  return normalizeReviewText(gap?.recommendedClause) || "Recommended clause language is not available yet.";
+}
+
+function getGapClauseVariant(gap: GapRegisterRow, variantKey: GapAskAiVariantKey) {
+  const variants = getObjectRecord(gap.clauseVariants);
+  if (!variants) return "";
+
+  return normalizeReviewText(variants[variantKey]);
+}
+
+function getObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  return value as Record<string, unknown>;
 }
 
 function getGapImpactBadgeAccentClassName(impact: GapClauseImpact) {
