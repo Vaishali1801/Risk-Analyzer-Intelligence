@@ -26,6 +26,7 @@ import {
   getSafeClauseSnippet,
   getSafeConfidenceValue,
   getSafeSeverityRank,
+  getSafeSeverityStyles,
   getSummaryInsight,
   getUniqueClauseCount,
   normalizeOutputAnalysis,
@@ -52,6 +53,12 @@ type SectionId = "summary" | "gaps-recommendations" | "risks" | "final-review";
 type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
 type GapClauseAction = GapAnalysisItem["action"];
 type GapClauseImpact = GapAnalysisItem["impact"];
+type GapRegisterRow = GapAnalysisItem & {
+  category?: unknown;
+  aiConfidence?: unknown;
+  status?: unknown;
+  recommendedClause?: unknown;
+};
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -93,7 +100,6 @@ export function AnalysisWorkspace() {
   const [isReviewFinalized, setIsReviewFinalized] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [activeGapAction, setActiveGapAction] = useState<GapClauseAction>("Must Add");
-  const [isGapListExpanded, setIsGapListExpanded] = useState(false);
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
@@ -571,8 +577,6 @@ export function AnalysisWorkspace() {
     if (!selectedGapAction) return [];
     return gapRecommendations.filter((clause) => clause.action === selectedGapAction);
   }, [gapRecommendations, selectedGapAction]);
-  const visibleGapClauses = isGapListExpanded ? activeGapClauses : activeGapClauses.slice(0, 3);
-  const hasMoreGapClauses = activeGapClauses.length > visibleGapClauses.length;
 
   useEffect(() => {
     if (!firstAvailableGapAction || gapRecommendationCounts[activeGapAction] > 0) return;
@@ -636,10 +640,6 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     setIsReviewFinalized(false);
   }, [reviewByRiskId]);
-
-  useEffect(() => {
-    setIsGapListExpanded(false);
-  }, [activeGapAction]);
 
   useEffect(() => {
     if (!analysis) return;
@@ -981,24 +981,7 @@ export function AnalysisWorkspace() {
                     ))}
                   </div>
 
-                  <div className="space-y-3">
-                    {visibleGapClauses.map((clause) => (
-                      <GapClauseCard key={clause.id} clause={clause} />
-                    ))}
-                  </div>
-
-                  {hasMoreGapClauses ? (
-                    <div className="pt-1">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setIsGapListExpanded(true)}
-                      >
-                        Show more
-                      </Button>
-                    </div>
-                  ) : null}
+                  <GapRegisterTable gaps={activeGapClauses} />
                 </>
               ) : (
                 <GapRecommendationsEmptyState />
@@ -1281,77 +1264,89 @@ function GapFilterCard({
   );
 }
 
-function GapClauseCard({ clause }: { clause: GapAnalysisItem }) {
+function GapRegisterTable({ gaps }: { gaps: GapAnalysisItem[] }) {
   return (
-    <article
-      className={cn(
-        "rounded-[1rem] border border-l-4 border-slate-200/90 bg-slate-50/70 p-4 shadow-[0_7px_16px_rgba(15,23,42,0.035)]",
-        getGapCardAccentClassName(clause.action)
-      )}
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="min-w-0 text-[0.95rem] font-semibold leading-6 text-slate-950">{clause.clauseName}</h3>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
-          <GapActionBadge action={clause.action} />
-          <GapImpactBadge impact={clause.impact} />
-        </div>
+    <div className="overflow-hidden rounded-[1.05rem] border border-slate-200/90 bg-slate-50/45 shadow-[0_8px_20px_rgba(15,23,42,0.035)]">
+      <div className="overflow-x-auto">
+        <table className="min-w-[760px] w-full table-fixed border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-[38%]" />
+            <col className="w-[16%]" />
+            <col className="w-[14%]" />
+            <col className="w-[16%]" />
+            <col className="w-[16%]" />
+          </colgroup>
+          <thead>
+            <tr className="bg-slate-100/90 text-left align-middle backdrop-blur">
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">Gap Title</TableHeaderLabel>
+              </th>
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">Category</TableHeaderLabel>
+              </th>
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">Impact</TableHeaderLabel>
+              </th>
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">AI Confidence</TableHeaderLabel>
+              </th>
+              <th className="border-b border-slate-300/80 px-3 py-1.5">
+                <TableHeaderLabel align="center">Status</TableHeaderLabel>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {gaps.map((gap) => {
+              const row = gap as GapRegisterRow;
+              return (
+                <tr key={gap.id} className="group bg-white transition hover:bg-slate-50/90">
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
+                    <div
+                      className="overflow-hidden text-[0.82rem] font-semibold leading-5 text-slate-900 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                      title={gap.clauseName}
+                    >
+                      {gap.clauseName}
+                    </div>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center text-[0.78rem] font-medium text-slate-700">
+                    {getGapCategoryLabel(row)}
+                  </td>
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
+                    <div className="flex justify-center">
+                      <GapImpactBadge impact={gap.impact} />
+                    </div>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle text-center">
+                    <div className="text-[0.81rem] font-semibold tabular-nums text-slate-900">{formatGapAiConfidence(row.aiConfidence)}</div>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
+                    <div className="flex justify-center">
+                      <GapStatusBadge status={getGapStatusLabel(row.status)} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-2 md:gap-5">
-        <GapClauseDetail label="Why this matters" value={clause.whyThisMatters} />
-        <GapClauseDetail label="Suggested fix" value={clause.suggestedFix} emphasis />
-      </div>
-    </article>
-  );
-}
-
-function GapActionBadge({ action }: { action: GapClauseAction }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.72rem] font-bold",
-        action === "Must Add"
-          ? "border-rose-300 bg-rose-50 text-rose-800"
-          : action === "Negotiate"
-            ? "border-amber-300 bg-amber-50 text-amber-800"
-            : "border-slate-300 bg-slate-100 text-slate-700"
-      )}
-    >
-      {action}
-    </span>
+    </div>
   );
 }
 
 function GapImpactBadge({ impact }: { impact: GapClauseImpact }) {
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.72rem] font-bold",
-        impact === "High"
-          ? "border-rose-200 bg-rose-50/80 text-rose-700"
-          : impact === "Medium"
-            ? "border-amber-200 bg-amber-50/80 text-amber-700"
-            : "border-slate-300 bg-slate-100 text-slate-700"
-      )}
-    >
-      {impact} Impact
-    </span>
+    <Badge className={cn("gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", getSafeSeverityStyles(impact), getGapImpactBadgeAccentClassName(impact))}>
+      {impact}
+    </Badge>
   );
 }
 
-function GapClauseDetail({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
+function GapStatusBadge({ status }: { status: string }) {
   return (
-    <div
-      className={cn(
-        "rounded-[0.85rem] border p-3.5",
-        emphasis ? "border-blue-100 bg-blue-50/50" : "border-slate-200 bg-white/60"
-      )}
-    >
-      <div className={cn("text-[0.78rem] font-semibold tracking-normal", emphasis ? "text-slate-700" : "text-slate-600")}>
-        {label}
-      </div>
-      <p className={cn("mt-2 text-sm leading-6", emphasis ? "font-medium text-slate-800" : "text-slate-700")}>{value}</p>
-    </div>
+    <Badge className={cn("gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", getGapStatusBadgeClassName(status))}>
+      {status}
+    </Badge>
   );
 }
 
@@ -1367,16 +1362,38 @@ function getGapFilterInactiveClassName(action: GapClauseAction) {
   return "border-transparent bg-slate-50/70 font-medium text-slate-600 hover:border-slate-200 hover:bg-slate-100";
 }
 
-function getGapCardAccentClassName(action: GapClauseAction) {
-  if (action === "Must Add") return "border-l-rose-300";
-  if (action === "Negotiate") return "border-l-amber-300";
-  return "border-l-slate-300";
-}
-
 function getGapFilterIcon(action: GapClauseAction) {
   if (action === "Must Add") return ShieldAlert;
   if (action === "Negotiate") return Scale;
   return Info;
+}
+
+function getGapCategoryLabel(gap: GapRegisterRow) {
+  return normalizeReviewText(gap.category) || "General";
+}
+
+function formatGapAiConfidence(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "\u2014";
+
+  const percent = value <= 1 ? value * 100 : value;
+  return `${Math.round(percent)}%`;
+}
+
+function getGapStatusLabel(value: unknown) {
+  return normalizeReviewText(value) || "Pending";
+}
+
+function getGapStatusBadgeClassName(status: string) {
+  const normalizedStatus = status.toLowerCase().replace(/[\s_-]+/g, " ");
+  if (normalizedStatus === "accepted" || normalizedStatus === "accept") return "border-emerald-300 bg-emerald-50 text-emerald-700";
+  if (normalizedStatus === "needs change" || normalizedStatus === "revised" || normalizedStatus === "revise") return "border-amber-300 bg-amber-50 text-amber-700";
+  return "border-slate-300 bg-slate-100 text-slate-700";
+}
+
+function getGapImpactBadgeAccentClassName(impact: GapClauseImpact) {
+  if (impact === "High") return "border-red-300 shadow-[inset_0_0_0_1px_rgba(248,113,113,0.14)]";
+  if (impact === "Medium") return "border-amber-300 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.14)]";
+  return "border-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.14)]";
 }
 
 function FinalReviewDecisionBadge({ decision }: { decision: FinalReviewDecision }) {
