@@ -166,10 +166,10 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
     { label: "Critical Risks", value: String(dashboard.criticalRisks), color: COLORS.highRed, fill: COLORS.softRed }
   ];
   kpiCards.forEach((item, index) => {
-    drawKpiCard(doc, DASHBOARD_MARGIN + index * (kpiWidth + kpiGap), y, kpiWidth, 17.5, item.label, item.value, item.color, item.fill);
+    drawKpiCard(doc, DASHBOARD_MARGIN + index * (kpiWidth + kpiGap), y, kpiWidth, 16, item.label, item.value, item.color, item.fill);
   });
 
-  y += 22;
+  y += 20;
   const rowGap = 5;
   const leftWidth = 86;
   const rightWidth = DASHBOARD_WIDTH - leftWidth - rowGap;
@@ -182,30 +182,30 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
     DASHBOARD_MARGIN,
     y,
     DASHBOARD_WIDTH,
-    30,
+    26.5,
     "INSIGHT",
     dashboard.insight,
     COLORS.lightBluePanel
   );
-  y += 33;
+  y += 29.5;
   drawInfoCard(
     doc,
     DASHBOARD_MARGIN,
     y,
     DASHBOARD_WIDTH,
-    38,
+    34,
     "EXECUTIVE SUMMARY",
     dashboard.executiveSummary,
     COLORS.lightBluePanel
   );
 
-  y += 46;
-  drawDivider(doc, DASHBOARD_MARGIN, y - 4.5, DASHBOARD_WIDTH);
+  y += 42;
+  drawDivider(doc, DASHBOARD_MARGIN, y - 5.8, DASHBOARD_WIDTH);
   drawSectionTitle(doc, "TOP ACTIONS / RECOMMENDED PRIORITIES", DASHBOARD_MARGIN, y);
-  y += 5;
+  y += 4.5;
   const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
-  y += actionsHeight + 7;
+  y += actionsHeight + 9.5;
   drawGapAnalysisSummarySection(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.gapSummary);
 }
 
@@ -338,7 +338,7 @@ function drawKpiCard(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.7);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(label, textCenterX, y + 6.8, { align: "center" });
+  doc.text(label, textCenterX, y + 6.2, { align: "center" });
 
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...hexToRgb(valueColor));
@@ -346,36 +346,36 @@ function drawKpiCard(
 
   if (isNumericValue) {
     doc.setFontSize(14.8);
-    doc.text(value, textCenterX, y + 14.9, { align: "center" });
+    doc.text(value, textCenterX, y + 13.7, { align: "center" });
     return;
   }
 
   doc.setFontSize(10);
   const valueLines = clampTextLines(doc, value, textWidth, 2);
   if (valueLines.length === 1) {
-    doc.text(valueLines[0], textCenterX, y + 14.4, { align: "center" });
+    doc.text(valueLines[0], textCenterX, y + 13.4, { align: "center" });
     return;
   }
 
-  doc.text(valueLines[0], textCenterX, y + 12.1, { align: "center" });
-  doc.text(valueLines[1], textCenterX, y + 15.6, { align: "center" });
+  doc.text(valueLines[0], textCenterX, y + 11.2, { align: "center" });
+  doc.text(valueLines[1], textCenterX, y + 14.5, { align: "center" });
 }
 
 function drawInfoCard(doc: jsPDF, x: number, y: number, width: number, height: number, title: string, body: string | null, background: string) {
   drawCard(doc, x, y, width, height, background, true);
-  drawCardIcon(doc, title, x + 9.5, y + 10.6);
+  drawCardIcon(doc, title, x + 9.5, y + 9.4);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.3);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text(title, x + 19, y + 11);
+  doc.text(title, x + 19, y + 9.8);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.6);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
-  const lineHeight = 5.3;
-  const bodyY = y + 18.8;
-  const maxLines = Math.max(2, Math.floor((height - 19) / lineHeight) + 1);
+  const lineHeight = 5.15;
+  const bodyY = y + 16.4;
+  const maxLines = Math.max(2, Math.floor((height - 16.5) / lineHeight) + 1);
   const lines = clampTextLines(doc, body ?? "", width - 25, maxLines);
   drawWrappedText(doc, lines, x + 19, bodyY, lineHeight);
 }
@@ -566,9 +566,9 @@ function drawTopActions(doc: jsPDF, x: number, y: number, width: number, actions
   const visibleActions = actions.filter(Boolean).slice(0, 4);
 
   const columnGap = 4;
-  const rowGap = 3;
+  const rowGap = 2.5;
   const cardWidth = (width - columnGap) / 2;
-  const cardHeight = 17;
+  const cardHeight = 15.5;
 
   visibleActions.forEach((action, index) => {
     const column = index % 2;
@@ -587,14 +587,14 @@ function drawTopActionCard(doc: jsPDF, x: number, y: number, width: number, heig
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text(String(index), x + 4.4, y + 7.7);
+  doc.text(String(index), x + 4.4, y + 7);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.7);
   doc.setTextColor(...hexToRgb(COLORS.darkText));
   const textX = x + 11.2;
   const lines = clampTextLines(doc, action, width - 15.2, 2);
-  drawWrappedText(doc, lines, textX, y + 7.5, 4.3);
+  drawWrappedText(doc, lines, textX, y + 6.8, 4.05);
 }
 
 function drawDecisionWarningStrip(doc: jsPDF, x: number, y: number, width: number, height: number, pendingCount: number, statusMessage: string) {
@@ -647,28 +647,23 @@ function drawGapAnalysisSummarySection(
 
   countItems.forEach((item) => {
     const text = `${item.label} (${item.count})`;
-    const pillWidth = doc.getTextWidth(text) + 7.2;
-    drawGapSummaryPill(doc, pillX, y + 4.5, pillWidth, text, item.color, item.fill);
-    pillX += pillWidth + 3;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.3);
+    const pillWidth = doc.getTextWidth(text) + 9.4;
+    drawGapSummaryPill(doc, pillX, y + 9.6, pillWidth, text, item.color, item.fill);
+    pillX += pillWidth + 3.5;
   });
-
-  const gapLabel = summary.total === 1 ? "gap" : "gaps";
-  const message = `${summary.total} significant ${gapLabel} identified. See Gaps & Recommendations section for details.`;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.2);
-  doc.setTextColor(...hexToRgb(COLORS.darkText));
-  doc.text(clampSingleLine(doc, message, width), x, y + 14);
 }
 
 function drawGapSummaryPill(doc: jsPDF, x: number, y: number, width: number, text: string, color: string, fill: string) {
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(color));
-  doc.setLineWidth(0.22);
-  doc.roundedRect(x, y, width, 5.8, 1.4, 1.4, "FD");
+  doc.setLineWidth(0.24);
+  doc.roundedRect(x, y, width, 8.2, 1.6, 1.6, "FD");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.6);
+  doc.setFontSize(8.3);
   doc.setTextColor(...hexToRgb(color));
-  doc.text(text, x + 3.6, y + 4);
+  doc.text(text, x + 4.7, y + 5.5);
 }
 
 function drawRiskDriversSummaryPage(doc: jsPDF, pdfData: PdfReportModel) {
