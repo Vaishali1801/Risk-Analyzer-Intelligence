@@ -176,7 +176,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
   drawSeverityMixCard(doc, DASHBOARD_MARGIN, y, leftWidth, 45, dashboard);
   drawCategoryBreakdown(doc, DASHBOARD_MARGIN + leftWidth + rowGap, y, rightWidth, 45, dashboard.categoryBreakdown, dashboard.totalRisks);
 
-  y += 49.5;
+  y += 53.5;
   drawInfoCard(
     doc,
     DASHBOARD_MARGIN,
@@ -187,7 +187,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
     dashboard.insight,
     COLORS.lightBluePanel
   );
-  y += 29.5;
+  y += 32.5;
   drawInfoCard(
     doc,
     DASHBOARD_MARGIN,
@@ -199,13 +199,13 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
     COLORS.lightBluePanel
   );
 
-  y += 42;
+  y += 46.5;
   drawDivider(doc, DASHBOARD_MARGIN, y - 5.8, DASHBOARD_WIDTH);
   drawSectionTitle(doc, "TOP ACTIONS / RECOMMENDED PRIORITIES", DASHBOARD_MARGIN, y);
   y += 4.5;
   const actionsHeight = drawTopActions(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.topActions);
 
-  y += actionsHeight + 9.5;
+  y += actionsHeight + 6.5;
   drawGapAnalysisSummarySection(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, dashboard.gapSummary);
 }
 
@@ -650,7 +650,7 @@ function drawGapAnalysisSummarySection(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.3);
     const pillWidth = doc.getTextWidth(text) + 9.4;
-    drawGapSummaryPill(doc, pillX, y + 9.6, pillWidth, text, item.color, item.fill);
+    drawGapSummaryPill(doc, pillX, y + 6.4, pillWidth, text, item.color, item.fill);
     pillX += pillWidth + 3.5;
   });
 }
