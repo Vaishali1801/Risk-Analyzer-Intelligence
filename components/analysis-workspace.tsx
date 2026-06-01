@@ -1555,45 +1555,40 @@ function GapReviewPanel({
                   {variantMessage ? <div className="text-sm font-medium leading-6 text-amber-700">{variantMessage}</div> : null}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      setActiveVariant(null);
-                      setVariantMessage("");
-                      setCopyState("idle");
-                    }}
-                    className="h-9 rounded-full px-3.5"
-                  >
-                    Reset Draft
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(displayedRecommendedClause);
-                        setCopyState("done");
-                        window.setTimeout(() => setCopyState("idle"), 1400);
-                      } catch {
-                        setCopyState("idle");
-                      }
-                    }}
-                    className="h-9 rounded-full px-3.5"
-                  >
-                    {copyState === "done" ? "Copied" : "Copy Clause"}
-                  </Button>
-                </div>
-
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">Review Actions</div>
-                    {reviewDecision ? <div className="mt-1 text-[0.78rem] font-medium text-slate-500">Current decision: {getGapReviewDecisionLabel(reviewDecision)}</div> : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setActiveVariant(null);
+                        setVariantMessage("");
+                        setCopyState("idle");
+                      }}
+                      className="h-9 rounded-full px-3.5"
+                    >
+                      Reset Draft
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(displayedRecommendedClause);
+                          setCopyState("done");
+                          window.setTimeout(() => setCopyState("idle"), 1400);
+                        } catch {
+                          setCopyState("idle");
+                        }
+                      }}
+                      className="h-9 rounded-full px-3.5"
+                    >
+                      {copyState === "done" ? "Copied" : "Copy Clause"}
+                    </Button>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" size="sm" onClick={() => onAccept(gap)} className="h-9 rounded-full px-3.5">
                       Accept
                     </Button>
