@@ -110,6 +110,7 @@ const severityBadgeStyles: Record<Severity, string> = {
 const toolbarSelectClassName =
   "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[0.81rem] font-medium text-slate-700 shadow-sm outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-900/10";
 const compactBadgeClassName = "gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold";
+const fixedSeverityBadgeClassName = "w-[3.25rem] justify-center";
 
 const STATUS_FILTER_OPTIONS: { value: RiskReviewStatus | "All"; label: string }[] = [
   { value: "All", label: "All" },
@@ -273,7 +274,7 @@ export function RiskFindingsTable({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[0.72rem] font-semibold text-slate-400">#{index + 1}</span>
-                          <Badge className={cn(compactBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
+                          <Badge className={cn(compactBadgeClassName, fixedSeverityBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
                           <StatusBadge status={rowStatus} />
                         </div>
                         <div
@@ -442,7 +443,7 @@ export function RiskFindingsTable({
                         </td>
                         <td className="border-b border-slate-200/90 px-3 py-2.5 align-middle">
                           <div className="flex justify-center">
-                            <Badge className={cn(compactBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
+                            <Badge className={cn(compactBadgeClassName, fixedSeverityBadgeClassName, getSafeSeverityStyles(risk.severity), getSeverityBadgeAccentClassName(severityLabel))}>{severityLabel}</Badge>
                           </div>
                         </td>
                         <td className="border-b border-slate-200/90 px-3.5 py-2.5 align-middle">

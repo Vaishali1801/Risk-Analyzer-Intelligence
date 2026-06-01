@@ -71,6 +71,7 @@ const sectionTabs: { id: SectionId; label: string }[] = [
 ];
 
 const gapActionFilters: GapClauseAction[] = ["Must Add", "Negotiate", "Optional"];
+const fixedSeverityBadgeClassName = "w-[3.25rem] justify-center";
 const gapAskAiOptions: { key: GapAskAiVariantKey; label: string }[] = [
   { key: "balanced", label: "More Balanced" },
   { key: "detailed", label: "More Detailed" },
@@ -1396,7 +1397,7 @@ function GapRegisterTable({
 
 function GapImpactBadge({ impact }: { impact: GapClauseImpact }) {
   return (
-    <Badge className={cn("gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", getSafeSeverityStyles(impact), getGapImpactBadgeAccentClassName(impact))}>
+    <Badge className={cn("gap-1 px-2 py-[0.28rem] text-[0.7rem] font-semibold", fixedSeverityBadgeClassName, getSafeSeverityStyles(impact), getGapImpactBadgeAccentClassName(impact))}>
       {impact}
     </Badge>
   );
