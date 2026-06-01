@@ -72,10 +72,10 @@ const sectionTabs: { id: SectionId; label: string }[] = [
 
 const gapActionFilters: GapClauseAction[] = ["Must Add", "Negotiate", "Optional"];
 const gapAskAiOptions: { key: GapAskAiVariantKey; label: string }[] = [
-  { key: "balanced", label: "Make More Balanced" },
-  { key: "detailed", label: "Make More Detailed" },
-  { key: "alternative", label: "Generate Alternative Version" },
-  { key: "protective", label: "Make More Protective" }
+  { key: "balanced", label: "More Balanced" },
+  { key: "detailed", label: "More Detailed" },
+  { key: "alternative", label: "Alternative Version" },
+  { key: "protective", label: "More Protective" }
 ];
 
 const SECTION_OFFSET_PADDING_PX = 16;
@@ -1429,13 +1429,12 @@ function GapReviewPanel({
   const askAiRef = useRef<HTMLDivElement | null>(null);
   const [activeVariant, setActiveVariant] = useState<GapAskAiVariantKey | null>(null);
   const [variantMessage, setVariantMessage] = useState("");
+  const [copyState, setCopyState] = useState<"idle" | "done">("idle");
   const row = gap as GapRegisterRow | undefined;
   const category = row ? getGapCategoryLabel(row) : "General";
   const confidence = row ? formatGapAiConfidence(row.aiConfidence) : "\u2014";
-  const status = reviewDecision ? getGapReviewDecisionLabel(reviewDecision) : getGapStatusLabel(row?.status);
   const baseRecommendedClause = getGapRecommendedClause(row);
   const activeVariantText = row && activeVariant ? getGapClauseVariant(row, activeVariant) : "";
-  const hasActiveVariant = Boolean(activeVariantText);
   const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
 
   useEffect(() => {
@@ -1463,6 +1462,7 @@ function GapReviewPanel({
 
     setActiveVariant(null);
     setVariantMessage("");
+    setCopyState("idle");
     window.requestAnimationFrame(() => {
       scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     });
@@ -1501,7 +1501,6 @@ function GapReviewPanel({
                     {gap.impact}
                   </Badge>
                   <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 tabular-nums">{confidence}</span>
-                  <GapStatusBadge status={status} />
                 </div>
               </div>
             </div>
@@ -1520,19 +1519,13 @@ function GapReviewPanel({
               <p className="text-sm leading-7 text-slate-700">{normalizeReviewText(gap.suggestedFix) || "No suggested fix provided."}</p>
             </GapPanelSection>
 
-            <GapPanelSection title="Recommended Clause">
-              <div className="whitespace-pre-wrap rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm leading-7 text-slate-700">
-                {displayedRecommendedClause}
-              </div>
-            </GapPanelSection>
-
             <GapPanelSection
               title="Ask AI"
               className="border-slate-300 bg-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
               titleClassName="text-[0.92rem] font-bold tracking-[0.01em] text-slate-900"
             >
-              <div ref={askAiRef} className="space-y-3">
-                <div className="flex flex-wrap gap-1.5">
+              <div ref={askAiRef}>
+                <div className="grid gap-1.5 sm:grid-cols-4">
                   {gapAskAiOptions.map((option) => (
                     <button
                       key={option.key}
@@ -1543,8 +1536,8 @@ function GapReviewPanel({
                         setVariantMessage(variant ? "" : "AI rewrite is not available yet for this item.");
                       }}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
-                        activeVariant === option.key && hasActiveVariant
+                        "inline-flex min-h-8 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
+                        activeVariant === option.key
                           ? "border-slate-950 bg-slate-950 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                       )}
@@ -1553,21 +1546,67 @@ function GapReviewPanel({
                     </button>
                   ))}
                 </div>
-                {variantMessage ? <div className="text-sm font-medium leading-6 text-amber-700">{variantMessage}</div> : null}
               </div>
             </GapPanelSection>
 
-            <GapPanelSection title="Review Actions">
+            <GapPanelSection title="Recommended Clause">
+              <div className="whitespace-pre-wrap rounded-[1.1rem] border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm leading-7 text-slate-700">
+                {displayedRecommendedClause}
+              </div>
+              {variantMessage ? <div className="mt-3 text-sm font-medium leading-6 text-amber-700">{variantMessage}</div> : null}
+            </GapPanelSection>
+
+            <GapPanelSection title="Draft Actions">
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="button" size="sm" onClick={() => onAccept(gap)} className="h-9 rounded-full px-3.5">
-                  Accept
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setActiveVariant(null);
+                    setVariantMessage("");
+                    setCopyState("idle");
+                  }}
+                  className="h-9 rounded-full px-3.5"
+                >
+                  Reset Draft
                 </Button>
-                <Button type="button" variant="secondary" size="sm" onClick={() => onReject(gap)} className="h-9 rounded-full px-3.5">
-                  Reject
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(displayedRecommendedClause);
+                      setCopyState("done");
+                      window.setTimeout(() => setCopyState("idle"), 1400);
+                    } catch {
+                      setCopyState("idle");
+                    }
+                  }}
+                  className="h-9 rounded-full px-3.5"
+                >
+                  {copyState === "done" ? "Copied" : "Copy Clause"}
                 </Button>
-                {reviewDecision ? <span className="text-sm font-medium text-slate-500">Current decision: {getGapReviewDecisionLabel(reviewDecision)}</span> : null}
               </div>
             </GapPanelSection>
+
+            <section className="rounded-[1.1rem] border border-slate-200 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.045)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[0.88rem] font-semibold tracking-tight text-slate-900">Review Actions</div>
+                  {reviewDecision ? <div className="mt-1 text-sm font-medium text-slate-500">Current decision: {getGapReviewDecisionLabel(reviewDecision)}</div> : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => onAccept(gap)} className="h-9 rounded-full px-3.5">
+                    Accept
+                  </Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => onReject(gap)} className="h-9 rounded-full px-3.5">
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </aside>
