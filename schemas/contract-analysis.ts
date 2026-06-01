@@ -5,6 +5,13 @@ export const SeveritySchema = z.enum(["High", "Medium", "Low"]);
 export const MitigabilitySchema = z.enum(["High", "Medium", "Low"]);
 export const DecisionRecommendationSchema = z.enum(["Accept", "Renegotiate", "Reject"]);
 export const GapAnalysisActionSchema = z.enum(["Must Add", "Negotiate", "Optional"]);
+export const GapAnalysisStatusSchema = z.enum(["Pending", "Accepted", "Rejected"]);
+export const GapAnalysisClauseVariantsSchema = z.object({
+  balanced: z.string().min(1),
+  detailed: z.string().min(1),
+  alternative: z.string().min(1),
+  protective: z.string().min(1)
+});
 
 export const ContractRiskSchema = z.object({
   id: z.string().min(1),
@@ -24,10 +31,15 @@ export const ContractRiskSchema = z.object({
 export const GapAnalysisItemSchema = z.object({
   id: z.string().min(1),
   clauseName: z.string().min(1),
+  category: z.string().min(1),
   action: GapAnalysisActionSchema,
   impact: SeveritySchema,
+  aiConfidence: z.number().min(0).max(100),
+  status: GapAnalysisStatusSchema,
   whyThisMatters: z.string().min(1),
-  suggestedFix: z.string().min(1)
+  suggestedFix: z.string().min(1),
+  recommendedClause: z.string().min(1),
+  clauseVariants: GapAnalysisClauseVariantsSchema
 });
 
 type GapAnalysisNormalizationDiagnostics = {
@@ -86,11 +98,20 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
 
     const whyThisMatters = getCleanString(record.whyThisMatters);
     const suggestedFix = getCleanString(record.suggestedFix);
+    const category = getCleanString(record.category);
+    const aiConfidence = normalizeGapAiConfidence(record.aiConfidence);
+    const status = normalizeGapStatus(record.status, fallbackReasons);
+    const recommendedClause = getCleanMultilineString(record.recommendedClause);
+    const clauseVariants = normalizeGapClauseVariants(record.clauseVariants);
     const droppedReasons: string[] = [];
 
     if (!clauseName) droppedReasons.push("Missing clauseName/title");
+    if (!category) droppedReasons.push("Missing category");
+    if (aiConfidence === null) droppedReasons.push("Invalid aiConfidence");
     if (!whyThisMatters) droppedReasons.push("Missing whyThisMatters");
     if (!suggestedFix) droppedReasons.push("Missing suggestedFix");
+    if (!recommendedClause) droppedReasons.push("Missing recommendedClause");
+    if (!clauseVariants) droppedReasons.push("Missing or incomplete clauseVariants");
 
     if (droppedReasons.length) {
       recordDroppedGapItem(diagnostics, index, item, droppedReasons);
@@ -102,10 +123,15 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
     const normalizedItem = {
       id,
       clauseName,
+      category,
       action,
       impact,
+      aiConfidence,
+      status,
       whyThisMatters,
-      suggestedFix
+      suggestedFix,
+      recommendedClause,
+      clauseVariants
     };
     const parsed = GapAnalysisItemSchema.safeParse(normalizedItem);
 
@@ -146,6 +172,18 @@ function getCleanString(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+function getCleanMultilineString(value: unknown) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function getNormalizedToken(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -173,6 +211,40 @@ function normalizeGapImpact(value: unknown, fallbackReasons: string[]): z.infer<
 
   fallbackReasons.push("Unknown impact -> defaulted to Medium");
   return "Medium";
+}
+
+function normalizeGapAiConfidence(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) return null;
+
+  const percent = value <= 1 ? value * 100 : value;
+  if (percent < 0 || percent > 100) return null;
+
+  return Math.round(percent);
+}
+
+function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<typeof GapAnalysisStatusSchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "pending") return "Pending";
+  if (normalizedValue === "accepted") return "Accepted";
+  if (normalizedValue === "rejected") return "Rejected";
+
+  fallbackReasons.push("Unknown status -> defaulted to Pending");
+  return "Pending";
+}
+
+function normalizeGapClauseVariants(value: unknown): z.infer<typeof GapAnalysisClauseVariantsSchema> | null {
+  const record = getObjectRecord(value);
+  if (!record) return null;
+
+  const clauseVariants = {
+    balanced: getCleanMultilineString(record.balanced),
+    detailed: getCleanMultilineString(record.detailed),
+    alternative: getCleanMultilineString(record.alternative),
+    protective: getCleanMultilineString(record.protective)
+  };
+
+  const parsed = GapAnalysisClauseVariantsSchema.safeParse(clauseVariants);
+  return parsed.success ? parsed.data : null;
 }
 
 function recordFallbackGapItem(

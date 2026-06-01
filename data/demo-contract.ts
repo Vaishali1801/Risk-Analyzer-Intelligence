@@ -217,6 +217,31 @@ This Agreement is governed by the laws of the State of Illinois, USA.
 
 For international engagements, applicable local regulations may also apply.`;
 
+function buildDemoGapEnhancement({
+  clauseName,
+  category,
+  aiConfidence,
+  recommendedClause
+}: {
+  clauseName: string;
+  category: string;
+  aiConfidence: number;
+  recommendedClause: string;
+}) {
+  return {
+    category,
+    aiConfidence,
+    status: "Pending" as const,
+    recommendedClause,
+    clauseVariants: {
+      balanced: `${recommendedClause}\n\nFor clarity, the parties will apply this clause in a commercially reasonable manner and will cooperate in good faith to resolve implementation issues related to ${clauseName.toLowerCase()}.`,
+      detailed: `${recommendedClause}\n\nThe parties will document responsible owners, approval steps, response timelines, evidence requirements, and escalation contacts for this obligation before the relevant workstream begins.`,
+      alternative: `The parties will agree on practical controls for ${clauseName.toLowerCase()} before launch or continued performance. Those controls must identify required notices, responsible parties, timing expectations, and any limits on costs, access, or liability.`,
+      protective: `${recommendedClause}\n\nSupplier will not be responsible for delays, incidents, costs, or failures caused by Client-controlled systems, delayed Client approvals, third-party services selected by Client, or instructions outside the agreed statement of work.`
+    }
+  };
+}
+
 export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysisSchema.parse({
   contractTitle: demoDocumentTitle,
   executiveSummary:
@@ -260,7 +285,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement creates broad supplier responsibility for data incidents but does not define specific security controls, breach notification timelines, or incident response obligations.",
       suggestedFix:
-        "Add a clause defining minimum security controls, incident notification timelines, cooperation duties, and responsibility boundaries for data-related incidents."
+        "Add a clause defining minimum security controls, incident notification timelines, cooperation duties, and responsibility boundaries for data-related incidents.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Data Security and Incident Notification Clause",
+        category: "Compliance",
+        aiConfidence: 94,
+        recommendedClause:
+          "Supplier will maintain commercially reasonable administrative, technical, and organizational safeguards appropriate to the services and data handled. Each party must notify the other without undue delay after discovering a confirmed security incident affecting Client data, cooperate in good faith on investigation and remediation, and allocate incident responsibility according to the party whose systems, personnel, instructions, or third-party services caused the incident."
+      })
     },
     {
       id: "GAP-2",
@@ -270,7 +302,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The contract allows the client to withhold payment pending internal review, but it does not define objective acceptance criteria or a deemed acceptance timeline.",
       suggestedFix:
-        "Add objective acceptance criteria, review timelines, and deemed acceptance if the client does not reject deliverables with specific reasons within an agreed period."
+        "Add objective acceptance criteria, review timelines, and deemed acceptance if the client does not reject deliverables with specific reasons within an agreed period.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Acceptance Criteria and Deemed Acceptance Clause",
+        category: "Financial",
+        aiConfidence: 92,
+        recommendedClause:
+          "Deliverables will be reviewed against the written scope, approved specifications, and mutually agreed acceptance criteria. Client must either accept a deliverable or provide a written rejection describing specific nonconformities within ten business days after delivery. If Client does not provide a timely written rejection, the deliverable will be deemed accepted and any undisputed related invoice amounts will become payable."
+      })
     },
     {
       id: "GAP-3",
@@ -280,7 +319,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The client may audit supplier systems, records, subcontractors, and controls at any time without prior notice, but the agreement does not define reasonable limits or procedures.",
       suggestedFix:
-        "Add audit notice requirements, frequency limits, confidentiality protections, scope boundaries, and rules for audits of subcontractors or security controls."
+        "Add audit notice requirements, frequency limits, confidentiality protections, scope boundaries, and rules for audits of subcontractors or security controls.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Audit Scope and Notice Procedure",
+        category: "Compliance",
+        aiConfidence: 93,
+        recommendedClause:
+          "Client may conduct audits only on at least ten business days' prior written notice, during normal business hours, no more than once per calendar year unless required by a confirmed material incident. Audits must be limited to records and controls directly relevant to the services, conducted under confidentiality obligations, and performed in a manner that does not unreasonably disrupt Supplier operations or compromise security-sensitive information."
+      })
     },
     {
       id: "GAP-4",
@@ -290,7 +336,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement mentions client delays but does not fully protect the supplier from cost, resourcing, or schedule impacts caused by late approvals, content, or third-party inputs.",
       suggestedFix:
-        "Add language confirming that client-caused delays extend timelines, may require repricing, and relieve the supplier from responsibility for affected milestones."
+        "Add language confirming that client-caused delays extend timelines, may require repricing, and relieve the supplier from responsibility for affected milestones.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Client Dependency and Delay Protection Clause",
+        category: "Operational",
+        aiConfidence: 88,
+        recommendedClause:
+          "Supplier timelines and milestones will be extended to the extent delays are caused by Client approvals, content, access credentials, feedback, third-party inputs, or decisions. Supplier will not be responsible for missed milestones caused by those dependencies, and material delay or rework caused by Client-controlled items may require a written change order for additional fees, resourcing, or schedule adjustments."
+      })
     },
     {
       id: "GAP-5",
@@ -300,7 +353,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The website may rely on plugins, APIs, hosting, analytics, or infrastructure services, but responsibilities for selection, licensing, security, outages, and costs are not clearly allocated.",
       suggestedFix:
-        "Add a responsibility matrix clarifying ownership of third-party tools, licensing costs, security obligations, outage responsibility, and approval requirements."
+        "Add a responsibility matrix clarifying ownership of third-party tools, licensing costs, security obligations, outage responsibility, and approval requirements.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Third-Party Tools Responsibility Matrix",
+        category: "Technical",
+        aiConfidence: 90,
+        recommendedClause:
+          "The parties will maintain a responsibility matrix for third-party tools, plugins, APIs, hosting, analytics, and infrastructure services used in the project. The matrix must identify who selects, approves, licenses, pays for, administers, monitors, and secures each service, and must state that Supplier is not responsible for outages, vulnerabilities, price changes, or policy changes in third-party services outside Supplier's control."
+      })
     },
     {
       id: "GAP-6",
@@ -310,7 +370,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement states that hosted files may be deleted after 30 days, but it does not clearly define any transition support, handover process, or assistance fees.",
       suggestedFix:
-        "Add optional transition assistance terms covering handover support, export format, timelines, fees, and responsibilities after termination or project completion."
+        "Add optional transition assistance terms covering handover support, export format, timelines, fees, and responsibilities after termination or project completion.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Post-Termination Transition Assistance Clause",
+        category: "Operational",
+        aiConfidence: 84,
+        recommendedClause:
+          "Upon termination or project completion, Supplier will provide reasonable transition assistance upon Client's written request, including export of project files in Supplier's standard format and reasonable handover support. Any transition assistance beyond included deliverables will be billed at Supplier's then-current rates unless otherwise agreed in writing."
+      })
     },
     {
       id: "GAP-7",
@@ -320,7 +387,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement allows supplier-hosted files and stored content to be deleted after 30 days, but it does not define a clear retention, backup, or deletion procedure.",
       suggestedFix:
-        "Add a data retention and deletion clause covering notice, backup handling, retention period, deletion confirmation, and recovery responsibilities."
+        "Add a data retention and deletion clause covering notice, backup handling, retention period, deletion confirmation, and recovery responsibilities.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Data Retention and Deletion Procedure",
+        category: "Technical",
+        aiConfidence: 87,
+        recommendedClause:
+          "Supplier will retain hosted project files and stored content for thirty days after termination or completion unless a longer period is agreed in writing. Before deletion, Supplier will provide reasonable written notice and an opportunity for Client to request export assistance. Backup availability, deletion confirmation, and recovery obligations will be limited to Supplier-controlled systems and documented retention procedures."
+      })
     },
     {
       id: "GAP-8",
@@ -330,7 +404,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement permits reliance on third-party tools and vendors but does not clearly define subcontractor approval, oversight, or responsibility for subcontracted work.",
       suggestedFix:
-        "Add subcontractor approval requirements, responsibility for subcontractor acts, and restrictions on sharing confidential or client data with subcontractors."
+        "Add subcontractor approval requirements, responsibility for subcontractor acts, and restrictions on sharing confidential or client data with subcontractors.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Subcontractor Approval and Responsibility Clause",
+        category: "Legal",
+        aiConfidence: 86,
+        recommendedClause:
+          "Supplier may use subcontractors or specialized vendors to perform portions of the services, provided Supplier remains responsible for subcontracted work within the agreed scope. Supplier will not share Client confidential information or Client data with subcontractors except as reasonably necessary for the services and subject to confidentiality, security, and use restrictions consistent with this agreement."
+      })
     },
     {
       id: "GAP-9",
@@ -340,7 +421,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The agreement includes testing and launch activities but does not define a post-launch defect correction period for issues arising from delivered work.",
       suggestedFix:
-        "Add a limited warranty period requiring correction of defects caused by supplier work within an agreed timeframe after launch."
+        "Add a limited warranty period requiring correction of defects caused by supplier work within an agreed timeframe after launch.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Warranty Period for Defects",
+        category: "Operational",
+        aiConfidence: 85,
+        recommendedClause:
+          "For thirty days after launch, Supplier will correct reproducible defects in the delivered work that materially deviate from the approved specifications and are caused by Supplier's work. This warranty excludes issues caused by Client changes, third-party services, misuse, unsupported environments, or work performed outside the agreed scope."
+      })
     },
     {
       id: "GAP-10",
@@ -350,7 +438,14 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       whyThisMatters:
         "The supplier may display completed work in its portfolio and marketing materials, but the agreement does not define approval rights or confidentiality limits.",
       suggestedFix:
-        "Add a portfolio use approval process requiring client consent before using logos, screenshots, business names, or confidential project details."
+        "Add a portfolio use approval process requiring client consent before using logos, screenshots, business names, or confidential project details.",
+      ...buildDemoGapEnhancement({
+        clauseName: "Portfolio Use Approval Process",
+        category: "Legal",
+        aiConfidence: 78,
+        recommendedClause:
+          "Supplier may reference the completed project in its portfolio only after obtaining Client's prior written approval for use of Client name, logos, screenshots, or public descriptions. Supplier may not disclose confidential information, non-public business details, credentials, analytics, or security-sensitive materials in any portfolio or marketing use."
+      })
     }
   ],
   risks: [
