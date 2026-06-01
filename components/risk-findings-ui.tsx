@@ -61,7 +61,7 @@ type RiskDecisionPanelProps = {
   open: boolean;
   risk?: NormalizedFinding;
   status: RiskReviewStatus;
-  reviewLens: RiskReviewLens;
+  reviewLens: RiskReviewLens | null;
   activeAskAiLens?: RiskReviewLens | null;
   draftText: string;
   isRecommendationSaved: boolean;
@@ -85,10 +85,9 @@ const SORT_OPTIONS: { value: RiskSortKey; label: string }[] = [
 ];
 
 const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
-  { key: "simplify", label: "Simplify" },
-  { key: "safer", label: "Safer Wording" },
-  { key: "hidden", label: "Hidden Risks" },
-  { key: "standard", label: "Compare Standard" }
+  { key: "safer", label: "Balanced" },
+  { key: "hidden", label: "More Protective" },
+  { key: "standard", label: "Industry Standard" }
 ];
 
 export const RISK_REVIEW_STATUSES: RiskReviewStatus[] = ["pending", "needs_change", "accepted"];
@@ -675,7 +674,7 @@ export function RiskDecisionPanel({
               titleClassName="text-[0.92rem] font-bold tracking-[0.01em] text-slate-900"
             >
               <div ref={askAiRef} className="space-y-3.5">
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid gap-1.5 sm:grid-cols-3">
                   {REVIEW_LENSES.map((lens) => (
                     <button
                       key={lens.key}
@@ -684,7 +683,7 @@ export function RiskDecisionPanel({
                       disabled={Boolean(activeAskAiLens)}
                       aria-busy={activeAskAiLens === lens.key}
                       className={cn(
-                        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition disabled:cursor-not-allowed disabled:opacity-70",
+                        "inline-flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition disabled:cursor-not-allowed disabled:opacity-70",
                         reviewLens === lens.key
                           ? "border-slate-950 bg-slate-950 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"

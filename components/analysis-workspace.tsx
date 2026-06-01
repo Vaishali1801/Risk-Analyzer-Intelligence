@@ -91,6 +91,11 @@ const askAiActionByLens: Record<RiskReviewLens, AskAiActionType> = {
   hidden: "hidden_risks",
   standard: "compare_standard"
 };
+const riskClauseVariantKeyByLens: Partial<Record<RiskReviewLens, keyof NormalizedFinding["clauseVariants"]>> = {
+  safer: "balanced",
+  hidden: "protective",
+  standard: "standard"
+};
 
 export function AnalysisWorkspace() {
   const [session, setSession] = useState<StoredAnalysisSession | null>(null);
@@ -101,7 +106,7 @@ export function AnalysisWorkspace() {
   const [statusFilter, setStatusFilter] = useState<RiskReviewStatus | "All">("All");
   const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
-  const [reviewLens, setReviewLens] = useState<RiskReviewLens>("safer");
+  const [reviewLens, setReviewLens] = useState<RiskReviewLens | null>(null);
   const [activeAskAiLens, setActiveAskAiLens] = useState<RiskReviewLens | null>(null);
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
@@ -278,6 +283,7 @@ export function AnalysisWorkspace() {
     setCategory("All");
     setStatusFilter("All");
     setSelectedRiskId(riskId);
+    setReviewLens(null);
     setPanelFocusTarget("summary");
     setIsDecisionPanelOpen(true);
 
@@ -297,6 +303,7 @@ export function AnalysisWorkspace() {
 
   const openRiskPanel = (riskId: string, options?: { focusTarget?: RiskPanelFocusTarget }) => {
     setSelectedRiskId(riskId);
+    setReviewLens(null);
     setPanelFocusTarget(options?.focusTarget ?? "summary");
     setIsDecisionPanelOpen(true);
   };
@@ -337,6 +344,7 @@ export function AnalysisWorkspace() {
   };
 
   const resetRiskDraft = (risk: NormalizedFinding) => {
+    setReviewLens(null);
     updateRiskDraft(risk.riskId, normalizeReviewText(risk.originalRecommendedDraft));
   };
 
@@ -377,6 +385,13 @@ export function AnalysisWorkspace() {
 
   const applyReviewLens = async (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
     if (activeAskAiLens) return;
+
+    const storedVariant = getRiskStoredClauseVariant(risk, nextLens);
+    if (storedVariant) {
+      setReviewLens(nextLens);
+      updateRiskDraft(risk.riskId, storedVariant);
+      return;
+    }
 
     setReviewLens(nextLens);
     setActiveAskAiLens(nextLens);
@@ -649,7 +664,7 @@ export function AnalysisWorkspace() {
   }, [filteredRisks.length]);
 
   useEffect(() => {
-    setReviewLens("safer");
+    setReviewLens(null);
   }, [selectedRisk?.riskId]);
 
   useEffect(() => {
@@ -1024,7 +1039,6 @@ export function AnalysisWorkspace() {
             onSortChange={setSortKey}
             onReviewRisk={(risk) => openRiskPanel(risk.riskId)}
             onAskAi={(risk) => {
-              setReviewLens("safer");
               openRiskPanel(risk.riskId, { focusTarget: "ask-ai" });
             }}
           />
@@ -1889,6 +1903,11 @@ function getReviewDraftValue(value: unknown) {
 
 function normalizeReviewText(value: unknown) {
   return getReviewDraftValue(value).trim();
+}
+
+function getRiskStoredClauseVariant(risk: NormalizedFinding, lens: RiskReviewLens) {
+  const variantKey = riskClauseVariantKeyByLens[lens];
+  return variantKey ? normalizeReviewText(risk.clauseVariants[variantKey]) : "";
 }
 
 function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>) {

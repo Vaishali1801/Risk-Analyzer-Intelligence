@@ -242,6 +242,24 @@ function buildDemoGapEnhancement({
   };
 }
 
+function buildDemoRiskClauseVariants({
+  balanced,
+  protective,
+  standard
+}: {
+  balanced: string;
+  protective: string;
+  standard: string;
+}) {
+  return {
+    clauseVariants: {
+      balanced,
+      protective,
+      standard
+    }
+  };
+}
+
 export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysisSchema.parse({
   contractTitle: demoDocumentTitle,
   executiveSummary:
@@ -465,7 +483,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "The service provider may carry project costs without predictable cash collection or meaningful late-payment protection.",
       suggestedImprovement:
-        "Require payment of undisputed amounts within 30 days, define a good-faith dispute process, and apply late fees automatically to overdue undisputed invoices."
+        "Require payment of undisputed amounts within 30 days, define a good-faith dispute process, and apply late fees automatically to overdue undisputed invoices.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Client may withhold only amounts disputed in good faith and must pay all undisputed invoice amounts within 30 days. The parties will promptly discuss disputed amounts and Client must provide reasonable detail supporting any payment hold.",
+        protective:
+          "Client must pay all undisputed amounts within 30 days without offset or internal approval conditions. Any disputed amount must be identified in writing before the due date with specific reasons, and overdue undisputed amounts will accrue interest automatically.",
+        standard:
+          "Invoices are payable within 30 days of receipt. Client may dispute invoice amounts in good faith by written notice before the due date, but must timely pay all undisputed amounts while the parties resolve the dispute."
+      })
     },
     {
       id: "RISK-2",
@@ -483,7 +509,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "A near-complete project could be cancelled with limited recovery for work performed, committed resources, or non-cancellable costs.",
       suggestedImprovement:
-        "Require payment for all work performed through the termination date, approved expenses, and a defined percentage of committed work in progress."
+        "Require payment for all work performed through the termination date, approved expenses, and a defined percentage of committed work in progress.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "If Client terminates for convenience, Client will pay for services performed through the effective termination date, approved expenses, and documented non-cancellable commitments reasonably incurred before notice.",
+        protective:
+          "Upon termination for convenience, Client must pay all fees for completed work, work in progress, approved expenses, non-cancellable commitments, and any demobilization costs incurred as a result of early termination.",
+        standard:
+          "Either party may terminate as stated in the agreement, but termination will not relieve Client of payment obligations for services performed, authorized expenses, or approved work in progress through the termination effective date."
+      })
     },
     {
       id: "RISK-3",
@@ -501,7 +535,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "Supplier exposure could exceed the contract value and become disproportionate to the project fee.",
       suggestedImprovement:
-        "Make indemnity obligations subject to the liability cap except for narrow carve-outs such as willful misconduct or proven third-party IP infringement."
+        "Make indemnity obligations subject to the liability cap except for narrow carve-outs such as willful misconduct or proven third-party IP infringement.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Each party's indemnity obligations will be limited to third-party claims arising from its breach, negligence, willful misconduct, or infringement, and will remain subject to the liability cap except for exclusions expressly agreed by both parties.",
+        protective:
+          "Supplier indemnity obligations are subject to the aggregate liability cap and exclude claims caused by Client materials, Client instructions, third-party tools selected by Client, or modifications not made by Supplier.",
+        standard:
+          "Indemnity obligations apply to third-party claims arising from a party's breach, negligence, or infringement and are subject to the agreement's liability limitations except for customary uncapped exclusions such as fraud or willful misconduct."
+      })
     },
     {
       id: "RISK-4",
@@ -519,7 +561,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "The supplier may face intrusive reviews, subcontractor friction, and exposure of sensitive operational information.",
       suggestedImprovement:
-        "Limit audits to reasonable business hours, prior written notice, defined scope, confidentiality controls, and no more than once annually unless a material incident occurs."
+        "Limit audits to reasonable business hours, prior written notice, defined scope, confidentiality controls, and no more than once annually unless a material incident occurs.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Client may audit records directly related to the services on reasonable prior written notice, during normal business hours, and in a manner that does not unreasonably disrupt Supplier operations.",
+        protective:
+          "Audits require at least 10 business days' prior written notice, are limited to once per year absent a confirmed material breach, and may not include access to unrelated systems, other customer data, or security-sensitive information.",
+        standard:
+          "Audit rights are limited to records reasonably necessary to verify compliance with this agreement, subject to prior notice, confidentiality obligations, reasonable scope limits, and normal business-hour access."
+      })
     },
     {
       id: "RISK-5",
@@ -537,7 +587,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "The parties may dispute responsibility for breaches, fines, remediation, and claims caused by third-party systems or client-controlled data decisions.",
       suggestedImprovement:
-        "Tie responsibility to each party's control, require documented safeguards, define approved processing locations, and allocate breach costs based on fault."
+        "Tie responsibility to each party's control, require documented safeguards, define approved processing locations, and allocate breach costs based on fault.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Each party is responsible for data obligations within its control, including its systems, personnel, instructions, and selected service providers. The parties will cooperate on reasonable safeguards and incident response.",
+        protective:
+          "Supplier is responsible only for data incidents caused by Supplier-controlled systems or personnel. Client remains responsible for Client data instructions, third-party platforms it selects, and processing decisions outside Supplier's control.",
+        standard:
+          "Data processing responsibilities will be allocated according to each party's role, control, and applicable law, with commercially reasonable safeguards, approved processing locations, and incident cooperation obligations."
+      })
     },
     {
       id: "RISK-6",
@@ -555,7 +613,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "Scope, timeline, and budget disputes may arise if informal requests are treated as required work without pricing approval.",
       suggestedImprovement:
-        "State that no scope, priority, or timeline change is binding until documented in an approved change order with pricing and schedule impact."
+        "State that no scope, priority, or timeline change is binding until documented in an approved change order with pricing and schedule impact.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Material changes to scope, priority, deliverables, or timelines will be documented in a written change order identifying schedule and fee impacts before Supplier is required to perform the changed work.",
+        protective:
+          "Supplier has no obligation to begin changed or additional work unless both parties sign a change order covering revised scope, fees, milestones, dependencies, and any impact on prior commitments.",
+        standard:
+          "Any material change to scope, deliverables, timeline, or fees must be agreed in a written change order signed by both parties before becoming binding."
+      })
     },
     {
       id: "RISK-7",
@@ -573,7 +639,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "The client may lose access to website assets or evidence needed for transition, troubleshooting, or compliance.",
       suggestedImprovement:
-        "Require written deletion notice, a longer migration period, export assistance, and confirmation of backup retention or destruction."
+        "Require written deletion notice, a longer migration period, export assistance, and confirmation of backup retention or destruction.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Supplier will provide reasonable notice before deleting hosted project files and will make standard export assistance available during a transition period agreed by the parties.",
+        protective:
+          "Supplier will not delete hosted project files, backups, logs, or stored content until giving at least 15 days' written deletion notice after the migration period and offering a reasonable export opportunity.",
+        standard:
+          "Following termination or completion, Supplier will retain hosted project materials for a defined transition period and may delete them after providing notice and a reasonable opportunity for Client export."
+      })
     },
     {
       id: "RISK-8",
@@ -591,7 +665,15 @@ export const demoAnalysis: ContractAnalysis = applyDecisionLogic(ContractAnalysi
       impactIfIgnored:
         "The client may become locked into recurring support costs or miss a cancellation deadline.",
       suggestedImprovement:
-        "Require a separate support order with pricing, service levels, renewal reminders, and a shorter cancellation period."
+        "Require a separate support order with pricing, service levels, renewal reminders, and a shorter cancellation period.",
+      ...buildDemoRiskClauseVariants({
+        balanced:
+          "Hosting or maintenance support will require a separate written support order that states pricing, service levels, renewal terms, and cancellation procedures before any recurring commitment begins.",
+        protective:
+          "No support service will auto-renew unless Client separately approves the renewal terms in writing after receiving advance renewal notice, current pricing, and cancellation instructions.",
+        standard:
+          "Recurring support services will be governed by a separate order form with stated fees, service levels, renewal period, and a commercially reasonable cancellation notice period."
+      })
     }
   ]
 }));

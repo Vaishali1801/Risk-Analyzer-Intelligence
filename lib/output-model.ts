@@ -7,6 +7,8 @@ export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
 export type FinalOverallDecision = "Hold for Review" | "Reject" | "Approve with Changes" | "Approve";
 export type SafeRiskCategory = RiskCategory | "Uncategorized";
 export type SafeSeverity = Severity | "Unknown";
+export type RiskClauseVariantKey = "balanced" | "protective" | "standard";
+export type RiskClauseVariants = Partial<Record<RiskClauseVariantKey, string>>;
 
 export type NormalizedFinding = {
   riskId: string;
@@ -21,6 +23,7 @@ export type NormalizedFinding = {
   whyItMatters: string;
   businessImpact: string;
   originalRecommendedDraft: string;
+  clauseVariants: RiskClauseVariants;
 };
 
 export type RiskReviewState = {
@@ -110,7 +113,8 @@ export function normalizeOutputAnalysis(
     flaggedText: getUsableText(risk.highlightedText),
     whyItMatters: getUsableText(risk.whyRisky),
     businessImpact: getUsableText(risk.impactIfIgnored),
-    originalRecommendedDraft: getUsableText(risk.suggestedImprovement)
+    originalRecommendedDraft: getUsableText(risk.suggestedImprovement),
+    clauseVariants: getRiskClauseVariants(risk.clauseVariants)
   }));
   const summary = {
     totalRiskCount: getTotalRiskCount(findings),
@@ -713,6 +717,30 @@ function normalizeWhitespace(value: string) {
 
 function getUsableText(value: unknown) {
   return typeof value === "string" ? normalizeWhitespace(value) : "";
+}
+
+function getUsableMultilineText(value: unknown) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => normalizeWhitespace(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getRiskClauseVariants(value: unknown): RiskClauseVariants {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  return (["balanced", "protective", "standard"] as const).reduce<RiskClauseVariants>((variants, key) => {
+    const variant = getUsableMultilineText((value as Record<RiskClauseVariantKey, unknown>)[key]);
+    if (variant) {
+      variants[key] = variant;
+    }
+    return variants;
+  }, {});
 }
 
 function buildShortClauseExcerpt(value: string, maxLength = 140) {

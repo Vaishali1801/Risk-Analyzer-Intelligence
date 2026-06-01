@@ -12,6 +12,25 @@ export const GapAnalysisClauseVariantsSchema = z.object({
   alternative: z.string().min(1),
   protective: z.string().min(1)
 });
+export const RiskClauseVariantsSchema = z.object({
+  balanced: z.string().min(1).optional(),
+  protective: z.string().min(1).optional(),
+  standard: z.string().min(1).optional()
+});
+
+const OptionalRiskClauseVariantsSchema = z.preprocess((value) => {
+  const record = getObjectRecord(value);
+  if (!record) return undefined;
+
+  const variants = {
+    balanced: getCleanMultilineString(record.balanced),
+    protective: getCleanMultilineString(record.protective),
+    standard: getCleanMultilineString(record.standard)
+  };
+  const normalizedVariants = Object.fromEntries(Object.entries(variants).filter(([, variant]) => variant));
+
+  return Object.keys(normalizedVariants).length ? normalizedVariants : undefined;
+}, RiskClauseVariantsSchema.optional());
 
 export const ContractRiskSchema = z.object({
   id: z.string().min(1),
@@ -25,7 +44,8 @@ export const ContractRiskSchema = z.object({
   confidence: z.number().min(0).max(1),
   whyRisky: z.string().min(10),
   impactIfIgnored: z.string().min(10),
-  suggestedImprovement: z.string().min(10)
+  suggestedImprovement: z.string().min(10),
+  clauseVariants: OptionalRiskClauseVariantsSchema
 });
 
 export const GapAnalysisItemSchema = z.object({
