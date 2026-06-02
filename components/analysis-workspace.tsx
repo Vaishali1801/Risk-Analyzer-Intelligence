@@ -1118,8 +1118,9 @@ export function AnalysisWorkspace() {
                   <div className="px-4 pb-2.5 sm:px-5">
                     <h3 className="text-[0.95rem] font-semibold tracking-tight text-slate-950">Risk Final Review</h3>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+                  <div className="mx-4 overflow-hidden rounded-[1.05rem] border border-slate-200/90 bg-slate-50/45 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:mx-5">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
                       <colgroup>
                         <col className="w-[34%]" />
                         <col className="w-[14%]" />
@@ -1191,7 +1192,8 @@ export function AnalysisWorkspace() {
                           );
                         })}
                       </tbody>
-                    </table>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1303,8 +1305,9 @@ function GapFinalReviewTable({
   onToggleGap: (gapId: string) => void;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+    <div className="mx-4 overflow-hidden rounded-[1.05rem] border border-slate-200/90 bg-slate-50/45 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:mx-5">
+      <div className="overflow-x-auto">
+        <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
         <colgroup>
           <col className="w-[34%]" />
           <col className="w-[14%]" />
@@ -1382,7 +1385,8 @@ function GapFinalReviewTable({
             );
           })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
