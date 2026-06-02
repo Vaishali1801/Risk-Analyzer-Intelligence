@@ -1104,16 +1104,16 @@ export function AnalysisWorkspace() {
                     <thead>
                       <tr className="bg-slate-50 text-left">
                         <th className="border-b border-slate-200 px-4 py-2.5">
-                          <TableHeaderLabel>Risk</TableHeaderLabel>
+                          <TableHeaderLabel>Risk Title</TableHeaderLabel>
                         </th>
                         <th className="border-b border-slate-200 px-4 py-2.5 text-center">
                           <TableHeaderLabel align="center">Decision</TableHeaderLabel>
                         </th>
                         <th className="border-b border-slate-200 px-4 py-2.5">
-                          <TableHeaderLabel>Final Clause</TableHeaderLabel>
+                          <TableHeaderLabel>Revised Clause Snippet</TableHeaderLabel>
                         </th>
                         <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-                          <TableHeaderLabel align="center">Compare</TableHeaderLabel>
+                          <TableHeaderLabel align="center">Action</TableHeaderLabel>
                         </th>
                       </tr>
                     </thead>
@@ -1150,7 +1150,7 @@ export function AnalysisWorkspace() {
                                   className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
                                   aria-expanded={isExpanded}
                                 >
-                                  {row.actionLabel}
+                                  {row.actionLabel === "Review" ? "Compare Clauses" : row.actionLabel}
                                   <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
                                 </button>
                               </td>
