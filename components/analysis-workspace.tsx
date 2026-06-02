@@ -136,6 +136,7 @@ export function AnalysisWorkspace() {
   const settleTimeoutRef = useRef<number | null>(null);
   const initialHashHandledRef = useRef(false);
   const reviewSessionKeyRef = useRef<string | null>(null);
+  const gapReviewSessionKeyRef = useRef<string | null>(null);
   const expandedFinalReviewSessionKeyRef = useRef<string | null>(null);
 
   const clearPendingNavigationTimeout = () => {
@@ -615,6 +616,19 @@ export function AnalysisWorkspace() {
 
     setActiveGapAction(firstAvailableGapAction);
   }, [activeGapAction, firstAvailableGapAction, gapRecommendationCounts]);
+
+  useEffect(() => {
+    if (!reviewSessionKey) {
+      gapReviewSessionKeyRef.current = null;
+      setGapReviewById((current) => (Object.keys(current).length ? {} : current));
+      return;
+    }
+
+    if (gapReviewSessionKeyRef.current === reviewSessionKey) return;
+
+    gapReviewSessionKeyRef.current = reviewSessionKey;
+    setGapReviewById((current) => (Object.keys(current).length ? {} : current));
+  }, [reviewSessionKey]);
 
   useEffect(() => {
     if (!documentModel || !reviewSessionKey) return;
