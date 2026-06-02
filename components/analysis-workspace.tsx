@@ -62,6 +62,7 @@ type GapRegisterRow = GapAnalysisItem & {
 };
 type GapAskAiVariantKey = "balanced" | "detailed" | "alternative" | "protective";
 type GapReviewDecision = "accepted" | "rejected";
+type GapFinalReviewDecision = "Pending" | "Accepted" | "Rejected";
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -111,6 +112,7 @@ export function AnalysisWorkspace() {
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
+  const [expandedFinalReviewGapId, setExpandedFinalReviewGapId] = useState<string | null>(null);
   const [expandedFinalReviewRiskId, setExpandedFinalReviewRiskId] = useState<string | null>(null);
   const [isReviewFinalized, setIsReviewFinalized] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
@@ -633,6 +635,7 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     if (!reviewSessionKey) {
       expandedFinalReviewSessionKeyRef.current = null;
+      setExpandedFinalReviewGapId(null);
       setExpandedFinalReviewRiskId(null);
       return;
     }
@@ -640,6 +643,7 @@ export function AnalysisWorkspace() {
     if (expandedFinalReviewSessionKeyRef.current === reviewSessionKey) return;
 
     expandedFinalReviewSessionKeyRef.current = reviewSessionKey;
+    setExpandedFinalReviewGapId(null);
     setExpandedFinalReviewRiskId(null);
   }, [reviewSessionKey]);
 
@@ -1093,6 +1097,20 @@ export function AnalysisWorkspace() {
                 <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-5">
                   <div className="text-sm font-semibold text-slate-950">Final Decisions</div>
                 </div>
+                <div className="border-b border-slate-200">
+                  {gapRecommendations.length ? (
+                    <GapFinalReviewTable
+                      gaps={gapRecommendations}
+                      reviewById={gapReviewById}
+                      expandedGapId={expandedFinalReviewGapId}
+                      onToggleGap={(gapId) => setExpandedFinalReviewGapId((current) => (current === gapId ? null : gapId))}
+                    />
+                  ) : (
+                    <div className="px-4 py-3 text-sm font-medium text-slate-500 sm:px-5">
+                      No gap recommendations available for final review.
+                    </div>
+                  )}
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
                     <colgroup>
@@ -1254,6 +1272,128 @@ function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; a
     <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left")}>
       {children}
     </span>
+  );
+}
+
+function GapFinalReviewTable({
+  gaps,
+  reviewById,
+  expandedGapId,
+  onToggleGap
+}: {
+  gaps: GapAnalysisItem[];
+  reviewById: Record<string, GapReviewDecision>;
+  expandedGapId: string | null;
+  onToggleGap: (gapId: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+        <colgroup>
+          <col className="w-[34%]" />
+          <col className="w-[14%]" />
+          <col className="w-[36%]" />
+          <col className="w-[16%]" />
+        </colgroup>
+        <thead>
+          <tr className="bg-slate-50 text-left">
+            <th className="border-b border-slate-200 px-4 py-2.5">
+              <TableHeaderLabel>Gap Title</TableHeaderLabel>
+            </th>
+            <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+              <TableHeaderLabel align="center">Decision</TableHeaderLabel>
+            </th>
+            <th className="border-b border-slate-200 px-4 py-2.5">
+              <TableHeaderLabel>Recommended Clause Snippet</TableHeaderLabel>
+            </th>
+            <th className="border-b border-slate-200 px-4 py-2.5 text-center">
+              <TableHeaderLabel align="center">Action</TableHeaderLabel>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {gaps.map((gap) => {
+            const row = gap as GapRegisterRow;
+            const isExpanded = expandedGapId === gap.id;
+            const decision = getGapFinalReviewDecision(row, reviewById);
+            const recommendedClause = getGapRecommendedClause(row);
+
+            return (
+              <Fragment key={gap.id}>
+                <tr
+                  onClick={() => onToggleGap(gap.id)}
+                  className="cursor-pointer bg-white align-middle transition hover:bg-slate-50/80"
+                >
+                  <td className="border-b border-slate-200/90 px-4 py-3">
+                    <div
+                      className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                      title={gap.clauseName}
+                    >
+                      {gap.clauseName}
+                    </div>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                    <GapFinalReviewDecisionBadge decision={decision} />
+                  </td>
+                  <td className="border-b border-slate-200/90 px-4 py-3">
+                    <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={recommendedClause}>
+                      {recommendedClause}
+                    </p>
+                  </td>
+                  <td className="border-b border-slate-200/90 px-4 py-3 text-center">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleGap(gap.id);
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                      aria-expanded={isExpanded}
+                    >
+                      Review Clause
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
+                    </button>
+                  </td>
+                </tr>
+                {isExpanded ? (
+                  <tr className="bg-slate-50/70">
+                    <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
+                      <GapFinalReviewExpansion recommendedClause={recommendedClause} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GapFinalReviewDecisionBadge({ decision }: { decision: GapFinalReviewDecision }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-[0.72rem] font-semibold",
+        decision === "Accepted"
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : decision === "Rejected"
+            ? "border-rose-200 bg-rose-50 text-rose-700"
+            : "border-amber-200 bg-amber-50 text-amber-700"
+      )}
+    >
+      {decision}
+    </span>
+  );
+}
+
+function GapFinalReviewExpansion({ recommendedClause }: { recommendedClause: string }) {
+  return (
+    <div className="rounded-[0.95rem] border border-slate-200 bg-white p-3">
+      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-slate-500">Full Recommended Clause</div>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{recommendedClause}</p>
+    </div>
   );
 }
 
@@ -1676,6 +1816,16 @@ function getGapStatusLabel(value: unknown) {
 
 function getGapReviewDecisionLabel(decision: GapReviewDecision) {
   return decision === "accepted" ? "Accepted" : "Rejected";
+}
+
+function getGapFinalReviewDecision(gap: GapRegisterRow, reviewById: Record<string, GapReviewDecision>): GapFinalReviewDecision {
+  const reviewDecision = reviewById[gap.id];
+  if (reviewDecision) return getGapReviewDecisionLabel(reviewDecision);
+
+  const status = getGapStatusLabel(gap.status).toLowerCase().replace(/[\s_-]+/g, " ");
+  if (status === "accepted") return "Accepted";
+  if (status === "rejected") return "Rejected";
+  return "Pending";
 }
 
 function getGapStatusBadgeClassName(status: string) {
