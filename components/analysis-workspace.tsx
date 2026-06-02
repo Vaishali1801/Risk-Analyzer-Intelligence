@@ -1097,7 +1097,10 @@ export function AnalysisWorkspace() {
                 <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-5">
                   <div className="text-sm font-semibold text-slate-950">Final Decisions</div>
                 </div>
-                <div className="border-b border-slate-200">
+                <div className="border-b border-slate-200 pb-3">
+                  <div className="px-4 pb-2.5 pt-4 sm:px-5">
+                    <h3 className="text-[0.95rem] font-semibold tracking-tight text-slate-950">Gap Final Review</h3>
+                  </div>
                   {gapRecommendations.length ? (
                     <GapFinalReviewTable
                       gaps={gapRecommendations}
@@ -1106,85 +1109,90 @@ export function AnalysisWorkspace() {
                       onToggleGap={(gapId) => setExpandedFinalReviewGapId((current) => (current === gapId ? null : gapId))}
                     />
                   ) : (
-                    <div className="px-4 py-3 text-sm font-medium text-slate-500 sm:px-5">
+                    <div className="px-4 py-2.5 text-sm font-medium text-slate-500 sm:px-5">
                       No gap recommendations available for final review.
                     </div>
                   )}
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
-                    <colgroup>
-                      <col className="w-[34%]" />
-                      <col className="w-[14%]" />
-                      <col className="w-[36%]" />
-                      <col className="w-[16%]" />
-                    </colgroup>
-                    <thead>
-                      <tr className="bg-slate-50 text-left">
-                        <th className="border-b border-slate-200 px-4 py-2.5">
-                          <TableHeaderLabel>Risk Title</TableHeaderLabel>
-                        </th>
-                        <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-                          <TableHeaderLabel align="center">Decision</TableHeaderLabel>
-                        </th>
-                        <th className="border-b border-slate-200 px-4 py-2.5">
-                          <TableHeaderLabel>Revised Clause Snippet</TableHeaderLabel>
-                        </th>
-                        <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-                          <TableHeaderLabel align="center">Action</TableHeaderLabel>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {finalDecisionRows.map((row) => {
-                        const isExpanded = expandedFinalReviewRiskId === row.finding.riskId;
+                <div className="pt-4">
+                  <div className="px-4 pb-2.5 sm:px-5">
+                    <h3 className="text-[0.95rem] font-semibold tracking-tight text-slate-950">Risk Final Review</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-[840px] w-full table-fixed border-separate border-spacing-0">
+                      <colgroup>
+                        <col className="w-[34%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[36%]" />
+                        <col className="w-[16%]" />
+                      </colgroup>
+                      <thead>
+                        <tr className="bg-slate-100/80 text-left">
+                          <th className="border-b border-slate-300/80 px-4 py-2">
+                            <TableHeaderLabel className="font-bold tracking-[0.14em] text-slate-600">Risk Title</TableHeaderLabel>
+                          </th>
+                          <th className="border-b border-slate-300/80 px-4 py-2 text-center">
+                            <TableHeaderLabel align="center" className="font-bold tracking-[0.14em] text-slate-600">Decision</TableHeaderLabel>
+                          </th>
+                          <th className="border-b border-slate-300/80 px-4 py-2">
+                            <TableHeaderLabel className="font-bold tracking-[0.14em] text-slate-600">Revised Clause Snippet</TableHeaderLabel>
+                          </th>
+                          <th className="border-b border-slate-300/80 px-4 py-2 text-center">
+                            <TableHeaderLabel align="center" className="font-bold tracking-[0.14em] text-slate-600">Action</TableHeaderLabel>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {finalDecisionRows.map((row) => {
+                          const isExpanded = expandedFinalReviewRiskId === row.finding.riskId;
 
-                        return (
-                          <Fragment key={row.finding.riskId}>
-                            <tr className="bg-white align-middle transition hover:bg-slate-50/80">
-                              <td className="border-b border-slate-200/90 px-4 py-3">
-                                <div className="min-w-0">
-                                  <div
-                                    className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
-                                    title={row.finding.riskTitle}
-                                  >
-                                    {row.finding.riskTitle}
+                          return (
+                            <Fragment key={row.finding.riskId}>
+                              <tr className="bg-white align-middle transition hover:bg-slate-50/80">
+                                <td className="border-b border-slate-200/90 px-4 py-2.5">
+                                  <div className="min-w-0">
+                                    <div
+                                      className="overflow-hidden text-[0.86rem] font-semibold leading-5 text-slate-950 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+                                      title={row.finding.riskTitle}
+                                    >
+                                      {row.finding.riskTitle}
+                                    </div>
+                                    <div className="mt-0.5 text-[0.72rem] font-medium text-slate-500">{row.finding.sectionRef}</div>
                                   </div>
-                                  <div className="mt-1 text-[0.72rem] font-medium text-slate-500">{row.finding.sectionRef}</div>
-                                </div>
-                              </td>
-                              <td className="border-b border-slate-200/90 px-4 py-3 text-center">
-                                <FinalReviewDecisionBadge decision={row.decision} />
-                              </td>
-                              <td className="border-b border-slate-200/90 px-4 py-3">
-                                <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={row.finalClause}>
-                                  {row.finalClause}
-                                </p>
-                              </td>
-                              <td className="border-b border-slate-200/90 px-4 py-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.finding.riskId)}
-                                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
-                                  aria-expanded={isExpanded}
-                                >
-                                  {row.actionLabel === "Review" ? "Compare Clauses" : row.actionLabel}
-                                  <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
-                                </button>
-                              </td>
-                            </tr>
-                            {isExpanded ? (
-                              <tr className="bg-slate-50/70">
-                                <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
-                                  <FinalReviewExpansion row={row} />
+                                </td>
+                                <td className="border-b border-slate-200/90 px-4 py-2.5 text-center">
+                                  <FinalReviewDecisionBadge decision={row.decision} />
+                                </td>
+                                <td className="border-b border-slate-200/90 px-4 py-2.5">
+                                  <p className="overflow-hidden text-[0.82rem] leading-5 text-slate-700 [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]" title={row.finalClause}>
+                                    {row.finalClause}
+                                  </p>
+                                </td>
+                                <td className="border-b border-slate-200/90 px-4 py-2.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedFinalReviewRiskId(isExpanded ? null : row.finding.riskId)}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[0.78rem] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                                    aria-expanded={isExpanded}
+                                  >
+                                    {row.actionLabel === "Review" ? "Compare Clauses" : row.actionLabel}
+                                    <ChevronDown className={cn("h-3.5 w-3.5 transition", isExpanded ? "rotate-180" : "")} />
+                                  </button>
                                 </td>
                               </tr>
-                            ) : null}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              {isExpanded ? (
+                                <tr className="bg-slate-50/70">
+                                  <td colSpan={4} className="border-b border-slate-200 px-4 py-3.5">
+                                    <FinalReviewExpansion row={row} />
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -1267,9 +1275,17 @@ export function AnalysisWorkspace() {
   );
 }
 
-function TableHeaderLabel({ children, align = "left" }: { children: ReactNode; align?: "left" | "center" }) {
+function TableHeaderLabel({
+  children,
+  align = "left",
+  className
+}: {
+  children: ReactNode;
+  align?: "left" | "center";
+  className?: string;
+}) {
   return (
-    <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left")}>
+    <span className={cn("block text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-500", align === "center" ? "text-center" : "text-left", className)}>
       {children}
     </span>
   );
@@ -1296,18 +1312,18 @@ function GapFinalReviewTable({
           <col className="w-[16%]" />
         </colgroup>
         <thead>
-          <tr className="bg-slate-50 text-left">
-            <th className="border-b border-slate-200 px-4 py-2.5">
-              <TableHeaderLabel>Gap Title</TableHeaderLabel>
+          <tr className="bg-slate-100/80 text-left">
+            <th className="border-b border-slate-300/80 px-4 py-2">
+              <TableHeaderLabel className="font-bold tracking-[0.14em] text-slate-600">Gap Title</TableHeaderLabel>
             </th>
-            <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-              <TableHeaderLabel align="center">Decision</TableHeaderLabel>
+            <th className="border-b border-slate-300/80 px-4 py-2 text-center">
+              <TableHeaderLabel align="center" className="font-bold tracking-[0.14em] text-slate-600">Decision</TableHeaderLabel>
             </th>
-            <th className="border-b border-slate-200 px-4 py-2.5">
-              <TableHeaderLabel>Recommended Clause Snippet</TableHeaderLabel>
+            <th className="border-b border-slate-300/80 px-4 py-2">
+              <TableHeaderLabel className="font-bold tracking-[0.14em] text-slate-600">Recommended Clause Snippet</TableHeaderLabel>
             </th>
-            <th className="border-b border-slate-200 px-4 py-2.5 text-center">
-              <TableHeaderLabel align="center">Action</TableHeaderLabel>
+            <th className="border-b border-slate-300/80 px-4 py-2 text-center">
+              <TableHeaderLabel align="center" className="font-bold tracking-[0.14em] text-slate-600">Action</TableHeaderLabel>
             </th>
           </tr>
         </thead>
