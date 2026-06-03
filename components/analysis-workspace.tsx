@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildClauseAction } from "@/lib/reporting/actions";
-import { getReportDocumentName } from "@/lib/reporting/metadata";
+import { getAnalysisPageTitle } from "@/lib/reporting/metadata";
 import { readAnalysisSession, type StoredAnalysisSession } from "@/lib/analysis-session";
 import { downloadReportPdf } from "@/lib/reporting/pdf";
 import {
@@ -731,9 +731,9 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     if (!loaded) return;
 
-    const nextTitle = session ? `Risk Analysis Results | ${getReportDocumentName(session.source.documentName)}` : "Risk Analysis Results";
+    const nextTitle = session ? getAnalysisPageTitle(documentModel?.contractTitle, session.source.documentName) : "AI Risk Review";
     document.title = nextTitle;
-  }, [loaded, session]);
+  }, [documentModel, loaded, session]);
 
   if (!loaded) {
     return (

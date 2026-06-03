@@ -1,7 +1,7 @@
 "use client";
 
 import jsPDF from "jspdf";
-import { getReportFileName } from "@/lib/reporting/metadata";
+import { getPdfPreviewTitle, getReportFileName } from "@/lib/reporting/metadata";
 import { buildPdfReportModel } from "@/lib/reporting/pdf-model";
 import type { ReportModel } from "@/lib/output-model";
 import type { PdfDecision, PdfGapDecision, PdfGapReviewById, PdfReportModel } from "@/lib/reporting/pdf-model";
@@ -98,10 +98,14 @@ export function downloadReportPdf(reportModel: ReportModel, gapReviewById: PdfGa
 
   drawFooters(doc, pdfData);
   const pdfBlob = doc.output("blob");
-  openPdfPreview(pdfBlob, getReportFileName(documentModel.documentName));
+  openPdfPreview(
+    pdfBlob,
+    getReportFileName(documentModel.contractTitle, documentModel.documentName),
+    getPdfPreviewTitle(documentModel.contractTitle, documentModel.documentName)
+  );
 }
 
-function openPdfPreview(pdfBlob: Blob, fileName: string) {
+function openPdfPreview(pdfBlob: Blob, fileName: string, previewTitle: string) {
   const browserDocument = globalThis.document;
   const browserUrl = globalThis.URL;
   const browserWindow = globalThis.window;
@@ -115,10 +119,15 @@ function openPdfPreview(pdfBlob: Blob, fileName: string) {
     return;
   }
 
-  const objectUrl = browserUrl.createObjectURL(pdfBlob);
-  const previewWindow = window.open(objectUrl, "_blank", "noopener,noreferrer");
+  const safeFileName = sanitizePdfFileName(fileName);
+  const pdfFile =
+    typeof File === "function" ? new File([pdfBlob], safeFileName, { type: pdfBlob.type || "application/pdf" }) : pdfBlob;
+  const objectUrl = browserUrl.createObjectURL(pdfFile);
+  const previewUrl = browserUrl.createObjectURL(buildPdfPreviewDocument(objectUrl, previewTitle, safeFileName));
+  const previewWindow = window.open(previewUrl, "_blank", "noopener,noreferrer");
 
   globalThis.setTimeout(() => {
+    browserUrl.revokeObjectURL(previewUrl);
     browserUrl.revokeObjectURL(objectUrl);
   }, PDF_OBJECT_URL_REVOKE_DELAY_MS);
 
@@ -126,9 +135,39 @@ function openPdfPreview(pdfBlob: Blob, fileName: string) {
 
   globalThis.setTimeout(() => {
     if (browserDocument.visibilityState === "visible" && browserDocument.hasFocus()) {
-      triggerPdfDownload(pdfBlob, fileName);
+      triggerPdfDownload(pdfBlob, safeFileName);
     }
   }, PDF_POPUP_FALLBACK_DELAY_MS);
+}
+
+function buildPdfPreviewDocument(objectUrl: string, previewTitle: string, fileName: string) {
+  const title = escapeHtml(previewTitle);
+  const pdfUrl = escapeHtml(objectUrl);
+  const downloadName = escapeHtml(fileName);
+
+  return new Blob(
+    [
+      `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<style>
+html,body{height:100%;margin:0;background:#525659;}
+embed,iframe{border:0;display:block;width:100%;height:100%;}
+.fallback{box-sizing:border-box;padding:24px;font-family:Arial,sans-serif;color:white;}
+.fallback a{color:white;font-weight:700;}
+</style>
+</head>
+<body>
+<embed src="${pdfUrl}" type="application/pdf">
+<noscript><div class="fallback"><a href="${pdfUrl}" download="${downloadName}">Download PDF</a></div></noscript>
+</body>
+</html>`
+    ],
+    { type: "text/html" }
+  );
 }
 
 function triggerPdfDownload(pdfBlob: Blob, fileName: string) {
@@ -163,6 +202,15 @@ function sanitizePdfFileName(fileName: string) {
     .slice(0, 120);
 
   return `${normalized || "risk-analysis-results"}.pdf`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
