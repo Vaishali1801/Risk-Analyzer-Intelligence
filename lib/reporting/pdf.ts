@@ -49,6 +49,8 @@ const COLORS = {
   softBlueGrey: "#F8FAFC",
   softBlueBorder: "#BFDBFE",
   blueGrey: "#64748B",
+  softIndigo: "#4F46E5",
+  softIndigoPanel: "#EEF2FF",
   highRed: "#DC2626",
   mediumAmber: "#F59E0B",
   lowGreen: "#16A34A",
@@ -209,7 +211,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
     { label: "Overall Decision", value: dashboard.overallDecision, color: getDecisionColor(dashboard.overallDecision), fill: COLORS.softAmber },
     { label: "Overall Risk", value: dashboard.overallRisk ?? "Not available", color: getSeverityColor(dashboard.overallRisk), fill: COLORS.softRed },
     { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy, fill: COLORS.softBlueGrey },
-    { label: "Critical Risks", value: String(dashboard.criticalRisks), color: COLORS.highRed, fill: COLORS.softRed }
+    { label: "Total Gaps", value: String(dashboard.gapSummary.total), color: COLORS.softIndigo, fill: COLORS.softIndigoPanel }
   ];
   kpiCards.forEach((item, index) => {
     drawKpiCard(doc, DASHBOARD_MARGIN + index * (kpiWidth + kpiGap), y, kpiWidth, 16, item.label, item.value, item.color, item.fill);
@@ -459,6 +461,15 @@ function drawKpiIcon(doc: jsPDF, label: string, cx: number, cy: number, color: s
     return;
   }
 
+  if (label === "Total Gaps") {
+    doc.roundedRect(cx - 2.35, cy - 2.65, 4.7, 5.3, 0.55, 0.55, "S");
+    doc.line(cx - 1.2, cy - 1.1, cx + 1.25, cy - 1.1);
+    doc.line(cx - 1.2, cy + 0.1, cx + 0.25, cy + 0.1);
+    doc.line(cx, cy + 0.95, cx, cy + 2.05);
+    doc.line(cx - 0.55, cy + 1.5, cx + 0.55, cy + 1.5);
+    return;
+  }
+
   if (label === "Critical Risks") {
     doc.setLineWidth(0.5);
     doc.line(cx, cy - 2.6, cx + 2.45, cy);
@@ -507,7 +518,7 @@ function drawDivider(doc: jsPDF, x: number, y: number, width: number) {
 
 function drawSeverityMixCard(doc: jsPDF, x: number, y: number, width: number, height: number, dashboard: PdfReportModel["dashboard"]) {
   drawCard(doc, x, y, width, height, COLORS.white, true);
-  drawSectionTitle(doc, "SEVERITY MIX", x + 3, y + 8);
+  drawSectionTitle(doc, "RISK SEVERITY MIX", x + 3, y + 8);
 
   const severities = ["High", "Medium", "Low"] as const;
   severities.forEach((severity, index) => {
@@ -538,7 +549,7 @@ function drawCategoryBreakdown(
   totalRisks: number
 ) {
   drawCard(doc, x, y, width, height, COLORS.white, true);
-  drawSectionTitle(doc, "CATEGORY BREAKDOWN", x + 3, y + 8);
+  drawSectionTitle(doc, "RISK CATEGORY BREAKDOWN", x + 3, y + 8);
 
   const visibleItems = items.slice(0, 5);
   drawDonutChart(doc, x + 24.5, y + 27.2, 11.8, 5.2, visibleItems, totalRisks);
@@ -1405,7 +1416,7 @@ function drawRecommendedDecisionHero(
     doc.text(column.title, columnX, titleY);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(index === 0 ? 10.2 : 7.4);
+    doc.setFontSize(index === 0 ? 10.8 : 7.9);
     doc.setTextColor(...hexToRgb(column.valueColor));
     doc.text(clampSingleLine(doc, column.value, columnWidth), columnX, dataY);
   });
