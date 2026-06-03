@@ -72,6 +72,13 @@ type PdfSummaryRiskRow = PdfReportModel["summaryRisks"][number];
 type PdfDetailedRiskRow = PdfReportModel["detailedRisks"][number];
 type PdfDetailedGapRow = PdfReportModel["detailedGaps"][number];
 type PdfFinalReviewRow = PdfReportModel["finalReview"]["rows"][number];
+type PdfGapDecision = "Pending" | "Accepted" | "Rejected";
+type PdfFinalReviewGapRow = {
+  number: number;
+  gapTitle: string;
+  decision: PdfGapDecision;
+  finalRecommendedClause: string;
+};
 
 export function downloadReportPdf(reportModel: ReportModel) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -91,7 +98,7 @@ export function downloadReportPdf(reportModel: ReportModel) {
   drawDetailedRiskAnalysisPages(doc, pdfData);
 
   doc.addPage();
-  drawFinalReviewPages(doc, pdfData);
+  drawFinalReviewPages(doc, pdfData, documentModel.gapAnalysis);
 
   drawFooters(doc, pdfData);
   const pdfBlob = doc.output("blob");
@@ -1291,21 +1298,29 @@ function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
   return section.variant === "quote" ? DETAIL_RECOMMENDED_BODY_Y + DETAIL_RECOMMENDED_BOTTOM_PADDING : DETAIL_TEXT_BODY_OFFSET + DETAIL_TEXT_BOTTOM_PADDING;
 }
 
-function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel) {
+function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel, gapAnalysis: ReportModel["document"]["gapAnalysis"]) {
   let y = drawFinalReviewPageStart(doc, pdfData.metadata, "FINAL REVIEW");
   y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview);
   y += 8.2;
 
-  drawSectionTitle(doc, "REVIEW SUMMARY", DASHBOARD_MARGIN, y);
-  y += 5.1;
+  const gapRows = buildFinalReviewGapRows(gapAnalysis);
+  if (gapRows.length) {
+    y = drawFinalReviewSectionHeading(doc, pdfData.metadata, y, "GAP REVIEW SUMMARY");
+    y = drawFinalReviewGapSummaryTable(doc, pdfData.metadata, gapRows, y);
+    y += 7.2;
+  }
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.4);
-  doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text("Summary of final decisions across all identified risks:", DASHBOARD_MARGIN, y);
-  y += 4.8;
-
+  y = drawFinalReviewSectionHeading(doc, pdfData.metadata, y, "RISK REVIEW SUMMARY");
   drawFinalReviewSummaryTable(doc, pdfData.metadata, pdfData.finalReview.rows, y);
+}
+
+function buildFinalReviewGapRows(gapAnalysis: ReportModel["document"]["gapAnalysis"]): PdfFinalReviewGapRow[] {
+  return gapAnalysis.map((gap, index) => ({
+    number: index + 1,
+    gapTitle: safeText(gap.clauseName) || "Untitled gap",
+    decision: gap.status,
+    finalRecommendedClause: safeText(gap.recommendedClause) || "\u2014"
+  }));
 }
 
 function drawFinalReviewPageStart(doc: jsPDF, metadata: PdfReportModel["metadata"], sectionTitle: string) {
@@ -1384,6 +1399,37 @@ function drawDecisionAlertIcon(doc: jsPDF, cx: number, cy: number, color: string
   doc.text("!", cx, cy + 1.25, { align: "center" });
 }
 
+function drawFinalReviewSectionHeading(doc: jsPDF, metadata: PdfReportModel["metadata"], y: number, heading: string) {
+  if (y + 12.3 > FINAL_REVIEW_PAGE_BOTTOM) {
+    doc.addPage();
+    y = drawFinalReviewPageStart(doc, metadata, heading);
+    return y;
+  }
+
+  drawSectionTitle(doc, heading, DASHBOARD_MARGIN, y);
+  return y + 5.1;
+}
+
+function drawFinalReviewGapSummaryTable(doc: jsPDF, metadata: PdfReportModel["metadata"], rows: PdfFinalReviewGapRow[], y: number) {
+  const columns = getFinalReviewGapTableColumns(DASHBOARD_WIDTH);
+  let currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, y, columns);
+
+  rows.forEach((row, index) => {
+    const rowHeight = getFinalReviewGapTableRowHeight(doc, row, columns);
+
+    if (currentY + rowHeight > FINAL_REVIEW_PAGE_BOTTOM) {
+      doc.addPage();
+      currentY = drawFinalReviewPageStart(doc, metadata, "GAP REVIEW SUMMARY \u2014 CONTINUED");
+      currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, currentY, columns);
+    }
+
+    drawFinalReviewGapTableRow(doc, DASHBOARD_MARGIN, currentY, columns, row, index);
+    currentY += rowHeight;
+  });
+
+  return currentY;
+}
+
 function drawFinalReviewSummaryTable(doc: jsPDF, metadata: PdfReportModel["metadata"], rows: PdfFinalReviewRow[], y: number) {
   const columns = getFinalReviewTableColumns(DASHBOARD_WIDTH);
   let currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, y, columns);
@@ -1393,13 +1439,29 @@ function drawFinalReviewSummaryTable(doc: jsPDF, metadata: PdfReportModel["metad
 
     if (currentY + rowHeight > FINAL_REVIEW_PAGE_BOTTOM) {
       doc.addPage();
-      currentY = drawFinalReviewPageStart(doc, metadata, "REVIEW SUMMARY \u2014 CONTINUED");
+      currentY = drawFinalReviewPageStart(doc, metadata, "RISK REVIEW SUMMARY \u2014 CONTINUED");
       currentY = drawFinalReviewTableHeader(doc, DASHBOARD_MARGIN, currentY, columns);
     }
 
     drawFinalReviewTableRow(doc, DASHBOARD_MARGIN, currentY, columns, row, index);
     currentY += rowHeight;
   });
+
+  return currentY;
+}
+
+function getFinalReviewGapTableColumns(width: number): FinalReviewTableColumn[] {
+  const numberWidth = 10;
+  const decisionWidth = 28;
+  const gapWidth = 68;
+  const clauseWidth = width - numberWidth - gapWidth - decisionWidth;
+
+  return [
+    { label: "#", width: numberWidth, align: "center" },
+    { label: "Gap", width: gapWidth, align: "left" },
+    { label: "Decision", width: decisionWidth, align: "center" },
+    { label: "Final Recommended Clause", width: clauseWidth, align: "left" }
+  ];
 }
 
 function getFinalReviewTableColumns(width: number): FinalReviewTableColumn[] {
@@ -1461,6 +1523,72 @@ function getFinalReviewTableRowHeight(doc: jsPDF, row: PdfFinalReviewRow, column
   return Math.max(FINAL_REVIEW_TABLE_ROW_MIN_HEIGHT, lineCount * FINAL_REVIEW_TABLE_LINE_HEIGHT + FINAL_REVIEW_TABLE_CELL_PADDING_Y * 2);
 }
 
+function getFinalReviewGapTableRowHeight(doc: jsPDF, row: PdfFinalReviewGapRow, columns: FinalReviewTableColumn[]) {
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+
+  const gapLines = clampTextLines(doc, row.gapTitle, columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  const clauseLines = clampFinalReviewSnippetLines(
+    doc,
+    row.finalRecommendedClause || "-",
+    columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2
+  );
+  const lineCount = Math.max(gapLines.length, clauseLines.length, 1);
+
+  return Math.max(FINAL_REVIEW_TABLE_ROW_MIN_HEIGHT, lineCount * FINAL_REVIEW_TABLE_LINE_HEIGHT + FINAL_REVIEW_TABLE_CELL_PADDING_Y * 2);
+}
+
+function drawFinalReviewGapTableRow(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  columns: FinalReviewTableColumn[],
+  row: PdfFinalReviewGapRow,
+  index: number
+) {
+  const height = getFinalReviewGapTableRowHeight(doc, row, columns);
+  const fill = index % 2 === 0 ? COLORS.white : "#F9FAFB";
+
+  doc.setFillColor(...hexToRgb(fill));
+  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setLineWidth(0.22);
+  doc.rect(x, y, columns.reduce((sum, column) => sum + column.width, 0), height, "FD");
+
+  let currentX = x;
+  columns.forEach((column, columnIndex) => {
+    if (columnIndex > 0) {
+      doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+      doc.line(currentX, y, currentX, y + height);
+    }
+    currentX += column.width;
+  });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+
+  currentX = x;
+  doc.text(String(row.number), currentX + columns[0].width / 2, y + height / 2 + 1.2, { align: "center" });
+
+  currentX += columns[0].width;
+  const gapLines = clampTextLines(doc, row.gapTitle, columns[1].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2, 2);
+  drawWrappedText(doc, gapLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
+
+  currentX += columns[1].width;
+  drawFinalReviewDecisionPill(doc, currentX + (columns[2].width - 20.2) / 2, y + height / 2 - 2.45, 20.2, 4.9, row.decision);
+
+  currentX += columns[2].width;
+  const clauseLines = clampFinalReviewSnippetLines(
+    doc,
+    row.finalRecommendedClause || "-",
+    columns[3].width - FINAL_REVIEW_TABLE_CELL_PADDING_X * 2
+  );
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...hexToRgb(COLORS.darkText));
+  drawWrappedText(doc, clauseLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
+}
+
 function drawFinalReviewTableRow(
   doc: jsPDF,
   x: number,
@@ -1514,7 +1642,7 @@ function drawFinalReviewTableRow(
   drawWrappedText(doc, outcomeLines, currentX + FINAL_REVIEW_TABLE_CELL_PADDING_X, y + FINAL_REVIEW_TABLE_CELL_PADDING_Y + 2.3, FINAL_REVIEW_TABLE_LINE_HEIGHT);
 }
 
-function drawFinalReviewDecisionPill(doc: jsPDF, x: number, y: number, width: number, height: number, decision: PdfDecision) {
+function drawFinalReviewDecisionPill(doc: jsPDF, x: number, y: number, width: number, height: number, decision: PdfDecision | PdfGapDecision) {
   const color = getDecisionColor(decision);
   doc.setFillColor(...hexToRgb(tintColor(color)));
   doc.roundedRect(x, y, width, height, 1.5, 1.5, "F");
@@ -1906,7 +2034,7 @@ function getDecisionColor(decision: unknown) {
   if (decision === "Revised" || decision === "Approve with Changes") return COLORS.revisedBlue;
   if (decision === "Accepted" || decision === "Approve") return COLORS.lowGreen;
   if (decision === "Pending" || decision === "Hold for Review") return COLORS.pendingAmber;
-  if (decision === "Reject") return COLORS.highRed;
+  if (decision === "Reject" || decision === "Rejected") return COLORS.highRed;
   return COLORS.mutedText;
 }
 
@@ -1949,6 +2077,15 @@ function clampMeaningfulTextLines(doc: jsPDF, value: string, maxWidth: number, m
   return visibleLines;
 }
 
+function clampFinalReviewSnippetLines(doc: jsPDF, value: string, maxWidth: number) {
+  const lines = wrapText(doc, value, maxWidth);
+  if (lines.length <= 2) return lines;
+
+  const visibleLines = lines.slice(0, 2);
+  visibleLines[1] = addDoubleDotToFit(doc, visibleLines[1], maxWidth);
+  return visibleLines;
+}
+
 function clampSingleLine(doc: jsPDF, value: string, maxWidth: number) {
   const normalized = safeText(value);
   if (doc.getTextWidth(normalized) <= maxWidth) return normalized;
@@ -1977,6 +2114,17 @@ function addWordEllipsisToFit(doc: jsPDF, value: string, maxWidth: number) {
 
   if (doc.getTextWidth(`${text}${ellipsis}`) <= maxWidth) return text ? `${text}${ellipsis}` : ellipsis;
   return addEllipsisToFit(doc, normalized, maxWidth);
+}
+
+function addDoubleDotToFit(doc: jsPDF, value: string, maxWidth: number) {
+  const suffix = "..";
+  let text = safeText(value).replace(/[.]+$/, "");
+
+  while (text.length > 0 && doc.getTextWidth(`${text}${suffix}`) > maxWidth) {
+    text = text.slice(0, -1).trimEnd();
+  }
+
+  return text ? `${text}${suffix}` : suffix;
 }
 
 function tintColor(color: string) {
