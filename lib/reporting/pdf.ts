@@ -784,6 +784,8 @@ type DetailedRiskSection = {
   label: string;
   lines: string[];
   variant?: "quote";
+  width?: number;
+  xOffset?: number;
 };
 
 type DetailedRiskBlockLayout = {
@@ -1025,13 +1027,21 @@ function drawSplitDetailedRiskBlock(
   block: DetailedRiskBlock,
   drawPageStart: (doc: jsPDF, metadata: PdfReportModel["metadata"], continued: boolean) => number
 ) {
+  const splitContentWidth = DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2;
+  const splitColumnWidth = block.containText ? (DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - DETAIL_COLUMN_GAP) / 2 : splitContentWidth;
   const sections: DetailedRiskSection[] = [
-    { label: block.leftLabel, lines: getDetailedBodyLines(doc, block, quoteText(block.clauseExtract), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
-    { label: block.rightLabel, lines: getDetailedBodyLines(doc, block, block.riskExplanation, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
+    { label: block.leftLabel, lines: getDetailedBodyLines(doc, block, quoteText(block.clauseExtract), splitColumnWidth), width: splitColumnWidth },
+    {
+      label: block.rightLabel,
+      lines: getDetailedBodyLines(doc, block, block.riskExplanation, splitColumnWidth),
+      width: splitColumnWidth,
+      xOffset: block.containText ? splitColumnWidth + DETAIL_COLUMN_GAP : 0
+    },
     {
       label: "Recommended Clause",
-      lines: getRecommendedClauseLines(doc, block, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6),
-      variant: "quote"
+      lines: getRecommendedClauseLines(doc, block, splitContentWidth - 6),
+      variant: "quote",
+      width: splitContentWidth
     }
   ];
   let currentY = y;
@@ -1041,7 +1051,7 @@ function drawSplitDetailedRiskBlock(
     let lineOffset = 0;
 
     while (lineOffset < section.lines.length) {
-      const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, DASHBOARD_WIDTH - 34);
+      const titleLines = getDetailedTitleLines(doc, block, continued ? `${block.title} (continued)` : block.title, DASHBOARD_WIDTH - 34);
       const headerHeight = getDetailedBlockHeaderHeight(block, titleLines.length);
       const availableForSection = DETAIL_PAGE_BOTTOM - currentY - headerHeight - DETAIL_BLOCK_PADDING - getDetailedChunkSectionChromeHeight(section);
 
@@ -1064,7 +1074,19 @@ function drawSplitDetailedRiskBlock(
         continue;
       }
 
-      drawDetailedSectionChunk(doc, DASHBOARD_MARGIN, currentY, DASHBOARD_WIDTH, block, titleLines, section.label, lines, section.variant);
+      drawDetailedSectionChunk(
+        doc,
+        DASHBOARD_MARGIN,
+        currentY,
+        DASHBOARD_WIDTH,
+        block,
+        titleLines,
+        section.label,
+        lines,
+        section.variant,
+        section.width,
+        section.xOffset
+      );
       currentY += chunkHeight + getDetailedBlockGap(block);
       lineOffset += lines.length;
       continued = true;
@@ -1083,7 +1105,9 @@ function drawDetailedSectionChunk(
   titleLines: string[],
   label: string,
   lines: string[],
-  variant?: "quote"
+  variant?: "quote",
+  sectionWidth?: number,
+  sectionXOffset = 0
 ) {
   const headerHeight = getDetailedBlockHeaderHeight(block, titleLines.length);
   const sectionHeight = getDetailedStandaloneSectionHeight(lines, variant);
@@ -1092,13 +1116,15 @@ function drawDetailedSectionChunk(
   const contentY = drawDetailedRiskHeader(doc, x, y, width, block, titleLines);
   const contentX = x + DETAIL_BLOCK_PADDING;
   const contentWidth = width - DETAIL_BLOCK_PADDING * 2;
+  const drawX = contentX + sectionXOffset;
+  const drawWidth = sectionWidth ?? contentWidth;
 
   if (variant === "quote") {
-    drawRecommendedClauseSection(doc, contentX, contentY, contentWidth, lines);
+    drawRecommendedClauseSection(doc, drawX, contentY, drawWidth, lines);
     return;
   }
 
-  drawDetailedTextSection(doc, contentX, contentY, contentWidth, label, lines);
+  drawDetailedTextSection(doc, drawX, contentY, drawWidth, label, lines);
 }
 
 function drawDetailedBlockFrame(doc: jsPDF, x: number, y: number, width: number, height: number, accentColor?: string) {
@@ -1175,7 +1201,7 @@ function getDetailedRiskBlockHeight(doc: jsPDF, block: DetailedRiskBlock, contin
 
 function getDetailedRiskBlockLayout(doc: jsPDF, block: DetailedRiskBlock, continued: boolean, width: number): DetailedRiskBlockLayout {
   const titleWidth = width - 34;
-  const titleLines = wrapText(doc, continued ? `${block.title} (continued)` : block.title, titleWidth);
+  const titleLines = getDetailedTitleLines(doc, block, continued ? `${block.title} (continued)` : block.title, titleWidth);
   const headerHeight = getDetailedBlockHeaderHeight(block, titleLines.length);
   const columnWidth = (width - DETAIL_BLOCK_PADDING * 2 - DETAIL_COLUMN_GAP) / 2;
   const clauseLines = getDetailedBodyLines(doc, block, quoteText(block.clauseExtract), columnWidth);
@@ -1204,14 +1230,32 @@ function getDetailedRiskBlockLayout(doc: jsPDF, block: DetailedRiskBlock, contin
 
 function getRecommendedClauseLines(doc: jsPDF, block: DetailedRiskBlock, maxWidth: number) {
   if (block.preserveRecommendedParagraphs) {
+    if (block.containText) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8.6);
+    }
     return wrapMultilineText(doc, quoteMultilineText(block.recommendedClause), maxWidth, block.containText);
   }
 
   return wrapText(doc, quoteText(block.recommendedClause), maxWidth);
 }
 
+function getDetailedTitleLines(doc: jsPDF, block: DetailedRiskBlock, value: string, maxWidth: number) {
+  if (block.containText) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.1);
+    return wrapContainedText(doc, value, maxWidth);
+  }
+
+  return wrapText(doc, value, maxWidth);
+}
+
 function getDetailedBodyLines(doc: jsPDF, block: DetailedRiskBlock, value: string, maxWidth: number) {
-  if (block.containText) return wrapContainedText(doc, value, maxWidth);
+  if (block.containText) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.6);
+    return wrapContainedText(doc, value, maxWidth);
+  }
   return wrapText(doc, value, maxWidth);
 }
 
