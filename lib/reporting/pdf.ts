@@ -35,6 +35,8 @@ const FINAL_REVIEW_TABLE_ROW_MIN_HEIGHT = 8.4;
 const FINAL_REVIEW_TABLE_LINE_HEIGHT = 3.45;
 const FINAL_REVIEW_TABLE_CELL_PADDING_X = 2.2;
 const FINAL_REVIEW_TABLE_CELL_PADDING_Y = 2.6;
+const PDF_OBJECT_URL_REVOKE_DELAY_MS = 60_000;
+const PDF_POPUP_FALLBACK_DELAY_MS = 800;
 
 const COLORS = {
   navy: "#071B3A",
@@ -86,7 +88,37 @@ export function downloadReportPdf(reportModel: ReportModel) {
 
   drawFooters(doc, pdfData);
   const pdfBlob = doc.output("blob");
-  triggerPdfDownload(pdfBlob, getReportFileName(documentModel.documentName));
+  openPdfPreview(pdfBlob, getReportFileName(documentModel.documentName));
+}
+
+function openPdfPreview(pdfBlob: Blob, fileName: string) {
+  const browserDocument = globalThis.document;
+  const browserUrl = globalThis.URL;
+  const browserWindow = globalThis.window;
+
+  if (
+    !browserDocument?.body ||
+    typeof browserUrl?.createObjectURL !== "function" ||
+    typeof browserUrl.revokeObjectURL !== "function" ||
+    typeof browserWindow?.open !== "function"
+  ) {
+    return;
+  }
+
+  const objectUrl = browserUrl.createObjectURL(pdfBlob);
+  const previewWindow = window.open(objectUrl, "_blank", "noopener,noreferrer");
+
+  globalThis.setTimeout(() => {
+    browserUrl.revokeObjectURL(objectUrl);
+  }, PDF_OBJECT_URL_REVOKE_DELAY_MS);
+
+  if (previewWindow !== null) return;
+
+  globalThis.setTimeout(() => {
+    if (browserDocument.visibilityState === "visible" && browserDocument.hasFocus()) {
+      triggerPdfDownload(pdfBlob, fileName);
+    }
+  }, PDF_POPUP_FALLBACK_DELAY_MS);
 }
 
 function triggerPdfDownload(pdfBlob: Blob, fileName: string) {
@@ -108,7 +140,7 @@ function triggerPdfDownload(pdfBlob: Blob, fileName: string) {
 
   globalThis.setTimeout(() => {
     browserUrl.revokeObjectURL(objectUrl);
-  }, 60_000);
+  }, PDF_OBJECT_URL_REVOKE_DELAY_MS);
 }
 
 function sanitizePdfFileName(fileName: string) {

@@ -831,7 +831,7 @@ export function AnalysisWorkspace() {
                   onClick={() => downloadReportPdf(reportModel)}
                   className="h-8.5 bg-white px-3 text-[#071B3A] shadow-sm hover:bg-blue-50"
                 >
-                  Download
+                  View Report
                 </Button>
               </div>
             </div>
@@ -1090,7 +1090,7 @@ export function AnalysisWorkspace() {
                     className="gap-2"
                   >
                     <Download className="h-4 w-4" />
-                    Download Report
+                    View Report
                   </Button>
                   <span className="inline-flex" title={finalizeReviewTooltip}>
                     <Button
