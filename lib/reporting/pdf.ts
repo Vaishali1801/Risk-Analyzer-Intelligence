@@ -69,6 +69,7 @@ type FinalReviewTableColumn = PdfTableColumn & {
 
 type PdfSummaryRiskRow = PdfReportModel["summaryRisks"][number];
 type PdfDetailedRiskRow = PdfReportModel["detailedRisks"][number];
+type PdfDetailedGapRow = PdfReportModel["detailedGaps"][number];
 type PdfFinalReviewRow = PdfReportModel["finalReview"]["rows"][number];
 
 export function downloadReportPdf(reportModel: ReportModel) {
@@ -76,6 +77,11 @@ export function downloadReportPdf(reportModel: ReportModel) {
   const pdfData = buildPdfReportModel(reportModel);
   const documentModel = reportModel.document;
   drawExecutiveDashboardPage(doc, pdfData);
+
+  if (pdfData.detailedGaps.length) {
+    doc.addPage();
+    drawDetailedGapAnalysisPages(doc, pdfData);
+  }
 
   doc.addPage();
   drawRiskDriversSummaryPage(doc, pdfData);
@@ -760,9 +766,13 @@ type DetailedRiskBlock = {
   title: string;
   meta: string;
   severity: string;
+  accentColor?: string;
+  leftLabel: string;
+  rightLabel: string;
   clauseExtract: string;
   riskExplanation: string;
   recommendedClause: string;
+  preserveRecommendedParagraphs?: boolean;
 };
 
 type DetailedRiskSection = {
@@ -783,6 +793,45 @@ type DetailedRiskBlockLayout = {
   recommendedHeight: number;
   totalHeight: number;
 };
+
+function drawDetailedGapAnalysisPages(doc: jsPDF, pdfData: PdfReportModel) {
+  if (!pdfData.detailedGaps.length) return;
+
+  let y = drawDetailedGapAnalysisPageStart(doc, pdfData.metadata, false);
+
+  pdfData.detailedGaps.forEach((gap) => {
+    const block = buildDetailedGapBlock(gap);
+    y = drawDetailedBlockWithPagination(doc, pdfData.metadata, y, block, drawDetailedGapAnalysisPageStart);
+  });
+}
+
+function drawDetailedGapAnalysisPageStart(doc: jsPDF, metadata: PdfReportModel["metadata"], continued: boolean) {
+  doc.setFillColor(...hexToRgb(COLORS.white));
+  doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
+  drawHeader(doc, 0, 0, A4_WIDTH, 18);
+
+  let y = drawReportTitleOnly(doc, metadata);
+
+  drawSectionTitle(doc, continued ? "DETAILED GAP ANALYSIS (CONTINUED)" : "DETAILED GAP ANALYSIS", DASHBOARD_MARGIN, y);
+  y += 6.2;
+
+  return y;
+}
+
+function buildDetailedGapBlock(gap: PdfDetailedGapRow): DetailedRiskBlock {
+  return {
+    title: `Gap ${gap.number}: ${gap.title}`,
+    meta: `Action: ${gap.action}${DETAIL_META_SEPARATOR}Category: ${gap.category}${DETAIL_META_SEPARATOR}AI Confidence: ${gap.confidenceLabel}`,
+    severity: gap.impactLabel,
+    accentColor: getGapActionColor(gap.action),
+    leftLabel: "Why This Matters",
+    rightLabel: "Suggested Fix",
+    clauseExtract: gap.whyThisMatters ?? "Gap rationale not available.",
+    riskExplanation: gap.suggestedFix ?? "Suggested fix not available.",
+    recommendedClause: gap.recommendedClause ?? "Recommended clause not available.",
+    preserveRecommendedParagraphs: true
+  };
+}
 
 function drawDetailedRiskAnalysisPages(doc: jsPDF, pdfData: PdfReportModel) {
   let y = drawDetailedRiskAnalysisPageStart(doc, pdfData.metadata, false);
@@ -823,6 +872,8 @@ function buildDetailedRiskBlock(risk: PdfDetailedRiskRow): DetailedRiskBlock {
     title: `Risk ${risk.number}: ${risk.title}`,
     meta: `${risk.sectionLabel}${DETAIL_META_SEPARATOR}${risk.category}${DETAIL_META_SEPARATOR}${risk.confidenceLabel}`,
     severity: risk.severityLabel,
+    leftLabel: "Clause Extract",
+    rightLabel: "Risk Explanation",
     clauseExtract: risk.clauseExtract ?? "Clause evidence not available.",
     riskExplanation: risk.riskExplanation ?? "Risk explanation not available.",
     recommendedClause: risk.recommendedClause ?? "Recommended clause not available."
@@ -830,41 +881,71 @@ function buildDetailedRiskBlock(risk: PdfDetailedRiskRow): DetailedRiskBlock {
 }
 
 function drawDetailedRiskBlockWithPagination(doc: jsPDF, metadata: PdfReportModel["metadata"], y: number, block: DetailedRiskBlock) {
+  return drawDetailedBlockWithPagination(doc, metadata, y, block, drawDetailedRiskAnalysisPageStart);
+}
+
+function drawDetailedBlockWithPagination(
+  doc: jsPDF,
+  metadata: PdfReportModel["metadata"],
+  y: number,
+  block: DetailedRiskBlock,
+  drawPageStart: (doc: jsPDF, metadata: PdfReportModel["metadata"], continued: boolean) => number
+) {
   const fullHeight = getDetailedRiskBlockHeight(doc, block, false);
+  const freshPageY = getDetailedPageContentStartY(doc, metadata);
 
   if (y + fullHeight <= DETAIL_PAGE_BOTTOM) {
     drawDetailedRiskBlock(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, block, false);
     return y + fullHeight + DETAIL_BLOCK_GAP;
+  }
+
+  if (freshPageY + fullHeight > DETAIL_PAGE_BOTTOM) {
+    return drawSplitDetailedRiskBlock(doc, metadata, y, block, drawPageStart);
   }
 
   doc.addPage();
-  y = drawDetailedRiskAnalysisPageStart(doc, metadata, true);
+  y = drawPageStart(doc, metadata, true);
 
   if (y + fullHeight <= DETAIL_PAGE_BOTTOM) {
     drawDetailedRiskBlock(doc, DASHBOARD_MARGIN, y, DASHBOARD_WIDTH, block, false);
     return y + fullHeight + DETAIL_BLOCK_GAP;
   }
 
-  return drawSplitDetailedRiskBlock(doc, metadata, y, block);
+  return drawSplitDetailedRiskBlock(doc, metadata, y, block, drawPageStart);
+}
+
+function getDetailedPageContentStartY(doc: jsPDF, metadata: PdfReportModel["metadata"]) {
+  const titleLines = clampTextLines(doc, metadata.documentTitle, DASHBOARD_WIDTH, 2);
+  return 32 + titleLines.length * 7.5 + 4.6 + 6.2;
 }
 
 function drawDetailedRiskBlock(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, continued: boolean) {
   const layout = getDetailedRiskBlockLayout(doc, block, continued, width);
 
-  drawDetailedBlockFrame(doc, x, y, width, layout.totalHeight);
+  drawDetailedBlockFrame(doc, x, y, width, layout.totalHeight, block.accentColor);
   const contentY = drawDetailedRiskHeader(doc, x, y, width, block, layout.titleLines);
   const leftX = x + DETAIL_BLOCK_PADDING;
   const rightX = leftX + layout.columnWidth + DETAIL_COLUMN_GAP;
-  drawDetailedTextSection(doc, leftX, contentY, layout.columnWidth, "Clause Extract", layout.clauseLines);
-  drawDetailedTextSection(doc, rightX, contentY, layout.columnWidth, "Risk Explanation", layout.explanationLines);
+  drawDetailedTextSection(doc, leftX, contentY, layout.columnWidth, block.leftLabel, layout.clauseLines);
+  drawDetailedTextSection(doc, rightX, contentY, layout.columnWidth, block.rightLabel, layout.explanationLines);
   drawRecommendedClauseSection(doc, leftX, contentY + layout.twoColumnHeight + DETAIL_SECTION_GAP, layout.recommendedWidth, layout.recommendedLines);
 }
 
-function drawSplitDetailedRiskBlock(doc: jsPDF, metadata: PdfReportModel["metadata"], y: number, block: DetailedRiskBlock) {
+function drawSplitDetailedRiskBlock(
+  doc: jsPDF,
+  metadata: PdfReportModel["metadata"],
+  y: number,
+  block: DetailedRiskBlock,
+  drawPageStart: (doc: jsPDF, metadata: PdfReportModel["metadata"], continued: boolean) => number
+) {
   const sections: DetailedRiskSection[] = [
-    { label: "Clause Extract", lines: wrapText(doc, quoteText(block.clauseExtract), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
-    { label: "Risk Explanation", lines: wrapText(doc, block.riskExplanation, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
-    { label: "Recommended Clause", lines: wrapText(doc, quoteText(block.recommendedClause), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6), variant: "quote" }
+    { label: block.leftLabel, lines: wrapText(doc, quoteText(block.clauseExtract), DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
+    { label: block.rightLabel, lines: wrapText(doc, block.riskExplanation, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2) },
+    {
+      label: "Recommended Clause",
+      lines: getRecommendedClauseLines(doc, block, DASHBOARD_WIDTH - DETAIL_BLOCK_PADDING * 2 - 6),
+      variant: "quote"
+    }
   ];
   let currentY = y;
   let continued = false;
@@ -879,7 +960,7 @@ function drawSplitDetailedRiskBlock(doc: jsPDF, metadata: PdfReportModel["metada
 
       if (availableForSection < DETAIL_BODY_LINE_HEIGHT * 2) {
         doc.addPage();
-        currentY = drawDetailedRiskAnalysisPageStart(doc, metadata, true);
+        currentY = drawPageStart(doc, metadata, true);
         continued = true;
         continue;
       }
@@ -890,7 +971,7 @@ function drawSplitDetailedRiskBlock(doc: jsPDF, metadata: PdfReportModel["metada
 
       if (currentY + chunkHeight > DETAIL_PAGE_BOTTOM) {
         doc.addPage();
-        currentY = drawDetailedRiskAnalysisPageStart(doc, metadata, true);
+        currentY = drawPageStart(doc, metadata, true);
         continued = true;
         continue;
       }
@@ -919,7 +1000,7 @@ function drawDetailedSectionChunk(
   const headerHeight = getDetailedHeaderHeight(titleLines.length);
   const sectionHeight = getDetailedStandaloneSectionHeight(lines, variant);
   const totalHeight = headerHeight + sectionHeight + DETAIL_BLOCK_PADDING;
-  drawDetailedBlockFrame(doc, x, y, width, totalHeight);
+  drawDetailedBlockFrame(doc, x, y, width, totalHeight, block.accentColor);
   const contentY = drawDetailedRiskHeader(doc, x, y, width, block, titleLines);
   const contentX = x + DETAIL_BLOCK_PADDING;
   const contentWidth = width - DETAIL_BLOCK_PADDING * 2;
@@ -932,11 +1013,17 @@ function drawDetailedSectionChunk(
   drawDetailedTextSection(doc, contentX, contentY, contentWidth, label, lines);
 }
 
-function drawDetailedBlockFrame(doc: jsPDF, x: number, y: number, width: number, height: number) {
+function drawDetailedBlockFrame(doc: jsPDF, x: number, y: number, width: number, height: number, accentColor?: string) {
   doc.setFillColor(...hexToRgb(COLORS.white));
-  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+  doc.setDrawColor(...hexToRgb(accentColor ?? COLORS.lightBorder));
   doc.setLineWidth(0.25);
   doc.roundedRect(x, y, width, height, 1.2, 1.2, "FD");
+
+  if (accentColor) {
+    doc.setDrawColor(...hexToRgb(accentColor));
+    doc.setLineWidth(0.8);
+    doc.line(x + 2.6, y + 3.2, x + 2.6, y + height - 3.2);
+  }
 }
 
 function drawDetailedRiskHeader(doc: jsPDF, x: number, y: number, width: number, block: DetailedRiskBlock, titleLines: string[]) {
@@ -1006,7 +1093,7 @@ function getDetailedRiskBlockLayout(doc: jsPDF, block: DetailedRiskBlock, contin
   const clauseLines = wrapText(doc, quoteText(block.clauseExtract), columnWidth);
   const explanationLines = wrapText(doc, block.riskExplanation, columnWidth);
   const recommendedWidth = width - DETAIL_BLOCK_PADDING * 2;
-  const recommendedLines = wrapText(doc, quoteText(block.recommendedClause), recommendedWidth - DETAIL_RECOMMENDED_TEXT_X - 2.4);
+  const recommendedLines = getRecommendedClauseLines(doc, block, recommendedWidth - DETAIL_RECOMMENDED_TEXT_X - 2.4);
   const twoColumnHeight = Math.max(getDetailedSectionHeight(clauseLines), getDetailedSectionHeight(explanationLines));
   const recommendedHeight = getRecommendedClauseHeight(recommendedLines, recommendedWidth);
   const totalHeight = headerHeight + twoColumnHeight + DETAIL_SECTION_GAP + recommendedHeight + DETAIL_BLOCK_PADDING;
@@ -1023,6 +1110,14 @@ function getDetailedRiskBlockLayout(doc: jsPDF, block: DetailedRiskBlock, contin
     recommendedHeight,
     totalHeight
   };
+}
+
+function getRecommendedClauseLines(doc: jsPDF, block: DetailedRiskBlock, maxWidth: number) {
+  if (block.preserveRecommendedParagraphs) {
+    return wrapMultilineText(doc, quoteMultilineText(block.recommendedClause), maxWidth);
+  }
+
+  return wrapText(doc, quoteText(block.recommendedClause), maxWidth);
 }
 
 function getDetailedHeaderHeight(titleLineCount: number) {
@@ -1280,6 +1375,13 @@ function drawFinalReviewDecisionPill(doc: jsPDF, x: number, y: number, width: nu
 
 function quoteText(value: string) {
   const normalized = safeText(value);
+  if (!normalized) return "";
+  if (/^".*"$/.test(normalized)) return normalized;
+  return `"${normalized}"`;
+}
+
+function quoteMultilineText(value: string) {
+  const normalized = safeMultilineText(value);
   if (!normalized) return "";
   if (/^".*"$/.test(normalized)) return normalized;
   return `"${normalized}"`;
@@ -1588,6 +1690,17 @@ function wrapText(doc: jsPDF, value: string, maxWidth: number) {
   return Array.isArray(lines) ? lines : [lines];
 }
 
+function wrapMultilineText(doc: jsPDF, value: string, maxWidth: number) {
+  const paragraphs = safeMultilineText(value).split(/\n{2,}/);
+  const lines = paragraphs.flatMap((paragraph, index) => {
+    const wrapped = doc.splitTextToSize(paragraph, maxWidth);
+    const paragraphLines = Array.isArray(wrapped) ? wrapped : [wrapped];
+    return index === paragraphs.length - 1 ? paragraphLines : [...paragraphLines, ""];
+  });
+
+  return lines.length ? lines : [""];
+}
+
 function drawWrappedText(doc: jsPDF, lines: string[], x: number, y: number, lineHeight = BODY_LINE_HEIGHT) {
   lines.forEach((line) => {
     doc.text(line, x, y);
@@ -1601,6 +1714,12 @@ function getSeverityColor(severity: unknown) {
   if (severity === "Medium") return COLORS.mediumAmber;
   if (severity === "Low") return COLORS.lowGreen;
   return COLORS.mutedText;
+}
+
+function getGapActionColor(action: unknown) {
+  if (action === "Must Add") return COLORS.highRed;
+  if (action === "Negotiate") return COLORS.mediumAmber;
+  return COLORS.revisedBlue;
 }
 
 function getDecisionColor(decision: unknown) {
@@ -1699,4 +1818,16 @@ function hexToRgb(hex: string): [number, number, number] {
 
 function safeText(value: unknown) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function safeMultilineText(value: unknown) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }

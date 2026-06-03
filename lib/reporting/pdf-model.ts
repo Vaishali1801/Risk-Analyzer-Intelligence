@@ -7,6 +7,7 @@ export type PdfDecision = FinalReviewDecision | "\u2014";
 export type PdfReportModel = {
   metadata: PdfMetadata;
   dashboard: PdfDashboard;
+  detailedGaps: PdfDetailedGap[];
   summaryRisks: PdfSummaryRisk[];
   detailedRisks: PdfDetailedRisk[];
   finalReview: PdfFinalReview;
@@ -74,6 +75,19 @@ export type PdfDetailedRisk = {
   recommendedClause: string | null;
 };
 
+export type PdfDetailedGap = {
+  number: number;
+  title: string;
+  impact: PdfSeverity;
+  impactLabel: string;
+  action: "Must Add" | "Negotiate" | "Optional";
+  category: string;
+  confidenceLabel: string;
+  whyThisMatters: string | null;
+  suggestedFix: string | null;
+  recommendedClause: string | null;
+};
+
 export type PdfFinalReview = {
   decision: string;
   counts: {
@@ -130,6 +144,18 @@ export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
       statusMessage: getPdfStatusMessage(counts, totalRisks),
       gapSummary: getPdfGapSummary(reportModel)
     },
+    detailedGaps: document.gapAnalysis.map((gap, index) => ({
+      number: index + 1,
+      title: getTextOrFallback(gap.clauseName, "Untitled gap"),
+      impact: getPdfSeverity(gap.impact),
+      impactLabel: getPdfSeverity(gap.impact) ?? "\u2014",
+      action: gap.action,
+      category: getTextOrFallback(gap.category, "Uncategorized"),
+      confidenceLabel: formatConfidenceLabel(gap.aiConfidence),
+      whyThisMatters: getNullableText(gap.whyThisMatters),
+      suggestedFix: getNullableText(gap.suggestedFix),
+      recommendedClause: getNullableMultilineText(gap.recommendedClause)
+    })),
     summaryRisks: document.findings.map((finding, index) => {
       const reviewRow = finalReviewRowsByRiskId.get(finding.riskId);
       return buildPdfSummaryRisk(finding, reviewRow, index);
@@ -337,5 +363,18 @@ function getTextOrFallback(value: unknown, fallback: string) {
 function getNullableText(value: unknown) {
   if (typeof value !== "string") return null;
   const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized || null;
+}
+
+function getNullableMultilineText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
   return normalized || null;
 }
