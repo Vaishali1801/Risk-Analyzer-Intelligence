@@ -1359,53 +1359,56 @@ function drawRecommendedDecisionHero(
   const height = 17.5;
   const x = DASHBOARD_MARGIN;
   const width = DASHBOARD_WIDTH;
-  const statBoxWidth = 70;
-  const statBoxX = x + width - statBoxWidth - 8;
-  const statusLabelWidth = 11.2;
-  const statusValueX = statBoxX + statusLabelWidth + 2;
-  const statusValueWidth = statBoxWidth - statusLabelWidth - 2;
-  const titleY = y + 5.4;
-  const dataY = y + 12.6;
+  const contentX = x + 9;
+  const contentWidth = width - 18;
+  const columnGap = 6;
+  const columnWidth = (contentWidth - columnGap * 2) / 3;
+  const titleY = y + 5.6;
+  const dataY = y + 13;
 
   doc.setFillColor(...hexToRgb(fill));
   doc.setDrawColor(...hexToRgb(tintColor(color)));
   doc.setLineWidth(0.32);
   doc.roundedRect(x, y, width, height, 1.8, 1.8, "FD");
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.2);
-  doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text("RECOMMENDED DECISION", x + 9, titleY);
+  const columns = [
+    {
+      title: "Decision Summary",
+      value: decision,
+      valueColor: color
+    },
+    {
+      title: "Gap Review Summary",
+      value: `Accepted ${gapCounts.Accepted} \u2022 Rejected ${gapCounts.Rejected} \u2022 Pending ${gapCounts.Pending}`,
+      valueColor: COLORS.mutedText
+    },
+    {
+      title: "Risk Review Summary",
+      value: `Revised ${counts.revised} \u2022 Accepted ${counts.accepted} \u2022 Pending ${counts.pending}`,
+      valueColor: COLORS.mutedText
+    }
+  ];
 
-  const decisionX = x + (isHold ? 16 : 9);
-  if (isHold) {
-    drawDecisionAlertIcon(doc, x + 11.3, dataY - 1.5, color);
-  }
+  columns.forEach((column, index) => {
+    const columnX = contentX + index * (columnWidth + columnGap);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11.2);
-  doc.setTextColor(...hexToRgb(color));
-  doc.text(decision, decisionX, dataY);
+    if (index > 0) {
+      const separatorX = columnX - columnGap / 2;
+      doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
+      doc.setLineWidth(0.25);
+      doc.line(separatorX, y + 3.2, separatorX, y + height - 3.2);
+    }
 
-  doc.setDrawColor(...hexToRgb(COLORS.lightBorder));
-  doc.setLineWidth(0.25);
-  doc.line(statBoxX - 6, y + 3.2, statBoxX - 6, y + height - 3.2);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.6);
+    doc.setTextColor(...hexToRgb(COLORS.navy));
+    doc.text(column.title, columnX, titleY);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.6);
-  doc.setTextColor(...hexToRgb(COLORS.navy));
-  doc.text("REVIEW STATUS", statBoxX, titleY);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.6);
-  doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text("Gaps", statBoxX, dataY - 1.8);
-  doc.text("Risks", statBoxX, dataY + 3.4);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.4);
-  doc.text(clampSingleLine(doc, `Accepted: ${gapCounts.Accepted} \u2022 Rejected: ${gapCounts.Rejected} \u2022 Pending: ${gapCounts.Pending}`, statusValueWidth), statusValueX, dataY - 1.8);
-  doc.text(clampSingleLine(doc, `Revised: ${counts.revised} \u2022 Accepted: ${counts.accepted} \u2022 Pending: ${counts.pending}`, statusValueWidth), statusValueX, dataY + 3.4);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(index === 0 ? 10.2 : 7.4);
+    doc.setTextColor(...hexToRgb(column.valueColor));
+    doc.text(clampSingleLine(doc, column.value, columnWidth), columnX, dataY);
+  });
 
   return y + height;
 }
