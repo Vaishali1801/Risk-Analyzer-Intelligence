@@ -828,7 +828,7 @@ export function AnalysisWorkspace() {
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => downloadReportPdf(reportModel)}
+                  onClick={() => downloadReportPdf(reportModel, gapReviewById)}
                   className="h-8.5 bg-white px-3 text-[#071B3A] shadow-sm hover:bg-blue-50"
                 >
                   View Report
@@ -1086,7 +1086,7 @@ export function AnalysisWorkspace() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => downloadReportPdf(reportModel)}
+                    onClick={() => downloadReportPdf(reportModel, gapReviewById)}
                     className="gap-2"
                   >
                     <Download className="h-4 w-4" />

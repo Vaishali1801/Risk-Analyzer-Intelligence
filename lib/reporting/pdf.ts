@@ -4,7 +4,7 @@ import jsPDF from "jspdf";
 import { getReportFileName } from "@/lib/reporting/metadata";
 import { buildPdfReportModel } from "@/lib/reporting/pdf-model";
 import type { ReportModel } from "@/lib/output-model";
-import type { PdfDecision, PdfReportModel } from "@/lib/reporting/pdf-model";
+import type { PdfDecision, PdfGapDecision, PdfGapReviewById, PdfReportModel } from "@/lib/reporting/pdf-model";
 
 const A4_WIDTH = 210;
 const A4_HEIGHT = 297;
@@ -74,17 +74,11 @@ type PdfSummaryRiskRow = PdfReportModel["summaryRisks"][number];
 type PdfDetailedRiskRow = PdfReportModel["detailedRisks"][number];
 type PdfDetailedGapRow = PdfReportModel["detailedGaps"][number];
 type PdfFinalReviewRow = PdfReportModel["finalReview"]["rows"][number];
-type PdfGapDecision = "Pending" | "Accepted" | "Rejected";
-type PdfFinalReviewGapRow = {
-  number: number;
-  gapTitle: string;
-  decision: PdfGapDecision;
-  finalRecommendedClause: string;
-};
+type PdfFinalReviewGapRow = PdfReportModel["finalReview"]["gapRows"][number];
 
-export function downloadReportPdf(reportModel: ReportModel) {
+export function downloadReportPdf(reportModel: ReportModel, gapReviewById: PdfGapReviewById = {}) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const pdfData = buildPdfReportModel(reportModel);
+  const pdfData = buildPdfReportModel(reportModel, gapReviewById);
   const documentModel = reportModel.document;
   drawExecutiveDashboardPage(doc, pdfData);
 
@@ -100,7 +94,7 @@ export function downloadReportPdf(reportModel: ReportModel) {
   drawDetailedRiskAnalysisPages(doc, pdfData);
 
   doc.addPage();
-  drawFinalReviewPages(doc, pdfData, documentModel.gapAnalysis);
+  drawFinalReviewPages(doc, pdfData);
 
   drawFooters(doc, pdfData);
   const pdfBlob = doc.output("blob");
@@ -1309,12 +1303,12 @@ function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
   return section.variant === "quote" ? DETAIL_RECOMMENDED_BODY_Y + DETAIL_RECOMMENDED_BOTTOM_PADDING : DETAIL_TEXT_BODY_OFFSET + DETAIL_TEXT_BOTTOM_PADDING;
 }
 
-function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel, gapAnalysis: ReportModel["document"]["gapAnalysis"]) {
+function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel) {
   let y = drawFinalReviewPageStart(doc, pdfData.metadata, "FINAL REVIEW");
-  y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview, getFinalReviewGapCounts(gapAnalysis));
+  y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview);
   y += 8.2;
 
-  const gapRows = buildFinalReviewGapRows(gapAnalysis);
+  const gapRows = pdfData.finalReview.gapRows;
   if (gapRows.length) {
     y = drawFinalReviewSectionHeading(doc, pdfData.metadata, y, "GAP REVIEW SUMMARY");
     y = drawFinalReviewGapSummaryTable(doc, pdfData.metadata, gapRows, y);
@@ -1323,25 +1317,6 @@ function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel, gapAnalysis: 
 
   y = drawFinalReviewSectionHeading(doc, pdfData.metadata, y, "RISK REVIEW SUMMARY");
   drawFinalReviewSummaryTable(doc, pdfData.metadata, pdfData.finalReview.rows, y);
-}
-
-function buildFinalReviewGapRows(gapAnalysis: ReportModel["document"]["gapAnalysis"]): PdfFinalReviewGapRow[] {
-  return gapAnalysis.map((gap, index) => ({
-    number: index + 1,
-    gapTitle: safeText(gap.clauseName) || "Untitled gap",
-    decision: gap.status,
-    finalRecommendedClause: safeText(gap.recommendedClause) || "\u2014"
-  }));
-}
-
-function getFinalReviewGapCounts(gapAnalysis: ReportModel["document"]["gapAnalysis"]) {
-  return gapAnalysis.reduce(
-    (counts, gap) => {
-      counts[gap.status] += 1;
-      return counts;
-    },
-    { Accepted: 0, Rejected: 0, Pending: 0 }
-  );
 }
 
 function drawFinalReviewPageStart(doc: jsPDF, metadata: PdfReportModel["metadata"], sectionTitle: string) {
@@ -1359,11 +1334,11 @@ function drawFinalReviewPageStart(doc: jsPDF, metadata: PdfReportModel["metadata
 function drawRecommendedDecisionHero(
   doc: jsPDF,
   y: number,
-  finalReview: PdfReportModel["finalReview"],
-  gapCounts: Record<PdfGapDecision, number>
+  finalReview: PdfReportModel["finalReview"]
 ) {
   const decision = finalReview.decision;
   const counts = finalReview.counts;
+  const gapCounts = finalReview.gapCounts;
   const color = getDecisionColor(decision);
   const isHold = decision === "Hold for Review" || decision === "Reject";
   const fill = isHold ? COLORS.softAmber : decision === "Approve" ? COLORS.softGreen : COLORS.lightBluePanel;

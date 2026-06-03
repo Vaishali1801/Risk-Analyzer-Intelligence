@@ -3,6 +3,9 @@ import type { AnalysisSource } from "@/types/contract";
 
 export type PdfSeverity = "High" | "Medium" | "Low" | null;
 export type PdfDecision = FinalReviewDecision | "\u2014";
+export type PdfGapDecision = "Pending" | "Accepted" | "Rejected";
+export type PdfGapReviewDecisionInput = "accepted" | "rejected" | PdfGapDecision;
+export type PdfGapReviewById = Record<string, PdfGapReviewDecisionInput | undefined>;
 
 export type PdfReportModel = {
   metadata: PdfMetadata;
@@ -95,12 +98,21 @@ export type PdfFinalReview = {
     accepted: number;
     pending: number;
   };
+  gapCounts: Record<PdfGapDecision, number>;
+  gapRows: PdfFinalReviewGapRow[];
   rows: Array<{
     number: number;
     riskTitle: string;
     decision: PdfDecision;
     finalOutcome: string;
   }>;
+};
+
+export type PdfFinalReviewGapRow = {
+  number: number;
+  gapTitle: string;
+  decision: PdfGapDecision;
+  finalRecommendedClause: string;
 };
 
 export type PdfFooter = {
@@ -113,20 +125,16 @@ const DEFAULT_FINAL_OUTCOME_BY_DECISION: Record<"Accepted" | "Pending", string> 
   Pending: "Awaiting decision"
 };
 
-export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
+export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: PdfGapReviewById = {}): PdfReportModel {
   const document = reportModel.document;
   const finalReviewRowsByRiskId = new Map(reportModel.finalReviewRows.map((row) => [row.finding.riskId, row]));
   const totalRisks = document.findings.length;
   const counts = getPdfFinalReviewCounts(document.findings, finalReviewRowsByRiskId);
+  const gapRows = buildPdfFinalReviewGapRows(reportModel, gapReviewById);
+  const gapCounts = getPdfFinalReviewGapCounts(gapRows);
 
   return {
-    metadata: {
-      documentTitle: getTextOrFallback(document.documentName, "Risk Review Report"),
-      sourceLabel: formatSourceLabel(document.sourceType),
-      createdDateLabel: "Not available",
-      receivedDateLabel: formatDateLabel(document.receivedForReviewDate),
-      generatedDateLabel: formatDateLabel(document.analysisGeneratedAt)
-    },
+    metadata: buildPdfMetadata(reportModel),
     dashboard: {
       overallDecision: getTextOrFallback(reportModel.overallDecision, "Hold for Review"),
       overallRisk: getPdfSeverity(document.overallRiskLevel),
@@ -171,6 +179,8 @@ export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
         accepted: counts.Accepted,
         pending: counts.Pending
       },
+      gapCounts,
+      gapRows,
       rows: document.findings.map((finding, index) => {
         const row = finalReviewRowsByRiskId.get(finding.riskId);
 
@@ -187,6 +197,57 @@ export function buildPdfReportModel(reportModel: ReportModel): PdfReportModel {
       center: "For internal review and decision support"
     }
   };
+}
+
+function buildPdfMetadata(reportModel: ReportModel): PdfMetadata {
+  const document = reportModel.document;
+  const isDemoReport = document.sourceType === "demo";
+
+  return {
+    documentTitle: getTextOrFallback(document.documentName, "Risk Review Report"),
+    sourceLabel: formatSourceLabel(document.sourceType),
+    createdDateLabel: isDemoReport ? formatRelativeDateLabel(-2) : "Not available",
+    receivedDateLabel: isDemoReport ? formatRelativeDateLabel(-1) : formatDateLabel(document.receivedForReviewDate),
+    generatedDateLabel: isDemoReport ? formatRelativeDateLabel(0) : formatDateLabel(document.analysisGeneratedAt)
+  };
+}
+
+function buildPdfFinalReviewGapRows(reportModel: ReportModel, gapReviewById: PdfGapReviewById): PdfFinalReviewGapRow[] {
+  return reportModel.document.gapAnalysis.map((gap, index) => ({
+    number: index + 1,
+    gapTitle: getTextOrFallback(gap.clauseName, "Untitled gap"),
+    decision: getPdfGapDecision(gapReviewById[gap.id], gap.status),
+    finalRecommendedClause: getTextOrFallback(gap.recommendedClause, "\u2014")
+  }));
+}
+
+function getPdfFinalReviewGapCounts(rows: PdfFinalReviewGapRow[]) {
+  return rows.reduce<Record<PdfGapDecision, number>>(
+    (counts, row) => {
+      counts[row.decision] += 1;
+      return counts;
+    },
+    { Accepted: 0, Rejected: 0, Pending: 0 }
+  );
+}
+
+function getPdfGapDecision(reviewDecision: unknown, normalizedStatus: unknown): PdfGapDecision {
+  const reviewDecisionValue = normalizeGapDecision(reviewDecision);
+  if (reviewDecisionValue) return reviewDecisionValue;
+
+  return normalizeGapDecision(normalizedStatus) ?? "Pending";
+}
+
+function normalizeGapDecision(value: unknown): PdfGapDecision | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, " ");
+
+  if (normalized === "accepted" || normalized === "accept") return "Accepted";
+  if (normalized === "rejected" || normalized === "reject") return "Rejected";
+  if (normalized === "pending") return "Pending";
+  return null;
 }
 
 function buildPdfSummaryRisk(finding: NormalizedFinding, reviewRow: FinalReviewRow | undefined, index: number): PdfSummaryRisk {
@@ -340,6 +401,12 @@ function formatDateLabel(value: unknown) {
     month: "short",
     day: "2-digit"
   }).format(date);
+}
+
+function formatRelativeDateLabel(dayOffset: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
+  return formatDateLabel(date.toISOString());
 }
 
 function formatConfidenceLabel(value: unknown) {
