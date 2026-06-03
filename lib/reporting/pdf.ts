@@ -1300,7 +1300,7 @@ function getDetailedChunkSectionChromeHeight(section: DetailedRiskSection) {
 
 function drawFinalReviewPages(doc: jsPDF, pdfData: PdfReportModel, gapAnalysis: ReportModel["document"]["gapAnalysis"]) {
   let y = drawFinalReviewPageStart(doc, pdfData.metadata, "FINAL REVIEW");
-  y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview);
+  y = drawRecommendedDecisionHero(doc, y, pdfData.finalReview, getFinalReviewGapCounts(gapAnalysis));
   y += 8.2;
 
   const gapRows = buildFinalReviewGapRows(gapAnalysis);
@@ -1323,6 +1323,16 @@ function buildFinalReviewGapRows(gapAnalysis: ReportModel["document"]["gapAnalys
   }));
 }
 
+function getFinalReviewGapCounts(gapAnalysis: ReportModel["document"]["gapAnalysis"]) {
+  return gapAnalysis.reduce(
+    (counts, gap) => {
+      counts[gap.status] += 1;
+      return counts;
+    },
+    { Accepted: 0, Rejected: 0, Pending: 0 }
+  );
+}
+
 function drawFinalReviewPageStart(doc: jsPDF, metadata: PdfReportModel["metadata"], sectionTitle: string) {
   doc.setFillColor(...hexToRgb(COLORS.white));
   doc.rect(0, 0, A4_WIDTH, A4_HEIGHT, "F");
@@ -1335,7 +1345,12 @@ function drawFinalReviewPageStart(doc: jsPDF, metadata: PdfReportModel["metadata
   return y + 5.5;
 }
 
-function drawRecommendedDecisionHero(doc: jsPDF, y: number, finalReview: PdfReportModel["finalReview"]) {
+function drawRecommendedDecisionHero(
+  doc: jsPDF,
+  y: number,
+  finalReview: PdfReportModel["finalReview"],
+  gapCounts: Record<PdfGapDecision, number>
+) {
   const decision = finalReview.decision;
   const counts = finalReview.counts;
   const color = getDecisionColor(decision);
@@ -1346,6 +1361,9 @@ function drawRecommendedDecisionHero(doc: jsPDF, y: number, finalReview: PdfRepo
   const width = DASHBOARD_WIDTH;
   const statBoxWidth = 70;
   const statBoxX = x + width - statBoxWidth - 8;
+  const statusLabelWidth = 11.2;
+  const statusValueX = statBoxX + statusLabelWidth + 2;
+  const statusValueWidth = statBoxWidth - statusLabelWidth - 2;
   const titleY = y + 5.4;
   const dataY = y + 12.6;
 
@@ -1377,12 +1395,17 @@ function drawRecommendedDecisionHero(doc: jsPDF, y: number, finalReview: PdfRepo
   doc.setFontSize(7.6);
   doc.setTextColor(...hexToRgb(COLORS.navy));
   doc.text("REVIEW STATUS", statBoxX, titleY);
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.1);
+  doc.setFontSize(7.6);
   doc.setTextColor(...hexToRgb(COLORS.mutedText));
-  doc.text(`Revised: ${counts.revised}`, statBoxX, dataY);
-  doc.text(`Accepted: ${counts.accepted}`, statBoxX + 25, dataY);
-  doc.text(`Pending: ${counts.pending}`, statBoxX + 53, dataY);
+  doc.text("Gaps", statBoxX, dataY - 1.8);
+  doc.text("Risks", statBoxX, dataY + 3.4);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.4);
+  doc.text(clampSingleLine(doc, `Accepted: ${gapCounts.Accepted} \u2022 Rejected: ${gapCounts.Rejected} \u2022 Pending: ${gapCounts.Pending}`, statusValueWidth), statusValueX, dataY - 1.8);
+  doc.text(clampSingleLine(doc, `Revised: ${counts.revised} \u2022 Accepted: ${counts.accepted} \u2022 Pending: ${counts.pending}`, statusValueWidth), statusValueX, dataY + 3.4);
 
   return y + height;
 }
