@@ -1622,6 +1622,7 @@ function GapReviewPanel({
   const row = gap as GapRegisterRow | undefined;
   const category = row ? getGapCategoryLabel(row) : "General";
   const confidence = row ? formatGapAiConfidence(row.aiConfidence) : "\u2014";
+  const status = row ? (reviewDecision ? getGapReviewDecisionLabel(reviewDecision) : getGapStatusLabel(row.status)) : "Pending";
   const baseRecommendedClause = getGapRecommendedClause(row);
   const activeVariantText = row && activeVariant ? getGapClauseVariant(row, activeVariant) : "";
   const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
@@ -1690,6 +1691,9 @@ function GapReviewPanel({
                     {gap.impact}
                   </Badge>
                   <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 tabular-nums">{confidence}</span>
+                  <div className="shrink-0">
+                    <GapStatusBadge status={status} />
+                  </div>
                 </div>
               </div>
             </div>

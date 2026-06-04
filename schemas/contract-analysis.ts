@@ -421,8 +421,10 @@ function normalizeGapAiConfidence(value: unknown) {
 function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<typeof GapAnalysisStatusSchema> {
   const normalizedValue = getNormalizedToken(value);
   if (normalizedValue === "pending") return "Pending";
-  if (normalizedValue === "accepted") return "Accepted";
-  if (normalizedValue === "rejected") return "Rejected";
+  if (normalizedValue === "accepted" || normalizedValue === "rejected") {
+    fallbackReasons.push("AI-provided review status -> defaulted to Pending");
+    return "Pending";
+  }
 
   fallbackReasons.push("Unknown status -> defaulted to Pending");
   return "Pending";
