@@ -422,6 +422,7 @@ function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<
   const normalizedValue = getNormalizedToken(value);
   if (normalizedValue === "pending") return "Pending";
   if (normalizedValue === "accepted" || normalizedValue === "rejected") {
+    // AI/raw gap statuses are compatibility input only; human review state creates Accepted/Rejected.
     fallbackReasons.push("AI-provided review status -> defaulted to Pending");
     return "Pending";
   }

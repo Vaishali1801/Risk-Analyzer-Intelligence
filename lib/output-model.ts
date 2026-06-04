@@ -132,9 +132,11 @@ export function normalizeOutputAnalysis(
     analysisGeneratedAt: savedAt,
     savedAt,
     executiveSummary: analysis.executiveSummary,
+    // Compatibility fields from raw analysis are retained, but displayed decisions are deterministic below.
     decisionRationale: analysis.decisionRationale,
     nextActions: analysis.nextActions,
     aiInsight,
+    // Displayed Risk Level is analytically recalculated from normalized risk severities.
     overallRiskLevel: getOverallRiskLevel(findings, analysis.overallRiskLevel),
     overallDecision: analysis.decisionRecommendation,
     findings,
@@ -228,6 +230,7 @@ export function getPrioritizedFindings(findings: NormalizedFinding[]) {
   );
 }
 
+// Single displayed Risk Level source: analytical severity distribution, not AI overallRiskLevel.
 export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: unknown): Severity {
   const severityMix = getSeverityMix(findings);
   const totalRisks = severityMix.High + severityMix.Medium + severityMix.Low;
@@ -378,6 +381,7 @@ export function getFinalReviewDecision(
   finalReviewCounts: FinalReviewCounts,
   gapReviewCounts: FinalGapReviewCounts = { Accepted: 0, Rejected: 0, Pending: 0 }
 ): FinalOverallDecision {
+  // Final Review is review-state driven; AI recommendation/rationale must not affect this outcome.
   if (finalReviewCounts.Pending > 0 || gapReviewCounts.Pending > 0) return "Hold for Review";
   if (finalReviewCounts.Revised > 0 || gapReviewCounts.Accepted > 0) return "Approve with Changes";
   return "Approve";

@@ -129,6 +129,7 @@ export function validateResponse(rawResponse: string): ContractAnalysis {
   const repaired = repairJSON(rawResponse);
   const parsed: unknown = JSON.parse(repaired);
   const validated = ContractAnalysisSchema.parse(parsed);
+  // AI decision fields stay schema-compatible; output-model helpers own displayed Risk Level and Final Review decisions.
   return applyDecisionLogic(validated);
 }
 
