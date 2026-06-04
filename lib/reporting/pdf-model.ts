@@ -1,12 +1,11 @@
-import { getFinalReviewDecision } from "@/lib/output-model";
-import type { FinalGapReviewCounts, FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
+import { getEffectiveGapReviewDecision, getFinalReviewDecision } from "@/lib/output-model";
+import type { FinalGapReviewCounts, FinalReviewDecision, FinalReviewRow, GapReviewById, NormalizedFinding, ReportModel } from "@/lib/output-model";
 import type { AnalysisSource } from "@/types/contract";
 
 export type PdfSeverity = "High" | "Medium" | "Low" | null;
 export type PdfDecision = FinalReviewDecision | "\u2014";
 export type PdfGapDecision = "Pending" | "Accepted" | "Rejected";
-export type PdfGapReviewDecisionInput = "accepted" | "rejected" | PdfGapDecision;
-export type PdfGapReviewById = Record<string, PdfGapReviewDecisionInput | undefined>;
+export type PdfGapReviewById = GapReviewById;
 
 export type PdfReportModel = {
   metadata: PdfMetadata;
@@ -151,7 +150,7 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
       insight: getNullableText(document.aiInsight),
       executiveSummary: getNullableText(document.executiveSummary),
       topActions: document.nextActions.map((action) => getNullableText(action)).filter((action): action is string => Boolean(action)),
-      statusMessage: getPdfStatusMessage(counts, totalRisks),
+      statusMessage: getPdfStatusMessage(counts, gapCounts, totalRisks),
       gapSummary: getPdfGapSummary(reportModel)
     },
     detailedGaps: document.gapAnalysis.map((gap, index) => ({
@@ -218,7 +217,7 @@ function buildPdfFinalReviewGapRows(reportModel: ReportModel, gapReviewById: Pdf
   return reportModel.document.gapAnalysis.map((gap, index) => ({
     number: index + 1,
     gapTitle: getTextOrFallback(gap.clauseName, "Untitled gap"),
-    decision: getPdfGapDecision(gapReviewById[gap.id], gap.status),
+    decision: getEffectiveGapReviewDecision(gap, gapReviewById),
     finalRecommendedClause: getTextOrFallback(gap.recommendedClause, "\u2014")
   }));
 }
@@ -231,25 +230,6 @@ function getPdfFinalReviewGapCounts(rows: PdfFinalReviewGapRow[]) {
     },
     { Accepted: 0, Rejected: 0, Pending: 0 }
   );
-}
-
-function getPdfGapDecision(reviewDecision: unknown, normalizedStatus: unknown): PdfGapDecision {
-  const reviewDecisionValue = normalizeGapDecision(reviewDecision);
-  if (reviewDecisionValue) return reviewDecisionValue;
-
-  return normalizeGapDecision(normalizedStatus) ?? "Pending";
-}
-
-function normalizeGapDecision(value: unknown): PdfGapDecision | null {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, " ");
-
-  if (normalized === "accepted" || normalized === "accept") return "Accepted";
-  if (normalized === "rejected" || normalized === "reject") return "Rejected";
-  if (normalized === "pending") return "Pending";
-  return null;
 }
 
 function buildPdfSummaryRisk(finding: NormalizedFinding, reviewRow: FinalReviewRow | undefined, index: number): PdfSummaryRisk {
@@ -326,11 +306,15 @@ function getPdfGapSummary(reportModel: ReportModel): PdfDashboard["gapSummary"] 
   );
 }
 
-function getPdfStatusMessage(counts: Record<FinalReviewDecision, number>, totalRisks: number) {
-  if (totalRisks <= 0) return "No risks available for final review.";
-  if (counts.Pending > 0) return "Pending decisions remain. Complete review before finalization.";
-  if (counts.Revised > 0) return "Approved revisions are ready for implementation.";
-  if (counts.Accepted === totalRisks) return "All risks accepted. Ready for finalization.";
+function getPdfStatusMessage(
+  counts: Record<FinalReviewDecision, number>,
+  gapCounts: FinalGapReviewCounts,
+  totalRisks: number
+) {
+  if (totalRisks <= 0 && gapCounts.Pending <= 0) return "No risks available for final review.";
+  if (counts.Pending > 0 || gapCounts.Pending > 0) return "Pending decisions remain. Complete review before finalization.";
+  if (counts.Revised > 0 || gapCounts.Accepted > 0) return "Approved revisions are ready for implementation.";
+  if (counts.Accepted === totalRisks) return "All review items resolved. Ready for finalization.";
   return "Final review status is not available.";
 }
 

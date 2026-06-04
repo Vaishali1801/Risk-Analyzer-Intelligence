@@ -7,6 +7,8 @@ export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
 export type FinalGapReviewDecision = "Accepted" | "Rejected" | "Pending";
 export type FinalGapReviewCounts = Record<FinalGapReviewDecision, number>;
 export type FinalOverallDecision = "Hold for Review" | "Approve with Changes" | "Approve";
+export type GapReviewDecision = "accepted" | "rejected";
+export type GapReviewById = Record<string, GapReviewDecision | FinalGapReviewDecision | undefined>;
 export type SafeRiskCategory = RiskCategory | "Uncategorized";
 export type SafeSeverity = Severity | "Unknown";
 export type RiskClauseVariantKey = "balanced" | "protective" | "standard";
@@ -49,7 +51,7 @@ export type NormalizedDocumentAnalysis = {
   nextActions: string[];
   aiInsight: string;
   overallRiskLevel: Severity;
-  overallDecision: DecisionRecommendation;
+  rawAiDecisionRecommendation: DecisionRecommendation;
   findings: NormalizedFinding[];
   gapAnalysis: GapAnalysisItem[];
   topCriticalRiskIds: string[];
@@ -92,6 +94,9 @@ export type ReportModel = {
   reviewStatusCounts: ReviewStatusCounts;
   finalReviewRows: FinalReviewRow[];
   finalReviewCounts: FinalReviewCounts;
+  gapFinalReviewCounts: FinalGapReviewCounts;
+  canFinalizeAll: boolean;
+  // Risk-only compatibility field. Use canFinalizeAll when gap review state matters.
   canFinalize: boolean;
 };
 
@@ -138,7 +143,8 @@ export function normalizeOutputAnalysis(
     aiInsight,
     // Displayed Risk Level is analytically recalculated from normalized risk severities.
     overallRiskLevel: getOverallRiskLevel(findings, analysis.overallRiskLevel),
-    overallDecision: analysis.decisionRecommendation,
+    // Raw AI recommendation is compatibility-only; Final Review uses getFinalReviewDecision().
+    rawAiDecisionRecommendation: analysis.decisionRecommendation,
     findings,
     gapAnalysis: analysis.gapAnalysis ?? [],
     topCriticalRiskIds: topCriticalRisks.map((finding) => finding.riskId),
@@ -391,12 +397,45 @@ export function canFinalizeReview(finalReviewCounts: FinalReviewCounts) {
   return finalReviewCounts.Pending === 0;
 }
 
+export function canFinalizeAllReview(
+  finalReviewCounts: FinalReviewCounts,
+  gapReviewCounts: FinalGapReviewCounts = { Accepted: 0, Rejected: 0, Pending: 0 }
+) {
+  return canFinalizeReview(finalReviewCounts) && gapReviewCounts.Pending === 0;
+}
+
+export function getEffectiveGapReviewDecision(
+  gap: Pick<GapAnalysisItem, "id" | "status">,
+  gapReviewById: GapReviewById = {}
+): FinalGapReviewDecision {
+  const userReviewDecision = normalizeUserGapReviewDecision(gapReviewById[gap.id]);
+  if (userReviewDecision) return userReviewDecision;
+
+  // Raw/AI gap status is compatibility input only. Accepted/Rejected require explicit user review state.
+  return normalizeRawGapStatus(gap.status);
+}
+
+export function getFinalGapReviewCounts(
+  gaps: Array<Pick<GapAnalysisItem, "id" | "status">>,
+  gapReviewById: GapReviewById = {}
+): FinalGapReviewCounts {
+  return gaps.reduce<FinalGapReviewCounts>(
+    (counts, gap) => {
+      counts[getEffectiveGapReviewDecision(gap, gapReviewById)] += 1;
+      return counts;
+    },
+    { Accepted: 0, Rejected: 0, Pending: 0 }
+  );
+}
+
 export function getReportModel(
   document: NormalizedDocumentAnalysis,
-  reviewByRiskId: ReviewByRiskId
+  reviewByRiskId: ReviewByRiskId,
+  gapReviewById: GapReviewById = {}
 ): ReportModel {
   const finalReviewRows = getFinalReviewRows(document.findings, reviewByRiskId);
   const finalReviewCounts = getFinalReviewCounts(finalReviewRows);
+  const gapFinalReviewCounts = getFinalGapReviewCounts(document.gapAnalysis, gapReviewById);
 
   return {
     document,
@@ -404,6 +443,8 @@ export function getReportModel(
     reviewStatusCounts: getReviewStatusCounts(reviewByRiskId),
     finalReviewRows,
     finalReviewCounts,
+    gapFinalReviewCounts,
+    canFinalizeAll: canFinalizeAllReview(finalReviewCounts, gapFinalReviewCounts),
     canFinalize: canFinalizeReview(finalReviewCounts)
   };
 }
@@ -724,6 +765,26 @@ function uniqueStrings(values: string[]) {
 
 function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeDecisionToken(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, " ");
+}
+
+function normalizeUserGapReviewDecision(value: unknown): FinalGapReviewDecision | null {
+  const normalized = normalizeDecisionToken(value);
+  if (normalized === "accepted" || normalized === "accept") return "Accepted";
+  if (normalized === "rejected" || normalized === "reject") return "Rejected";
+  if (normalized === "pending") return "Pending";
+  return null;
+}
+
+function normalizeRawGapStatus(value: unknown): FinalGapReviewDecision {
+  const normalized = normalizeDecisionToken(value);
+  return normalized === "pending" ? "Pending" : "Pending";
 }
 
 function getUsableText(value: unknown) {

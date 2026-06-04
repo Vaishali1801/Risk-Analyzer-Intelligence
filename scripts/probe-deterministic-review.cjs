@@ -39,7 +39,19 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 });
 
 const schema = loadTsModule("schemas/contract-analysis.ts");
-const { getFinalReviewDecision, getOverallRiskLevel } = outputModel;
+const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
+  if (id === "@/lib/output-model") return outputModel;
+  return require(id);
+});
+
+const {
+  getEffectiveGapReviewDecision,
+  getFinalGapReviewCounts,
+  getFinalReviewDecision,
+  getOverallRiskLevel,
+  getReportModel
+} = outputModel;
+const { buildPdfReportModel } = pdfModel;
 const { normalizeGapAnalysis } = schema;
 
 const findings = (severities) =>
@@ -106,5 +118,81 @@ const normalizedGaps = normalizeGapAnalysis([
 normalizedGaps.forEach((gap) => {
   assertEqual(gap.status, "Pending", `Gap status normalization: ${gap.id}`);
 });
+
+const acceptedRiskReviewById = {
+  "RISK-1": {
+    status: "accepted",
+    currentDraft: "Use the original clause."
+  }
+};
+
+const normalizedFinding = {
+  riskId: "RISK-1",
+  riskTitle: "Risk title",
+  sectionRef: "Section 1",
+  category: "Legal",
+  severity: "Low",
+  confidence: 0.9,
+  clauseSnippet: "Original clause snippet.",
+  fullClauseText: "Original clause text used for final review.",
+  flaggedText: "Original clause snippet.",
+  whyItMatters: "This risk matters for contract review.",
+  businessImpact: "This risk can affect contract operations.",
+  originalRecommendedDraft: "Use a safer clause draft.",
+  clauseVariants: {}
+};
+
+const normalizedDocument = {
+  documentName: "Contract",
+  contractTitle: "Contract",
+  sourceType: "upload",
+  analysisGeneratedAt: new Date(0).toISOString(),
+  savedAt: new Date(0).toISOString(),
+  executiveSummary: "Executive summary placeholder.",
+  decisionRationale: "Raw AI rationale placeholder.",
+  nextActions: [],
+  aiInsight: "Insight placeholder.",
+  overallRiskLevel: "Low",
+  rawAiDecisionRecommendation: "Reject",
+  findings: [normalizedFinding],
+  gapAnalysis: [{ ...baseGap, status: "Pending" }],
+  topCriticalRiskIds: [],
+  summary: {
+    totalRiskCount: 1,
+    severityMix: { High: 0, Medium: 0, Low: 1 },
+    categoryMix: { Legal: 1, Financial: 0, Operational: 0, Compliance: 0, Technical: 0, Uncategorized: 0 }
+  }
+};
+
+assertEqual(getEffectiveGapReviewDecision({ id: "GAP-1", status: "Accepted" }, {}), "Pending", "Gap decision: raw Accepted remains Pending");
+assertEqual(getEffectiveGapReviewDecision({ id: "GAP-1", status: "Rejected" }, {}), "Pending", "Gap decision: raw Rejected remains Pending");
+assertEqual(getEffectiveGapReviewDecision({ id: "GAP-1", status: "Pending" }, { "GAP-1": "accepted" }), "Accepted", "Gap decision: user Accepted wins");
+assertEqual(getEffectiveGapReviewDecision({ id: "GAP-1", status: "Pending" }, { "GAP-1": "rejected" }), "Rejected", "Gap decision: user Rejected wins");
+assertEqual(getFinalGapReviewCounts([{ id: "GAP-1", status: "Accepted" }], {}).Pending, 1, "Gap counts: raw Accepted remains Pending");
+
+let reportModel = getReportModel(normalizedDocument, acceptedRiskReviewById);
+assertEqual(reportModel.canFinalize, true, "Finalize: legacy risk-only field remains true");
+assertEqual(reportModel.canFinalizeAll, false, "Finalize: pending gap blocks gap-aware field");
+assertEqual(reportModel.gapFinalReviewCounts.Pending, 1, "Finalize: pending gap counted");
+assertEqual(
+  getFinalReviewDecision(reportModel.finalReviewCounts, reportModel.gapFinalReviewCounts),
+  "Hold for Review",
+  "Final Review: raw AI Reject does not override pending gap decision"
+);
+
+const pdfDataWithPendingGap = buildPdfReportModel(reportModel, {});
+assertEqual(
+  pdfDataWithPendingGap.dashboard.statusMessage,
+  "Pending decisions remain. Complete review before finalization.",
+  "PDF statusMessage: pending gap blocks ready message"
+);
+
+reportModel = getReportModel(normalizedDocument, acceptedRiskReviewById, { "GAP-1": "rejected" });
+assertEqual(reportModel.canFinalizeAll, true, "Finalize: rejected gap is completed");
+assertEqual(
+  getFinalReviewDecision(reportModel.finalReviewCounts, reportModel.gapFinalReviewCounts),
+  "Approve",
+  "Final Review: raw AI Reject does not drive completed review decision"
+);
 
 console.log("Deterministic review probes passed.");

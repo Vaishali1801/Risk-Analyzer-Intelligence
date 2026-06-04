@@ -18,6 +18,7 @@ import {
   buildTopCriticalRiskItems,
   createInitialReviewByRiskId,
   getEffectiveReviewStatus,
+  getEffectiveGapReviewDecision,
   getFinalReviewDecision,
   getPrioritizedFindings,
   getReportModel,
@@ -29,9 +30,11 @@ import {
   getSafeSeverityStyles,
   getSummaryInsight,
   normalizeOutputAnalysis,
+  type FinalGapReviewDecision,
   type FinalReviewDecision,
   type FinalReviewRow,
-  type FinalGapReviewCounts,
+  type GapReviewDecision,
+  type GapReviewById,
   type NormalizedDocumentAnalysis,
   type NormalizedFinding,
   type ReviewByRiskId,
@@ -61,8 +64,6 @@ type GapRegisterRow = GapAnalysisItem & {
   clauseVariants?: unknown;
 };
 type GapAskAiVariantKey = "balanced" | "detailed" | "alternative" | "protective";
-type GapReviewDecision = "accepted" | "rejected";
-type GapFinalReviewDecision = "Pending" | "Accepted" | "Rejected";
 
 const sectionTabs: { id: SectionId; label: string }[] = [
   { id: "summary", label: "Summary" },
@@ -118,7 +119,7 @@ export function AnalysisWorkspace() {
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
   const [activeGapAction, setActiveGapAction] = useState<GapClauseAction>("Must Add");
   const [selectedGapId, setSelectedGapId] = useState("");
-  const [gapReviewById, setGapReviewById] = useState<Record<string, GapReviewDecision>>({});
+  const [gapReviewById, setGapReviewById] = useState<GapReviewById>({});
   const [isLayerSummaryExpanded, setIsLayerSummaryExpanded] = useState(true);
   const [isDetailedSummaryExpanded, setIsDetailedSummaryExpanded] = useState(false);
   const [isRiskMixPopoverOpen, setIsRiskMixPopoverOpen] = useState(false);
@@ -502,8 +503,8 @@ export function AnalysisWorkspace() {
   }, [documentModel, reviewByRiskId, reviewSessionKey]);
   const reportModel = useMemo(() => {
     if (!documentModel) return null;
-    return getReportModel(documentModel, effectiveReviewByRiskId);
-  }, [documentModel, effectiveReviewByRiskId]);
+    return getReportModel(documentModel, effectiveReviewByRiskId, gapReviewById);
+  }, [documentModel, effectiveReviewByRiskId, gapReviewById]);
 
   useLayoutEffect(() => {
     if (!analysis || initialHashHandledRef.current) return;
@@ -787,9 +788,9 @@ export function AnalysisWorkspace() {
   const finalDecisionRows = reportModel.finalReviewRows;
   const finalDecisionCounts = reportModel.finalReviewCounts;
   const pendingCount = finalDecisionCounts.Pending;
-  const gapFinalReviewCounts = getGapFinalReviewCounts(gapRecommendations, gapReviewById);
+  const gapFinalReviewCounts = reportModel.gapFinalReviewCounts;
   const pendingGapReviewCount = gapFinalReviewCounts.Pending;
-  const canFinalizeReview = reportModel.canFinalize && pendingGapReviewCount === 0;
+  const canFinalizeReview = reportModel.canFinalizeAll;
   const finalReviewDecision = getFinalReviewDecision(finalDecisionCounts, gapFinalReviewCounts);
   const finalReviewSummary = buildFinalReviewSummary(finalReviewDecision);
   const finalReviewCountsLine = `${finalDecisionCounts.Revised} Revised \u2022 ${finalDecisionCounts.Accepted} Accepted \u2022 ${finalDecisionCounts.Pending} Pending`;
@@ -1314,7 +1315,7 @@ function GapFinalReviewTable({
   onToggleGap
 }: {
   gaps: GapAnalysisItem[];
-  reviewById: Record<string, GapReviewDecision>;
+  reviewById: GapReviewById;
   expandedGapId: string | null;
   onToggleGap: (gapId: string) => void;
 }) {
@@ -1348,7 +1349,7 @@ function GapFinalReviewTable({
           {gaps.map((gap) => {
             const row = gap as GapRegisterRow;
             const isExpanded = expandedGapId === gap.id;
-            const decision = getGapFinalReviewDecision(row, reviewById);
+            const decision = getEffectiveGapReviewDecision(row, reviewById);
             const recommendedClause = getGapRecommendedClause(row);
 
             return (
@@ -1405,7 +1406,7 @@ function GapFinalReviewTable({
   );
 }
 
-function GapFinalReviewDecisionBadge({ decision }: { decision: GapFinalReviewDecision }) {
+function GapFinalReviewDecisionBadge({ decision }: { decision: FinalGapReviewDecision }) {
   return (
     <span
       className={cn(
@@ -1482,7 +1483,7 @@ function GapRegisterTable({
   onOpenGap
 }: {
   gaps: GapAnalysisItem[];
-  reviewById: Record<string, GapReviewDecision>;
+  reviewById: GapReviewById;
   onOpenGap: (gap: GapAnalysisItem) => void;
 }) {
   return (
@@ -1522,7 +1523,7 @@ function GapRegisterTable({
           <tbody>
             {gaps.map((gap) => {
               const row = gap as GapRegisterRow;
-              const status = reviewById[gap.id] ? getGapReviewDecisionLabel(reviewById[gap.id]) : getGapStatusLabel(row.status);
+              const status = getEffectiveGapReviewDecision(row, reviewById);
               return (
                 <tr
                   key={gap.id}
@@ -1609,7 +1610,7 @@ function GapReviewPanel({
 }: {
   open: boolean;
   gap?: GapAnalysisItem;
-  reviewDecision?: GapReviewDecision;
+  reviewDecision?: GapReviewDecision | FinalGapReviewDecision;
   onClose: () => void;
   onAccept: (gap: GapAnalysisItem) => void;
   onReject: (gap: GapAnalysisItem) => void;
@@ -1622,7 +1623,7 @@ function GapReviewPanel({
   const row = gap as GapRegisterRow | undefined;
   const category = row ? getGapCategoryLabel(row) : "General";
   const confidence = row ? formatGapAiConfidence(row.aiConfidence) : "\u2014";
-  const status = row ? (reviewDecision ? getGapReviewDecisionLabel(reviewDecision) : getGapStatusLabel(row.status)) : "Pending";
+  const status = row ? getEffectiveGapReviewDecision(row, reviewDecision ? { [row.id]: reviewDecision } : {}) : "Pending";
   const baseRecommendedClause = getGapRecommendedClause(row);
   const activeVariantText = row && activeVariant ? getGapClauseVariant(row, activeVariant) : "";
   const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
@@ -1846,24 +1847,6 @@ function formatGapAiConfidence(value: unknown) {
 
   const percent = value <= 1 ? value * 100 : value;
   return `${Math.round(percent)}%`;
-}
-
-function getGapStatusLabel(value: unknown) {
-  return normalizeReviewText(value) || "Pending";
-}
-
-function getGapReviewDecisionLabel(decision: GapReviewDecision) {
-  return decision === "accepted" ? "Accepted" : "Rejected";
-}
-
-function getGapFinalReviewDecision(gap: GapRegisterRow, reviewById: Record<string, GapReviewDecision>): GapFinalReviewDecision {
-  const reviewDecision = reviewById[gap.id];
-  if (reviewDecision) return getGapReviewDecisionLabel(reviewDecision);
-
-  const status = getGapStatusLabel(gap.status).toLowerCase().replace(/[\s_-]+/g, " ");
-  if (status === "accepted") return "Accepted";
-  if (status === "rejected") return "Rejected";
-  return "Pending";
 }
 
 function getGapStatusBadgeClassName(status: string) {
@@ -2096,16 +2079,6 @@ function normalizeReviewText(value: unknown) {
 function getRiskStoredClauseVariant(risk: NormalizedFinding, lens: RiskReviewLens) {
   const variantKey = riskClauseVariantKeyByLens[lens];
   return variantKey ? normalizeReviewText(risk.clauseVariants[variantKey]) : "";
-}
-
-function getGapFinalReviewCounts(gaps: GapAnalysisItem[], reviewById: Record<string, GapReviewDecision>): FinalGapReviewCounts {
-  return gaps.reduce<FinalGapReviewCounts>(
-    (counts, gap) => {
-      counts[getGapFinalReviewDecision(gap as GapRegisterRow, reviewById)] += 1;
-      return counts;
-    },
-    { Accepted: 0, Rejected: 0, Pending: 0 }
-  );
 }
 
 function buildFinalReviewSummary(finalReviewDecision: ReturnType<typeof getFinalReviewDecision>) {
