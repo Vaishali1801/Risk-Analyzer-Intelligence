@@ -18,6 +18,17 @@ export const RiskClauseVariantsSchema = z.object({
   standard: z.string().min(1).optional()
 });
 
+const DEFAULT_RISK_CONFIDENCE = 0.75;
+const DEFAULT_GAP_AI_CONFIDENCE = 75;
+const DEFAULT_RISK_CLAUSE_TEXT = "Clause evidence was not provided by the analysis.";
+const DEFAULT_RISK_RATIONALE = "Risk rationale was not provided by the analysis.";
+const DEFAULT_RISK_BUSINESS_IMPACT = "Business impact was not provided by the analysis.";
+const DEFAULT_RISK_RECOMMENDATION = "Review and revise this clause with legal counsel before approval.";
+const DEFAULT_GAP_CATEGORY = "General";
+const DEFAULT_GAP_RATIONALE = "No rationale provided.";
+const DEFAULT_GAP_FIX = "No suggested fix provided.";
+const DEFAULT_GAP_RECOMMENDED_CLAUSE = "Recommended clause language is not available yet.";
+
 const OptionalRiskClauseVariantsSchema = z.preprocess((value) => {
   const record = getObjectRecord(value);
   if (!record) return undefined;
@@ -100,20 +111,26 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
     const clauseText = baseClauseText || baseHighlightedText;
     const highlightedText = baseHighlightedText || buildShortTextFallback(clauseText, 160);
     const mitigability = normalizeMitigability(record.mitigability, fallbackReasons);
-    const confidence = normalizeRiskConfidence(record.confidence);
-    const whyRisky = getCleanString(record.whyRisky);
-    const impactIfIgnored = getCleanString(record.impactIfIgnored);
-    const suggestedImprovement = getCleanString(record.suggestedImprovement);
+    const confidence = normalizeRiskConfidence(record.confidence, fallbackReasons);
+    const rawWhyRisky = getCleanString(record.whyRisky);
+    const rawImpactIfIgnored = getCleanString(record.impactIfIgnored);
+    const rawSuggestedImprovement = getCleanString(record.suggestedImprovement);
+    const whyRisky = getTextMeetingMinimum(rawWhyRisky, DEFAULT_RISK_RATIONALE);
+    const impactIfIgnored = getTextMeetingMinimum(rawImpactIfIgnored, DEFAULT_RISK_BUSINESS_IMPACT);
+    const suggestedImprovement = getTextMeetingMinimum(rawSuggestedImprovement, DEFAULT_RISK_RECOMMENDATION);
+    const hasRiskEvidence = baseClauseText.length >= 10 || baseHighlightedText.length >= 10;
+    const hasRiskExplanation = Boolean(getCleanString(record.whyRisky));
+    const normalizedClauseText = clauseText.length >= 10 ? clauseText : DEFAULT_RISK_CLAUSE_TEXT;
+    const normalizedHighlightedText = highlightedText.length >= 3 ? highlightedText : buildShortTextFallback(normalizedClauseText, 160);
 
     if (!rawId) fallbackReasons.push("Missing id -> generated fallback id");
     if (!getCleanString(record.clauseRef)) fallbackReasons.push("Missing clauseRef -> defaulted to Section unknown");
     if (!title || title.length < 4) droppedReasons.push("Missing or short title");
-    if (!clauseText || clauseText.length < 10) droppedReasons.push("Missing or short clauseText/highlightedText");
-    if (!highlightedText || highlightedText.length < 3) droppedReasons.push("Missing or short highlightedText");
-    if (confidence === null) droppedReasons.push("Invalid confidence");
-    if (!whyRisky || whyRisky.length < 10) droppedReasons.push("Missing or short whyRisky");
-    if (!impactIfIgnored || impactIfIgnored.length < 10) droppedReasons.push("Missing or short impactIfIgnored");
-    if (!suggestedImprovement || suggestedImprovement.length < 10) droppedReasons.push("Missing or short suggestedImprovement");
+    if (!hasRiskEvidence && !hasRiskExplanation) droppedReasons.push("Missing clause evidence and risk explanation");
+    if (!hasRiskEvidence) fallbackReasons.push("Missing clauseText/highlightedText -> defaulted clause evidence");
+    if (rawWhyRisky.length < 10) fallbackReasons.push("Missing or short whyRisky -> defaulted rationale");
+    if (rawImpactIfIgnored.length < 10) fallbackReasons.push("Missing or short impactIfIgnored -> defaulted business impact");
+    if (rawSuggestedImprovement.length < 10) fallbackReasons.push("Missing or short suggestedImprovement -> defaulted recommendation");
 
     if (droppedReasons.length) {
       recordDroppedRiskItem(diagnostics, index, item, droppedReasons);
@@ -127,8 +144,8 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
       category,
       severity,
       clauseRef,
-      clauseText,
-      highlightedText,
+      clauseText: normalizedClauseText,
+      highlightedText: normalizedHighlightedText,
       mitigability,
       confidence,
       whyRisky,
@@ -230,22 +247,20 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
       }
     }
 
-    const whyThisMatters = getCleanString(record.whyThisMatters);
-    const suggestedFix = getCleanString(record.suggestedFix);
-    const category = getCleanString(record.category);
-    const aiConfidence = normalizeGapAiConfidence(record.aiConfidence);
+    const whyThisMatters = getCleanString(record.whyThisMatters) || DEFAULT_GAP_RATIONALE;
+    const suggestedFix = getCleanString(record.suggestedFix) || DEFAULT_GAP_FIX;
+    const category = getCleanString(record.category) || DEFAULT_GAP_CATEGORY;
+    const aiConfidence = normalizeGapAiConfidence(record.aiConfidence, fallbackReasons);
     const status = normalizeGapStatus(record.status, fallbackReasons);
-    const recommendedClause = getCleanMultilineString(record.recommendedClause);
-    const clauseVariants = normalizeGapClauseVariants(record.clauseVariants);
+    const recommendedClause = getCleanMultilineString(record.recommendedClause) || DEFAULT_GAP_RECOMMENDED_CLAUSE;
+    const clauseVariants = normalizeGapClauseVariants(record.clauseVariants, recommendedClause, fallbackReasons);
     const droppedReasons: string[] = [];
 
     if (!clauseName) droppedReasons.push("Missing clauseName/title");
-    if (!category) droppedReasons.push("Missing category");
-    if (aiConfidence === null) droppedReasons.push("Invalid aiConfidence");
-    if (!whyThisMatters) droppedReasons.push("Missing whyThisMatters");
-    if (!suggestedFix) droppedReasons.push("Missing suggestedFix");
-    if (!recommendedClause) droppedReasons.push("Missing recommendedClause");
-    if (!clauseVariants) droppedReasons.push("Missing or incomplete clauseVariants");
+    if (!getCleanString(record.category)) fallbackReasons.push("Missing category -> defaulted to General");
+    if (!getCleanString(record.whyThisMatters)) fallbackReasons.push("Missing whyThisMatters -> defaulted rationale");
+    if (!getCleanString(record.suggestedFix)) fallbackReasons.push("Missing suggestedFix -> defaulted suggested fix");
+    if (!getCleanMultilineString(record.recommendedClause)) fallbackReasons.push("Missing recommendedClause -> defaulted recommended clause");
 
     if (droppedReasons.length) {
       recordDroppedGapItem(diagnostics, index, item, droppedReasons);
@@ -324,6 +339,10 @@ function getCleanMultilineString(value: unknown) {
     .trim();
 }
 
+function getTextMeetingMinimum(value: string, fallback: string, minLength = 10) {
+  return value.length >= minLength ? value : fallback;
+}
+
 function getNormalizedToken(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -386,12 +405,23 @@ function normalizeMitigability(value: unknown, fallbackReasons: string[]): z.inf
   return "Medium";
 }
 
-function normalizeRiskConfidence(value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) return null;
+function normalizeRiskConfidence(value: unknown, fallbackReasons: string[]) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    fallbackReasons.push("Missing confidence -> defaulted to 75%");
+    return DEFAULT_RISK_CONFIDENCE;
+  }
+
+  if (value < 0) {
+    fallbackReasons.push("Confidence below range -> clamped to 0%");
+    return 0;
+  }
+
+  if (value > 100) {
+    fallbackReasons.push("Confidence above range -> clamped to 100%");
+    return 1;
+  }
 
   const normalized = value > 1 ? value / 100 : value;
-  if (normalized < 0 || normalized > 1) return null;
-
   return Number(normalized.toFixed(2));
 }
 
@@ -409,11 +439,23 @@ function normalizeGapImpact(value: unknown, fallbackReasons: string[]): z.infer<
   return normalizeSeverity(value, fallbackReasons, "Medium");
 }
 
-function normalizeGapAiConfidence(value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) return null;
+function normalizeGapAiConfidence(value: unknown, fallbackReasons: string[]) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    fallbackReasons.push("Missing aiConfidence -> defaulted to 75%");
+    return DEFAULT_GAP_AI_CONFIDENCE;
+  }
+
+  if (value < 0) {
+    fallbackReasons.push("aiConfidence below range -> clamped to 0%");
+    return 0;
+  }
+
+  if (value > 100) {
+    fallbackReasons.push("aiConfidence above range -> clamped to 100%");
+    return 100;
+  }
 
   const percent = value <= 1 ? value * 100 : value;
-  if (percent < 0 || percent > 100) return null;
 
   return Math.round(percent);
 }
@@ -431,19 +473,32 @@ function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<
   return "Pending";
 }
 
-function normalizeGapClauseVariants(value: unknown): z.infer<typeof GapAnalysisClauseVariantsSchema> | null {
+function normalizeGapClauseVariants(
+  value: unknown,
+  recommendedClause: string,
+  fallbackReasons: string[]
+): z.infer<typeof GapAnalysisClauseVariantsSchema> {
   const record = getObjectRecord(value);
-  if (!record) return null;
+  if (!record) {
+    fallbackReasons.push("Missing clauseVariants -> defaulted all variants");
+  }
 
   const clauseVariants = {
-    balanced: getCleanMultilineString(record.balanced),
-    detailed: getCleanMultilineString(record.detailed),
-    alternative: getCleanMultilineString(record.alternative),
-    protective: getCleanMultilineString(record.protective)
+    balanced: getCleanMultilineString(record?.balanced) || recommendedClause,
+    detailed: getCleanMultilineString(record?.detailed) || recommendedClause,
+    alternative: getCleanMultilineString(record?.alternative) || recommendedClause,
+    protective: getCleanMultilineString(record?.protective) || recommendedClause
   };
 
-  const parsed = GapAnalysisClauseVariantsSchema.safeParse(clauseVariants);
-  return parsed.success ? parsed.data : null;
+  if (record) {
+    (["balanced", "detailed", "alternative", "protective"] as const).forEach((key) => {
+      if (!getCleanMultilineString(record[key])) {
+        fallbackReasons.push(`Missing ${key} clause variant -> defaulted to recommended clause`);
+      }
+    });
+  }
+
+  return clauseVariants;
 }
 
 function recordFallbackRiskItem(

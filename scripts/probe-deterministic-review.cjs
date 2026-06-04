@@ -52,7 +52,7 @@ const {
   getReportModel
 } = outputModel;
 const { buildPdfReportModel } = pdfModel;
-const { normalizeGapAnalysis } = schema;
+const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
 
 const findings = (severities) =>
   severities.map((severity, index) => ({
@@ -118,6 +118,102 @@ const normalizedGaps = normalizeGapAnalysis([
 normalizedGaps.forEach((gap) => {
   assertEqual(gap.status, "Pending", `Gap status normalization: ${gap.id}`);
 });
+
+const partialGap = normalizeGapAnalysis([
+  {
+    id: "GAP-PARTIAL",
+    title: "Missing audit rights",
+    action: "Must Add",
+    impact: "High"
+  }
+]).items[0];
+
+assertEqual(partialGap.clauseName, "Missing audit rights", "Gap fallback: title aliases clauseName");
+assertEqual(partialGap.category, "General", "Gap fallback: missing category");
+assertEqual(partialGap.aiConfidence, 75, "Gap fallback: missing confidence");
+assertEqual(partialGap.whyThisMatters, "No rationale provided.", "Gap fallback: missing rationale");
+assertEqual(partialGap.suggestedFix, "No suggested fix provided.", "Gap fallback: missing suggested fix");
+assertEqual(partialGap.recommendedClause, "Recommended clause language is not available yet.", "Gap fallback: missing recommended clause");
+assertEqual(partialGap.clauseVariants.balanced, partialGap.recommendedClause, "Gap fallback: balanced variant");
+assertEqual(partialGap.clauseVariants.protective, partialGap.recommendedClause, "Gap fallback: protective variant");
+assertEqual(normalizeGapAnalysis([{ id: "EMPTY-GAP" }]).items.length, 0, "Gap normalization: empty gap drops safely");
+
+const baseRisk = {
+  id: "RISK-1",
+  title: "Broad indemnity exposure",
+  category: "Legal",
+  severity: "High",
+  clauseRef: "Section 8",
+  clauseText: "Supplier must indemnify customer for all losses without limitation.",
+  highlightedText: "indemnify customer for all losses",
+  mitigability: "Medium",
+  confidence: 0.9,
+  whyRisky: "The indemnity obligation is broad and uncapped.",
+  impactIfIgnored: "The business may accept uncapped financial exposure.",
+  suggestedImprovement: "Add reasonable exclusions and a liability cap."
+};
+
+assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-MISSING-CONFIDENCE", confidence: undefined }]).items[0].confidence, 0.75, "Risk confidence: missing defaults");
+assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-PERCENT-CONFIDENCE", confidence: 82 }]).items[0].confidence, 0.82, "Risk confidence: percent normalizes");
+assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-DECIMAL-CONFIDENCE", confidence: 0.82 }]).items[0].confidence, 0.82, "Risk confidence: decimal remains decimal");
+assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-HIGH-CONFIDENCE", confidence: 150 }]).items[0].confidence, 1, "Risk confidence: high clamps");
+assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-LOW-CONFIDENCE", confidence: -10 }]).items[0].confidence, 0, "Risk confidence: low clamps");
+
+const validRisk = normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-VALID" }]).items[0];
+assertEqual(validRisk.whyRisky, baseRisk.whyRisky, "Risk normalization: valid whyRisky remains unchanged");
+assertEqual(validRisk.impactIfIgnored, baseRisk.impactIfIgnored, "Risk normalization: valid impactIfIgnored remains unchanged");
+assertEqual(validRisk.suggestedImprovement, baseRisk.suggestedImprovement, "Risk normalization: valid suggestedImprovement remains unchanged");
+
+const shortSecondaryRisk = normalizeRiskAnalysis([
+  {
+    ...baseRisk,
+    id: "RISK-SHORT-SECONDARY",
+    whyRisky: "short",
+    impactIfIgnored: " brief ",
+    suggestedImprovement: "fix"
+  }
+]).items[0];
+
+assertEqual(shortSecondaryRisk.whyRisky, "Risk rationale was not provided by the analysis.", "Risk fallback: short whyRisky");
+assertEqual(shortSecondaryRisk.impactIfIgnored, "Business impact was not provided by the analysis.", "Risk fallback: short impactIfIgnored");
+assertEqual(shortSecondaryRisk.suggestedImprovement, "Review and revise this clause with legal counsel before approval.", "Risk fallback: short suggestedImprovement");
+
+const partialRisk = normalizeRiskAnalysis([
+  {
+    id: "RISK-PARTIAL",
+    title: "Unclear termination rights",
+    category: "Legal",
+    severity: "Medium",
+    mitigability: "Medium",
+    whyRisky: "The termination language does not describe a clear cure process."
+  }
+]).items[0];
+
+assertEqual(partialRisk.confidence, 0.75, "Risk fallback: partial risk confidence");
+assertEqual(partialRisk.clauseText, "Clause evidence was not provided by the analysis.", "Risk fallback: missing clause evidence");
+assertEqual(partialRisk.impactIfIgnored, "Business impact was not provided by the analysis.", "Risk fallback: missing business impact");
+assertEqual(partialRisk.suggestedImprovement, "Review and revise this clause with legal counsel before approval.", "Risk fallback: missing recommendation");
+assertEqual(normalizeRiskAnalysis([{ id: "EMPTY-RISK", title: "Empty risk" }]).items.length, 0, "Risk normalization: empty risk drops safely");
+
+const legacyAnalysis = ContractAnalysisSchema.parse({
+  contractTitle: "Legacy Agreement",
+  executiveSummary: "This legacy agreement has enough summary detail for validation and review.",
+  overallRiskLevel: "Medium",
+  decisionRecommendation: "Renegotiate",
+  decisionRationale: "The contract should be renegotiated because several terms require review.",
+  riskSummary: {
+    total: 1,
+    high: 1,
+    medium: 0,
+    low: 0,
+    byCategory: { Legal: 1, Financial: 0, Operational: 0, Compliance: 0, Technical: 0 }
+  },
+  topCriticalRisks: ["Broad indemnity exposure"],
+  risks: [baseRisk],
+  nextActions: ["Review the indemnity clause before approval."]
+});
+
+assertEqual(Array.isArray(legacyAnalysis.gapAnalysis ?? []), true, "Legacy analysis: missing gapAnalysis remains backward-compatible");
 
 const acceptedRiskReviewById = {
   "RISK-1": {
@@ -185,6 +281,21 @@ assertEqual(
   pdfDataWithPendingGap.dashboard.statusMessage,
   "Pending decisions remain. Complete review before finalization.",
   "PDF statusMessage: pending gap blocks ready message"
+);
+
+const partialGapPdfData = buildPdfReportModel(
+  getReportModel({ ...normalizedDocument, gapAnalysis: [partialGap] }, acceptedRiskReviewById),
+  {}
+);
+assertEqual(
+  partialGapPdfData.detailedGaps[0].recommendedClause,
+  partialGap.recommendedClause,
+  "PDF gap rendering: fallback recommended clause"
+);
+assertEqual(
+  partialGapPdfData.finalReview.gapRows[0].finalRecommendedClause,
+  partialGap.recommendedClause,
+  "PDF gap final review: fallback recommended clause"
 );
 
 reportModel = getReportModel(normalizedDocument, acceptedRiskReviewById, { "GAP-1": "rejected" });
