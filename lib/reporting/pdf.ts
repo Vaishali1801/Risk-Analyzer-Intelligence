@@ -250,7 +250,12 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
   const kpiGap = 4;
   const kpiWidth = (DASHBOARD_WIDTH - kpiGap * 3) / 4;
   const kpiCards = [
-    { label: "Overall Decision", value: dashboard.finalReviewDecision, color: getDecisionColor(dashboard.finalReviewDecision), fill: COLORS.softAmber },
+    {
+      label: "Overall Decision",
+      value: getCompactDecisionKpiLabel(dashboard.finalReviewDecision),
+      color: getDecisionColor(dashboard.finalReviewDecision),
+      fill: COLORS.softAmber
+    },
     { label: "Overall Risk", value: dashboard.overallRisk ?? "Not available", color: getSeverityColor(dashboard.overallRisk), fill: COLORS.softRed },
     { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy, fill: COLORS.softBlueGrey },
     { label: "Total Gaps", value: String(dashboard.gapSummary.total), color: COLORS.softIndigo, fill: COLORS.softIndigoPanel }
@@ -369,6 +374,10 @@ function drawSectionTitle(doc: jsPDF, title: string, x: number, y: number) {
   doc.text(title, x, y);
 }
 
+function getCompactDecisionKpiLabel(decision: string) {
+  return decision === "Approve with Changes" ? "Approve + Edits" : decision;
+}
+
 function drawMetadataStrip(
   doc: jsPDF,
   x: number,
@@ -417,8 +426,8 @@ function drawKpiCard(
   drawCard(doc, x, y, width, height, fillColor, true);
   const iconX = x + 7.4;
   const iconY = y + height / 2;
-  const textX = x + 13.9;
-  const textWidth = width - 16.4;
+  const textX = x + 12.6;
+  const textWidth = width - 14.8;
   const textCenterX = textX + textWidth / 2;
 
   doc.setFillColor(...hexToRgb(COLORS.white));
