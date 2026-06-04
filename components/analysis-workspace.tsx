@@ -28,7 +28,6 @@ import {
   getSafeSeverityRank,
   getSafeSeverityStyles,
   getSummaryInsight,
-  getUniqueClauseCount,
   normalizeOutputAnalysis,
   type FinalReviewDecision,
   type FinalReviewRow,
@@ -47,7 +46,7 @@ import {
   type RiskReviewStatus,
   type RiskSortKey
 } from "@/components/risk-findings-ui";
-import type { ContractAnalysis, GapAnalysisItem, Severity } from "@/types/contract";
+import type { GapAnalysisItem, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "gaps-recommendations" | "risks" | "final-review";
 type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
@@ -687,7 +686,7 @@ export function AnalysisWorkspace() {
 
   useEffect(() => {
     setIsReviewFinalized(false);
-  }, [reviewByRiskId]);
+  }, [gapReviewById, reviewByRiskId]);
 
   useEffect(() => {
     if (!analysis) return;
@@ -775,9 +774,6 @@ export function AnalysisWorkspace() {
 
   const documentName = documentModel.documentName;
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
-  const flaggedSectionCount = getUniqueClauseCount(documentModel.findings);
-  const totalAnalyzedSectionCount = getTotalAnalyzedSectionCount(analysis);
-  const flaggedSectionsDisplay = formatFlaggedSectionSummary(flaggedSectionCount, totalAnalyzedSectionCount);
   const summaryRiskLevel = getOverallRiskLevel(documentModel.findings, documentModel.overallRiskLevel);
   const summaryInsight = getSummaryInsight(documentModel);
   const executiveSummaryDetails = buildExecutiveSummaryDetails(documentModel, nonZeroCategoryBreakdown);
@@ -790,9 +786,16 @@ export function AnalysisWorkspace() {
   const finalDecisionRows = reportModel.finalReviewRows;
   const finalDecisionCounts = reportModel.finalReviewCounts;
   const pendingCount = finalDecisionCounts.Pending;
-  const finalReviewSummary = buildFinalReviewSummary(reportModel);
+  const pendingGapReviewCount = getPendingGapReviewCount(gapRecommendations, gapReviewById);
+  const canFinalizeReview = reportModel.canFinalize && pendingGapReviewCount === 0;
+  const finalReviewSummary = buildFinalReviewSummary(reportModel, pendingGapReviewCount);
   const finalReviewCountsLine = `${finalDecisionCounts.Revised} Revised \u2022 ${finalDecisionCounts.Accepted} Accepted \u2022 ${finalDecisionCounts.Pending} Pending`;
-  const finalizeReviewTooltip = pendingCount > 0 ? "Resolve pending items before finalizing" : undefined;
+  const finalizeReviewTooltip =
+    pendingCount > 0
+      ? "Resolve pending risk items before finalizing"
+      : pendingGapReviewCount > 0
+        ? "Resolve pending gap items before finalizing"
+        : undefined;
 
   return (
     <main className="min-h-screen">
@@ -889,19 +892,13 @@ export function AnalysisWorkspace() {
                     }
                   />
                   <PrimarySummaryCard
-                    label="Sections Flagged"
+                    label="Risks Identified"
                     tone="secondary"
                     value={
                       <div className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
                         <span className="text-[1.58rem] font-semibold leading-none tabular-nums text-slate-950">
-                          {flaggedSectionsDisplay.flaggedCount}
+                          {documentModel.summary.totalRiskCount}
                         </span>
-                        <span className="text-[0.92rem] font-medium text-slate-700">{flaggedSectionsDisplay.flaggedLabel}</span>
-                        {flaggedSectionsDisplay.totalCount ? (
-                          <span className="text-[0.84rem] font-medium tabular-nums text-slate-500">
-                            / {flaggedSectionsDisplay.totalCount} {flaggedSectionsDisplay.totalLabel}
-                          </span>
-                        ) : null}
                       </div>
                     }
                   />
@@ -1076,7 +1073,7 @@ export function AnalysisWorkspace() {
                     <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{finalReviewSummary.recommendation}</h3>
                     <p className="text-sm font-medium text-slate-500">{finalReviewCountsLine}</p>
                   </div>
-                  {isReviewFinalized ? (
+                  {isReviewFinalized && canFinalizeReview ? (
                     <p className="mt-2 text-sm font-medium text-emerald-700">Review finalized successfully.</p>
                   ) : null}
                 </div>
@@ -1096,7 +1093,7 @@ export function AnalysisWorkspace() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!reportModel.canFinalize}
+                      disabled={!canFinalizeReview}
                       onClick={() => setIsReviewFinalized(true)}
                       className="gap-2"
                     >
@@ -2094,11 +2091,22 @@ function getRiskStoredClauseVariant(risk: NormalizedFinding, lens: RiskReviewLen
   return variantKey ? normalizeReviewText(risk.clauseVariants[variantKey]) : "";
 }
 
-function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>) {
+function getPendingGapReviewCount(gaps: GapAnalysisItem[], reviewById: Record<string, GapReviewDecision>) {
+  return gaps.filter((gap) => getGapFinalReviewDecision(gap as GapRegisterRow, reviewById) === "Pending").length;
+}
+
+function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>, pendingGapReviewCount: number) {
   if (reportModel.finalReviewCounts.Pending > 0) {
     return {
       recommendation: "Hold for Review",
       readiness: "Ready after pending items are resolved."
+    };
+  }
+
+  if (pendingGapReviewCount > 0) {
+    return {
+      recommendation: "Hold for Review",
+      readiness: "Ready after pending gap items are resolved."
     };
   }
 
@@ -2124,26 +2132,4 @@ function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>)
 
 function getPriorityFinding(documentModel: NormalizedDocumentAnalysis) {
   return getPrioritizedFindings(documentModel.findings)[0];
-}
-
-function getTotalAnalyzedSectionCount(_analysis: ContractAnalysis) {
-  return null;
-}
-
-function formatFlaggedSectionSummary(flaggedCount: number, totalCount: number | null) {
-  if (typeof totalCount === "number" && Number.isFinite(totalCount)) {
-    return {
-      flaggedCount: String(flaggedCount),
-      flaggedLabel: "Flagged",
-      totalCount: String(totalCount),
-      totalLabel: "Sections"
-    };
-  }
-
-  return {
-    flaggedCount: String(flaggedCount),
-    flaggedLabel: "Flagged",
-    totalCount: "",
-    totalLabel: ""
-  };
 }

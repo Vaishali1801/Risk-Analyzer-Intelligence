@@ -48,6 +48,121 @@ export const ContractRiskSchema = z.object({
   clauseVariants: OptionalRiskClauseVariantsSchema
 });
 
+type RiskAnalysisNormalizationDiagnostics = {
+  receivedCount: number;
+  normalizedCount: number;
+  fallbackCount: number;
+  droppedCount: number;
+  fallbackReasons: string[];
+  droppedReasons: string[];
+  fallbackItems: { index: number; id: string; reasons: string[]; item: unknown }[];
+  droppedItems: { index: number; reasons: string[]; item: unknown }[];
+};
+
+type RiskAnalysisNormalizationResult = {
+  items: z.infer<typeof ContractRiskSchema>[];
+  diagnostics: RiskAnalysisNormalizationDiagnostics;
+};
+
+export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalizationResult {
+  const diagnostics: RiskAnalysisNormalizationDiagnostics = {
+    receivedCount: Array.isArray(value) ? value.length : 0,
+    normalizedCount: 0,
+    fallbackCount: 0,
+    droppedCount: 0,
+    fallbackReasons: [],
+    droppedReasons: [],
+    fallbackItems: [],
+    droppedItems: []
+  };
+
+  if (!Array.isArray(value)) {
+    return { items: [], diagnostics };
+  }
+
+  const usedIds = new Set<string>();
+  const items = value.reduce<z.infer<typeof ContractRiskSchema>[]>((normalizedItems, item, index) => {
+    const record = getObjectRecord(item);
+    if (!record) {
+      recordDroppedRiskItem(diagnostics, index, item, ["Invalid item shape"]);
+      return normalizedItems;
+    }
+
+    const fallbackReasons: string[] = [];
+    const droppedReasons: string[] = [];
+    const rawId = getCleanString(record.id);
+    const title = getCleanString(record.title);
+    const category = normalizeRiskCategory(record.category, fallbackReasons);
+    const severity = normalizeSeverity(record.severity, fallbackReasons, "Medium");
+    const clauseRef = getCleanString(record.clauseRef) || "Section unknown";
+    const baseClauseText = getCleanMultilineString(record.clauseText);
+    const baseHighlightedText = getCleanString(record.highlightedText);
+    const clauseText = baseClauseText || baseHighlightedText;
+    const highlightedText = baseHighlightedText || buildShortTextFallback(clauseText, 160);
+    const mitigability = normalizeMitigability(record.mitigability, fallbackReasons);
+    const confidence = normalizeRiskConfidence(record.confidence);
+    const whyRisky = getCleanString(record.whyRisky);
+    const impactIfIgnored = getCleanString(record.impactIfIgnored);
+    const suggestedImprovement = getCleanString(record.suggestedImprovement);
+
+    if (!rawId) fallbackReasons.push("Missing id -> generated fallback id");
+    if (!getCleanString(record.clauseRef)) fallbackReasons.push("Missing clauseRef -> defaulted to Section unknown");
+    if (!title || title.length < 4) droppedReasons.push("Missing or short title");
+    if (!clauseText || clauseText.length < 10) droppedReasons.push("Missing or short clauseText/highlightedText");
+    if (!highlightedText || highlightedText.length < 3) droppedReasons.push("Missing or short highlightedText");
+    if (confidence === null) droppedReasons.push("Invalid confidence");
+    if (!whyRisky || whyRisky.length < 10) droppedReasons.push("Missing or short whyRisky");
+    if (!impactIfIgnored || impactIfIgnored.length < 10) droppedReasons.push("Missing or short impactIfIgnored");
+    if (!suggestedImprovement || suggestedImprovement.length < 10) droppedReasons.push("Missing or short suggestedImprovement");
+
+    if (droppedReasons.length) {
+      recordDroppedRiskItem(diagnostics, index, item, droppedReasons);
+      return normalizedItems;
+    }
+
+    const id = getUniqueNormalizedId(rawId, "RISK", usedIds, fallbackReasons);
+    const normalizedItem = {
+      id,
+      title,
+      category,
+      severity,
+      clauseRef,
+      clauseText,
+      highlightedText,
+      mitigability,
+      confidence,
+      whyRisky,
+      impactIfIgnored,
+      suggestedImprovement,
+      clauseVariants: record.clauseVariants
+    };
+    const parsed = ContractRiskSchema.safeParse(normalizedItem);
+
+    if (!parsed.success) {
+      recordDroppedRiskItem(
+        diagnostics,
+        index,
+        item,
+        parsed.error.issues.map((issue) => issue.message)
+      );
+      return normalizedItems;
+    }
+
+    usedIds.add(parsed.data.id);
+    if (fallbackReasons.length) {
+      recordFallbackRiskItem(diagnostics, index, parsed.data.id, item, fallbackReasons);
+    }
+
+    normalizedItems.push(parsed.data);
+    return normalizedItems;
+  }, []);
+
+  diagnostics.normalizedCount = items.length;
+  logRiskAnalysisDiagnostics(diagnostics);
+
+  return { items, diagnostics };
+}
+
 export const GapAnalysisItemSchema = z.object({
   id: z.string().min(1),
   clauseName: z.string().min(1),
@@ -94,6 +209,7 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
     return { items: [], diagnostics };
   }
 
+  const usedIds = new Set<string>();
   const items = value.reduce<z.infer<typeof GapAnalysisItemSchema>[]>((normalizedItems, item, index) => {
     const record = getObjectRecord(item);
     if (!record) {
@@ -102,10 +218,8 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
     }
 
     const fallbackReasons: string[] = [];
-    const id = getCleanString(record.id) || `GAP-${index + 1}`;
-    if (!getCleanString(record.id)) {
-      fallbackReasons.push(`Missing id -> generated ${id}`);
-    }
+    const rawId = getCleanString(record.id);
+    if (!rawId) fallbackReasons.push("Missing id -> generated fallback id");
 
     let clauseName = getCleanString(record.clauseName);
     if (!clauseName) {
@@ -140,6 +254,7 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
 
     const action = normalizeGapAction(record.action, fallbackReasons);
     const impact = normalizeGapImpact(record.impact, fallbackReasons);
+    const id = getUniqueNormalizedId(rawId, "GAP", usedIds, fallbackReasons);
     const normalizedItem = {
       id,
       clauseName,
@@ -165,8 +280,9 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
       return normalizedItems;
     }
 
+    usedIds.add(parsed.data.id);
     if (fallbackReasons.length) {
-      recordFallbackGapItem(diagnostics, index, id, item, fallbackReasons);
+      recordFallbackGapItem(diagnostics, index, parsed.data.id, item, fallbackReasons);
     }
 
     normalizedItems.push(parsed.data);
@@ -183,6 +299,10 @@ const OptionalGapAnalysisSchema = z.preprocess((value) => {
   if (typeof value === "undefined") return undefined;
   return normalizeGapAnalysis(value).items;
 }, z.array(GapAnalysisItemSchema).optional());
+
+const RiskAnalysisSchema = z.preprocess((value) => {
+  return normalizeRiskAnalysis(value).items;
+}, z.array(ContractRiskSchema).min(1).max(30));
 
 function getObjectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -213,6 +333,68 @@ function getNormalizedToken(value: unknown) {
     .trim();
 }
 
+function getUniqueNormalizedId(rawId: string, prefix: "RISK" | "GAP", usedIds: Set<string>, fallbackReasons: string[]) {
+  const normalizedId = rawId.trim();
+  if (normalizedId && !usedIds.has(normalizedId)) return normalizedId;
+
+  if (normalizedId) fallbackReasons.push(`Duplicate id ${normalizedId} -> generated fallback id`);
+
+  let suffix = 1;
+  let fallbackId = `${prefix}-${suffix}`;
+  while (usedIds.has(fallbackId)) {
+    suffix += 1;
+    fallbackId = `${prefix}-${suffix}`;
+  }
+
+  return fallbackId;
+}
+
+function buildShortTextFallback(value: string, maxLength: number) {
+  const normalized = getCleanString(value);
+  return normalized.length > maxLength ? normalized.slice(0, maxLength).trimEnd() : normalized;
+}
+
+function normalizeRiskCategory(value: unknown, fallbackReasons: string[]): z.infer<typeof RiskCategorySchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "legal") return "Legal";
+  if (normalizedValue === "financial" || normalizedValue === "finance") return "Financial";
+  if (normalizedValue === "operational" || normalizedValue === "operations") return "Operational";
+  if (normalizedValue === "compliance") return "Compliance";
+  if (normalizedValue === "technical" || normalizedValue === "technology") return "Technical";
+
+  fallbackReasons.push("Unknown category -> defaulted to Operational");
+  return "Operational";
+}
+
+function normalizeSeverity(value: unknown, fallbackReasons: string[], fallback: z.infer<typeof SeveritySchema>): z.infer<typeof SeveritySchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "high") return "High";
+  if (normalizedValue === "medium") return "Medium";
+  if (normalizedValue === "low") return "Low";
+
+  fallbackReasons.push(`Unknown severity -> defaulted to ${fallback}`);
+  return fallback;
+}
+
+function normalizeMitigability(value: unknown, fallbackReasons: string[]): z.infer<typeof MitigabilitySchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "high") return "High";
+  if (normalizedValue === "medium") return "Medium";
+  if (normalizedValue === "low") return "Low";
+
+  fallbackReasons.push("Unknown mitigability -> defaulted to Medium");
+  return "Medium";
+}
+
+function normalizeRiskConfidence(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) return null;
+
+  const normalized = value > 1 ? value / 100 : value;
+  if (normalized < 0 || normalized > 1) return null;
+
+  return Number(normalized.toFixed(2));
+}
+
 function normalizeGapAction(value: unknown, fallbackReasons: string[]): z.infer<typeof GapAnalysisActionSchema> {
   const normalizedValue = getNormalizedToken(value);
   if (normalizedValue === "must add") return "Must Add";
@@ -224,13 +406,7 @@ function normalizeGapAction(value: unknown, fallbackReasons: string[]): z.infer<
 }
 
 function normalizeGapImpact(value: unknown, fallbackReasons: string[]): z.infer<typeof SeveritySchema> {
-  const normalizedValue = getNormalizedToken(value);
-  if (normalizedValue === "high") return "High";
-  if (normalizedValue === "medium") return "Medium";
-  if (normalizedValue === "low") return "Low";
-
-  fallbackReasons.push("Unknown impact -> defaulted to Medium");
-  return "Medium";
+  return normalizeSeverity(value, fallbackReasons, "Medium");
 }
 
 function normalizeGapAiConfidence(value: unknown) {
@@ -265,6 +441,51 @@ function normalizeGapClauseVariants(value: unknown): z.infer<typeof GapAnalysisC
 
   const parsed = GapAnalysisClauseVariantsSchema.safeParse(clauseVariants);
   return parsed.success ? parsed.data : null;
+}
+
+function recordFallbackRiskItem(
+  diagnostics: RiskAnalysisNormalizationDiagnostics,
+  index: number,
+  id: string,
+  item: unknown,
+  reasons: string[]
+) {
+  diagnostics.fallbackCount += 1;
+  diagnostics.fallbackReasons.push(...reasons);
+  diagnostics.fallbackItems.push({ index, id, reasons, item });
+}
+
+function recordDroppedRiskItem(
+  diagnostics: RiskAnalysisNormalizationDiagnostics,
+  index: number,
+  item: unknown,
+  reasons: string[]
+) {
+  diagnostics.droppedCount += 1;
+  diagnostics.droppedReasons.push(...reasons);
+  diagnostics.droppedItems.push({ index, reasons, item });
+}
+
+function logRiskAnalysisDiagnostics(diagnostics: RiskAnalysisNormalizationDiagnostics) {
+  if (process.env.NODE_ENV !== "development" || typeof window !== "undefined") return;
+  if (!diagnostics.fallbackCount && !diagnostics.droppedCount) return;
+
+  console.warn("[risks] normalization diagnostics", {
+    receivedCount: diagnostics.receivedCount,
+    normalizedCount: diagnostics.normalizedCount,
+    fallbackCount: diagnostics.fallbackCount,
+    droppedCount: diagnostics.droppedCount,
+    fallbackReasons: diagnostics.fallbackReasons,
+    droppedReasons: diagnostics.droppedReasons
+  });
+
+  diagnostics.fallbackItems.forEach((item) => {
+    console.warn("[risks] normalized item with fallback", item);
+  });
+
+  diagnostics.droppedItems.forEach((item) => {
+    console.warn("[risks] dropped item", item);
+  });
 }
 
 function recordFallbackGapItem(
@@ -335,7 +556,7 @@ export const ContractAnalysisSchema = z.object({
   decisionRationale: z.string().min(20),
   riskSummary: RiskSummarySchema,
   topCriticalRisks: z.array(z.string().min(3)).min(1).max(5),
-  risks: z.array(ContractRiskSchema).min(1).max(30),
+  risks: RiskAnalysisSchema,
   gapAnalysis: OptionalGapAnalysisSchema,
   nextActions: z.array(z.string().min(6)).min(1).max(6)
 });

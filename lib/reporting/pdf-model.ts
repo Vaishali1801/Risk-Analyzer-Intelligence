@@ -132,6 +132,7 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
   const counts = getPdfFinalReviewCounts(document.findings, finalReviewRowsByRiskId);
   const gapRows = buildPdfFinalReviewGapRows(reportModel, gapReviewById);
   const gapCounts = getPdfFinalReviewGapCounts(gapRows);
+  const finalReviewDecision = getPdfFinalReviewDecision(reportModel, gapCounts);
 
   return {
     metadata: buildPdfMetadata(reportModel),
@@ -173,7 +174,7 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
       return buildPdfDetailedRisk(finding, reviewRow, index);
     }),
     finalReview: {
-      decision: getTextOrFallback(reportModel.overallDecision, "Hold for Review"),
+      decision: finalReviewDecision,
       counts: {
         revised: counts.Revised,
         accepted: counts.Accepted,
@@ -197,6 +198,11 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
       center: "For internal review and decision support"
     }
   };
+}
+
+function getPdfFinalReviewDecision(reportModel: ReportModel, gapCounts: Record<PdfGapDecision, number>) {
+  if (gapCounts.Pending > 0) return "Hold for Review";
+  return getTextOrFallback(reportModel.overallDecision, "Hold for Review");
 }
 
 function buildPdfMetadata(reportModel: ReportModel): PdfMetadata {
