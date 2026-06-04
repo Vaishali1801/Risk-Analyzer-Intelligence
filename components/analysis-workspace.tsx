@@ -18,6 +18,7 @@ import {
   buildTopCriticalRiskItems,
   createInitialReviewByRiskId,
   getEffectiveReviewStatus,
+  getFinalReviewDecision,
   getPrioritizedFindings,
   getReportModel,
   getReviewState,
@@ -30,6 +31,7 @@ import {
   normalizeOutputAnalysis,
   type FinalReviewDecision,
   type FinalReviewRow,
+  type FinalGapReviewCounts,
   type NormalizedDocumentAnalysis,
   type NormalizedFinding,
   type ReviewByRiskId,
@@ -785,9 +787,11 @@ export function AnalysisWorkspace() {
   const finalDecisionRows = reportModel.finalReviewRows;
   const finalDecisionCounts = reportModel.finalReviewCounts;
   const pendingCount = finalDecisionCounts.Pending;
-  const pendingGapReviewCount = getPendingGapReviewCount(gapRecommendations, gapReviewById);
+  const gapFinalReviewCounts = getGapFinalReviewCounts(gapRecommendations, gapReviewById);
+  const pendingGapReviewCount = gapFinalReviewCounts.Pending;
   const canFinalizeReview = reportModel.canFinalize && pendingGapReviewCount === 0;
-  const finalReviewSummary = buildFinalReviewSummary(reportModel, pendingGapReviewCount);
+  const finalReviewDecision = getFinalReviewDecision(finalDecisionCounts, gapFinalReviewCounts);
+  const finalReviewSummary = buildFinalReviewSummary(finalReviewDecision);
   const finalReviewCountsLine = `${finalDecisionCounts.Revised} Revised \u2022 ${finalDecisionCounts.Accepted} Accepted \u2022 ${finalDecisionCounts.Pending} Pending`;
   const finalizeReviewTooltip =
     pendingCount > 0
@@ -2090,33 +2094,25 @@ function getRiskStoredClauseVariant(risk: NormalizedFinding, lens: RiskReviewLen
   return variantKey ? normalizeReviewText(risk.clauseVariants[variantKey]) : "";
 }
 
-function getPendingGapReviewCount(gaps: GapAnalysisItem[], reviewById: Record<string, GapReviewDecision>) {
-  return gaps.filter((gap) => getGapFinalReviewDecision(gap as GapRegisterRow, reviewById) === "Pending").length;
+function getGapFinalReviewCounts(gaps: GapAnalysisItem[], reviewById: Record<string, GapReviewDecision>): FinalGapReviewCounts {
+  return gaps.reduce<FinalGapReviewCounts>(
+    (counts, gap) => {
+      counts[getGapFinalReviewDecision(gap as GapRegisterRow, reviewById)] += 1;
+      return counts;
+    },
+    { Accepted: 0, Rejected: 0, Pending: 0 }
+  );
 }
 
-function buildFinalReviewSummary(reportModel: ReturnType<typeof getReportModel>, pendingGapReviewCount: number) {
-  if (reportModel.finalReviewCounts.Pending > 0) {
+function buildFinalReviewSummary(finalReviewDecision: ReturnType<typeof getFinalReviewDecision>) {
+  if (finalReviewDecision === "Hold for Review") {
     return {
       recommendation: "Hold for Review",
       readiness: "Ready after pending items are resolved."
     };
   }
 
-  if (pendingGapReviewCount > 0) {
-    return {
-      recommendation: "Hold for Review",
-      readiness: "Ready after pending gap items are resolved."
-    };
-  }
-
-  if (reportModel.overallDecision === "Reject") {
-    return {
-      recommendation: "Reject",
-      readiness: "Ready to finalize rejection recommendation."
-    };
-  }
-
-  if (reportModel.overallDecision === "Approve with Changes") {
+  if (finalReviewDecision === "Approve with Changes") {
     return {
       recommendation: "Approve with Changes",
       readiness: "Ready to finalize with revised clause positions."

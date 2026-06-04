@@ -1,4 +1,5 @@
-import type { FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
+import { getFinalReviewDecision } from "@/lib/output-model";
+import type { FinalGapReviewCounts, FinalReviewDecision, FinalReviewRow, NormalizedFinding, ReportModel } from "@/lib/output-model";
 import type { AnalysisSource } from "@/types/contract";
 
 export type PdfSeverity = "High" | "Medium" | "Low" | null;
@@ -26,7 +27,7 @@ export type PdfMetadata = {
 };
 
 export type PdfDashboard = {
-  overallDecision: string;
+  finalReviewDecision: string;
   overallRisk: string | null;
   totalRisks: number;
   criticalRisks: number;
@@ -132,12 +133,12 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
   const counts = getPdfFinalReviewCounts(document.findings, finalReviewRowsByRiskId);
   const gapRows = buildPdfFinalReviewGapRows(reportModel, gapReviewById);
   const gapCounts = getPdfFinalReviewGapCounts(gapRows);
-  const finalReviewDecision = getPdfFinalReviewDecision(reportModel, gapCounts);
+  const finalReviewDecision = getFinalReviewDecision(counts, gapCounts);
 
   return {
     metadata: buildPdfMetadata(reportModel),
     dashboard: {
-      overallDecision: getTextOrFallback(reportModel.overallDecision, "Hold for Review"),
+      finalReviewDecision,
       overallRisk: getPdfSeverity(document.overallRiskLevel),
       totalRisks,
       criticalRisks: document.summary.severityMix.High,
@@ -200,11 +201,6 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
   };
 }
 
-function getPdfFinalReviewDecision(reportModel: ReportModel, gapCounts: Record<PdfGapDecision, number>) {
-  if (gapCounts.Pending > 0) return "Hold for Review";
-  return getTextOrFallback(reportModel.overallDecision, "Hold for Review");
-}
-
 function buildPdfMetadata(reportModel: ReportModel): PdfMetadata {
   const document = reportModel.document;
   const isDemoReport = document.sourceType === "demo";
@@ -228,7 +224,7 @@ function buildPdfFinalReviewGapRows(reportModel: ReportModel, gapReviewById: Pdf
 }
 
 function getPdfFinalReviewGapCounts(rows: PdfFinalReviewGapRow[]) {
-  return rows.reduce<Record<PdfGapDecision, number>>(
+  return rows.reduce<FinalGapReviewCounts>(
     (counts, row) => {
       counts[row.decision] += 1;
       return counts;

@@ -4,7 +4,9 @@ import type { AnalysisSource, ContractAnalysis, DecisionRecommendation, GapAnaly
 
 export type ReviewStatus = "pending" | "needs_change" | "accepted";
 export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
-export type FinalOverallDecision = "Hold for Review" | "Reject" | "Approve with Changes" | "Approve";
+export type FinalGapReviewDecision = "Accepted" | "Rejected" | "Pending";
+export type FinalGapReviewCounts = Record<FinalGapReviewDecision, number>;
+export type FinalOverallDecision = "Hold for Review" | "Approve with Changes" | "Approve";
 export type SafeRiskCategory = RiskCategory | "Uncategorized";
 export type SafeSeverity = Severity | "Unknown";
 export type RiskClauseVariantKey = "balanced" | "protective" | "standard";
@@ -90,7 +92,6 @@ export type ReportModel = {
   reviewStatusCounts: ReviewStatusCounts;
   finalReviewRows: FinalReviewRow[];
   finalReviewCounts: FinalReviewCounts;
-  overallDecision: FinalOverallDecision;
   canFinalize: boolean;
 };
 
@@ -373,13 +374,12 @@ export function getFinalReviewCounts(rows: FinalReviewRow[]): FinalReviewCounts 
   );
 }
 
-export function getOverallDecision(
-  document: Pick<NormalizedDocumentAnalysis, "overallDecision">,
-  finalReviewCounts: FinalReviewCounts
+export function getFinalReviewDecision(
+  finalReviewCounts: FinalReviewCounts,
+  gapReviewCounts: FinalGapReviewCounts = { Accepted: 0, Rejected: 0, Pending: 0 }
 ): FinalOverallDecision {
-  if (finalReviewCounts.Pending > 0) return "Hold for Review";
-  if (document.overallDecision === "Reject") return "Reject";
-  if (finalReviewCounts.Revised > 0 || document.overallDecision === "Renegotiate") return "Approve with Changes";
+  if (finalReviewCounts.Pending > 0 || gapReviewCounts.Pending > 0) return "Hold for Review";
+  if (finalReviewCounts.Revised > 0 || gapReviewCounts.Accepted > 0) return "Approve with Changes";
   return "Approve";
 }
 
@@ -400,7 +400,6 @@ export function getReportModel(
     reviewStatusCounts: getReviewStatusCounts(reviewByRiskId),
     finalReviewRows,
     finalReviewCounts,
-    overallDecision: getOverallDecision(document, finalReviewCounts),
     canFinalize: canFinalizeReview(finalReviewCounts)
   };
 }

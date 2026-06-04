@@ -250,7 +250,7 @@ function drawExecutiveDashboardPage(doc: jsPDF, pdfData: PdfReportModel) {
   const kpiGap = 4;
   const kpiWidth = (DASHBOARD_WIDTH - kpiGap * 3) / 4;
   const kpiCards = [
-    { label: "Overall Decision", value: dashboard.overallDecision, color: getDecisionColor(dashboard.overallDecision), fill: COLORS.softAmber },
+    { label: "Overall Decision", value: dashboard.finalReviewDecision, color: getDecisionColor(dashboard.finalReviewDecision), fill: COLORS.softAmber },
     { label: "Overall Risk", value: dashboard.overallRisk ?? "Not available", color: getSeverityColor(dashboard.overallRisk), fill: COLORS.softRed },
     { label: "Total Risks", value: String(dashboard.totalRisks), color: COLORS.navy, fill: COLORS.softBlueGrey },
     { label: "Total Gaps", value: String(dashboard.gapSummary.total), color: COLORS.softIndigo, fill: COLORS.softIndigoPanel }
@@ -1388,7 +1388,7 @@ function drawRecommendedDecisionHero(
   const counts = finalReview.counts;
   const gapCounts = finalReview.gapCounts;
   const color = getDecisionColor(decision);
-  const isHold = decision === "Hold for Review" || decision === "Reject";
+  const isHold = decision === "Hold for Review";
   const fill = isHold ? COLORS.softAmber : decision === "Approve" ? COLORS.softGreen : COLORS.lightBluePanel;
   const height = 17.5;
   const x = DASHBOARD_MARGIN;
