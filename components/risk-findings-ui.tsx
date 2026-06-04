@@ -884,7 +884,7 @@ function StatusBadge({ status }: { status: RiskReviewStatus }) {
   const Icon = getRiskStatusIcon(status);
 
   return (
-    <Badge className={cn(compactBadgeClassName, riskReviewStatusStyles[status])} title={status}>
+    <Badge className={cn(compactBadgeClassName, "inline-flex shrink-0 items-center whitespace-nowrap", riskReviewStatusStyles[status])} title={status}>
       <Icon className="h-3 w-3 opacity-80" />
       {label}
     </Badge>
