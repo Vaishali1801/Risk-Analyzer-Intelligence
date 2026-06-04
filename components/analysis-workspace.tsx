@@ -18,7 +18,6 @@ import {
   buildTopCriticalRiskItems,
   createInitialReviewByRiskId,
   getEffectiveReviewStatus,
-  getOverallRiskLevel,
   getPrioritizedFindings,
   getReportModel,
   getReviewState,
@@ -774,7 +773,7 @@ export function AnalysisWorkspace() {
 
   const documentName = documentModel.documentName;
   const nonZeroCategoryBreakdown = categoryBreakdown.filter((item) => item.count > 0);
-  const summaryRiskLevel = getOverallRiskLevel(documentModel.findings, documentModel.overallRiskLevel);
+  const summaryRiskLevel = documentModel.overallRiskLevel;
   const summaryInsight = getSummaryInsight(documentModel);
   const executiveSummaryDetails = buildExecutiveSummaryDetails(documentModel, nonZeroCategoryBreakdown);
   const riskMixSummary = buildRiskMixSummary(nonZeroCategoryBreakdown);

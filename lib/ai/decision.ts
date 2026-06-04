@@ -88,6 +88,7 @@ export function applyDecisionLogic(analysis: ContractAnalysis): ContractAnalysis
   return {
     ...analysis,
     riskSummary,
+    // Kept for schema/raw-analysis compatibility; displayed UI/PDF Risk Level is recalculated in lib/output-model.ts.
     overallRiskLevel: decision.overallRiskLevel,
     decisionRecommendation: decision.decisionRecommendation,
     decisionRationale: decision.decisionRationale,

@@ -229,12 +229,20 @@ export function getPrioritizedFindings(findings: NormalizedFinding[]) {
 
 export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: unknown): Severity {
   const severityMix = getSeverityMix(findings);
-  if (severityMix.High > 0) return "High";
-  if (severityMix.Medium > 0) return "Medium";
-  if (severityMix.Low > 0) return "Low";
+  const totalRisks = severityMix.High + severityMix.Medium + severityMix.Low;
 
-  const safeFallback = getSafeSeverity(fallback);
-  return safeFallback === "Unknown" ? "Low" : safeFallback;
+  if (totalRisks <= 0) {
+    const safeFallback = getSafeSeverity(fallback);
+    return safeFallback === "Unknown" ? "Low" : safeFallback;
+  }
+
+  const weightedAverage = (5 * severityMix.High + 3 * severityMix.Medium + severityMix.Low) / totalRisks;
+  const highRiskPercentage = severityMix.High / totalRisks;
+
+  if (weightedAverage >= 3.8) return "High";
+  if (totalRisks >= 2 && highRiskPercentage >= 0.4) return "High";
+  if (weightedAverage >= 2.2) return "Medium";
+  return "Low";
 }
 
 export function getSafeSeverity(severity: unknown): SafeSeverity {
