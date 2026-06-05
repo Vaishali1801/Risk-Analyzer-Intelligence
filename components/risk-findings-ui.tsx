@@ -254,7 +254,10 @@ export function RiskFindingsTable({
                   <div
                     key={risk.riskId}
                     id={`risk-row-${risk.riskId}`}
-                    onClick={() => onReviewRisk(risk)}
+                    onClick={(event) => {
+                      event.currentTarget.focus();
+                      onReviewRisk(risk);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
@@ -299,6 +302,7 @@ export function RiskFindingsTable({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
+                          event.currentTarget.focus();
                           onReviewRisk(risk);
                         }}
                         className="font-semibold text-slate-700 transition hover:text-slate-950"
@@ -309,6 +313,7 @@ export function RiskFindingsTable({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
+                          event.currentTarget.focus();
                           onAskAi(risk);
                         }}
                         onKeyDown={(event) => {
@@ -406,7 +411,10 @@ export function RiskFindingsTable({
                       <tr
                         key={risk.riskId}
                         id={`risk-row-${risk.riskId}`}
-                        onClick={() => onReviewRisk(risk)}
+                        onClick={(event) => {
+                          event.currentTarget.focus();
+                          onReviewRisk(risk);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
                           event.preventDefault();
@@ -467,6 +475,7 @@ export function RiskFindingsTable({
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                event.currentTarget.focus();
                                 onReviewRisk(risk);
                               }}
                               className="inline-flex min-h-0 items-center justify-center rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
@@ -477,6 +486,7 @@ export function RiskFindingsTable({
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
+                                event.currentTarget.focus();
                                 onAskAi(risk);
                               }}
                               className="inline-flex min-h-0 items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
@@ -524,6 +534,10 @@ export function RiskDecisionPanel({
 }: RiskDecisionPanelProps) {
   const askAiRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
   const [isClauseExpanded, setIsClauseExpanded] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "done">("idle");
   const fullClauseText = risk ? normalizePanelText(risk.fullClauseText) : "";
@@ -544,24 +558,44 @@ export function RiskDecisionPanel({
   }, [risk]);
 
   useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
     if (!open) return;
 
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key === "Tab") {
+        trapFocusInElement(event, panelRef.current);
       }
     };
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      (closeButtonRef.current ?? panelRef.current)?.focus({ preventScroll: true });
+    });
 
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) {
+        window.requestAnimationFrame(() => previousFocus.focus({ preventScroll: true }));
+      }
     };
-  }, [onClose, open]);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !risk) return;
@@ -597,10 +631,12 @@ export function RiskDecisionPanel({
       />
 
       <aside
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${risk.riskTitle} review panel`}
         aria-hidden={!open}
+        tabIndex={-1}
         className={cn(
           "absolute inset-y-0 right-0 h-full w-full max-w-full border-l border-slate-200 bg-white shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out sm:max-w-[44rem] lg:max-w-[52vw]",
           open ? "translate-x-0" : "translate-x-full"
@@ -629,7 +665,7 @@ export function RiskDecisionPanel({
               </div>
             </div>
 
-            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
+            <Button ref={closeButtonRef} type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -877,6 +913,37 @@ function HeaderFilter({
       </div>
     </div>
   );
+}
+
+function trapFocusInElement(event: KeyboardEvent, container: HTMLElement | null) {
+  if (!container) return;
+
+  const focusableElements = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0);
+
+  if (!focusableElements.length) {
+    event.preventDefault();
+    container.focus({ preventScroll: true });
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  const activeElement = document.activeElement;
+
+  if (event.shiftKey && activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus({ preventScroll: true });
+    return;
+  }
+
+  if (!event.shiftKey && activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus({ preventScroll: true });
+  }
 }
 
 function StatusBadge({ status }: { status: RiskReviewStatus }) {

@@ -81,6 +81,12 @@ const gapAskAiOptions: { key: GapAskAiVariantKey; label: string }[] = [
   { key: "protective", label: "More Protective" }
 ];
 
+type ActiveAskAiRequest = {
+  sessionKey: string | null;
+  riskId: string;
+  lens: RiskReviewLens;
+};
+
 const SECTION_OFFSET_PADDING_PX = 16;
 const SECTION_ACTIVE_TOLERANCE_PX = 12;
 const SECTION_NAVIGATION_SETTLE_DELAY_MS = 450;
@@ -109,7 +115,7 @@ export function AnalysisWorkspace() {
   const [sortKey, setSortKey] = useState<RiskSortKey>("severity-desc");
   const [selectedRiskId, setSelectedRiskId] = useState("");
   const [reviewLens, setReviewLens] = useState<RiskReviewLens | null>(null);
-  const [activeAskAiLens, setActiveAskAiLens] = useState<RiskReviewLens | null>(null);
+  const [activeAskAiRequest, setActiveAskAiRequest] = useState<ActiveAskAiRequest | null>(null);
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
@@ -138,12 +144,21 @@ export function AnalysisWorkspace() {
   const initialHashHandledRef = useRef(false);
   const reviewSessionKeyRef = useRef<string | null>(null);
   const gapReviewSessionKeyRef = useRef<string | null>(null);
+  const interactionSessionKeyRef = useRef<string | null>(null);
   const expandedFinalReviewSessionKeyRef = useRef<string | null>(null);
+  const activeAskAiRequestRef = useRef<ActiveAskAiRequest | null>(null);
+  const currentReviewSessionKeyRef = useRef<string | null>(null);
+  const currentRiskIdsRef = useRef<Set<string>>(new Set());
 
   const clearPendingNavigationTimeout = () => {
     if (settleTimeoutRef.current === null) return;
     window.clearTimeout(settleTimeoutRef.current);
     settleTimeoutRef.current = null;
+  };
+
+  const clearActiveAskAiRequest = () => {
+    activeAskAiRequestRef.current = null;
+    setActiveAskAiRequest(null);
   };
 
   const getSectionIdFromHash = (hash: string) => {
@@ -288,6 +303,9 @@ export function AnalysisWorkspace() {
     setStatusFilter("All");
     setSelectedRiskId(riskId);
     setReviewLens(null);
+    if (activeAskAiRequestRef.current?.riskId !== riskId) {
+      clearActiveAskAiRequest();
+    }
     setPanelFocusTarget("summary");
     setIsDecisionPanelOpen(true);
 
@@ -308,6 +326,9 @@ export function AnalysisWorkspace() {
   const openRiskPanel = (riskId: string, options?: { focusTarget?: RiskPanelFocusTarget }) => {
     setSelectedRiskId(riskId);
     setReviewLens(null);
+    if (activeAskAiRequestRef.current?.riskId !== riskId) {
+      clearActiveAskAiRequest();
+    }
     setPanelFocusTarget(options?.focusTarget ?? "summary");
     setIsDecisionPanelOpen(true);
   };
@@ -388,7 +409,7 @@ export function AnalysisWorkspace() {
   };
 
   const applyReviewLens = async (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
-    if (activeAskAiLens) return;
+    if (activeAskAiRequestRef.current?.riskId === risk.riskId) return;
 
     const storedVariant = getRiskStoredClauseVariant(risk, nextLens);
     if (storedVariant) {
@@ -397,8 +418,27 @@ export function AnalysisWorkspace() {
       return;
     }
 
+    const request = {
+      sessionKey: reviewSessionKey,
+      riskId: risk.riskId,
+      lens: nextLens
+    };
+    const isCurrentRequest = () => {
+      const activeRequest = activeAskAiRequestRef.current;
+      if (!activeRequest) return false;
+
+      return (
+        activeRequest.sessionKey === request.sessionKey &&
+        activeRequest.riskId === request.riskId &&
+        activeRequest.lens === request.lens &&
+        currentReviewSessionKeyRef.current === request.sessionKey &&
+        currentRiskIdsRef.current.has(request.riskId)
+      );
+    };
+
     setReviewLens(nextLens);
-    setActiveAskAiLens(nextLens);
+    activeAskAiRequestRef.current = request;
+    setActiveAskAiRequest(request);
 
     try {
       const currentReview = getReviewState(effectiveReviewByRiskId, risk);
@@ -425,16 +465,19 @@ export function AnalysisWorkspace() {
       const fallbackOutput = aiOutput ? "" : normalizeReviewText(buildClauseAction(nextLens, risk));
       const nextDraft = aiOutput || fallbackOutput;
 
-      if (nextDraft) {
+      if (nextDraft && isCurrentRequest()) {
         updateRiskDraft(risk.riskId, nextDraft);
       }
     } catch {
       const fallbackOutput = normalizeReviewText(buildClauseAction(nextLens, risk));
-      if (fallbackOutput) {
+      if (fallbackOutput && isCurrentRequest()) {
         updateRiskDraft(risk.riskId, fallbackOutput);
       }
     } finally {
-      setActiveAskAiLens(null);
+      if (isCurrentRequest()) {
+        activeAskAiRequestRef.current = null;
+        setActiveAskAiRequest(null);
+      }
     }
   };
 
@@ -501,10 +544,13 @@ export function AnalysisWorkspace() {
     const scopedReviewByRiskId = reviewSessionKey && reviewSessionKeyRef.current === reviewSessionKey ? reviewByRiskId : {};
     return createInitialReviewByRiskId(documentModel.findings, scopedReviewByRiskId);
   }, [documentModel, reviewByRiskId, reviewSessionKey]);
+  const effectiveGapReviewById = useMemo(() => {
+    return reviewSessionKey && gapReviewSessionKeyRef.current === reviewSessionKey ? gapReviewById : {};
+  }, [gapReviewById, reviewSessionKey]);
   const reportModel = useMemo(() => {
     if (!documentModel) return null;
-    return getReportModel(documentModel, effectiveReviewByRiskId, gapReviewById);
-  }, [documentModel, effectiveReviewByRiskId, gapReviewById]);
+    return getReportModel(documentModel, effectiveReviewByRiskId, effectiveGapReviewById);
+  }, [documentModel, effectiveGapReviewById, effectiveReviewByRiskId]);
 
   useLayoutEffect(() => {
     if (!analysis || initialHashHandledRef.current) return;
@@ -613,6 +659,11 @@ export function AnalysisWorkspace() {
   }, [gapRecommendations, selectedGapId]);
 
   useEffect(() => {
+    currentReviewSessionKeyRef.current = reviewSessionKey;
+    currentRiskIdsRef.current = new Set(documentModel?.findings.map((risk) => risk.riskId) ?? []);
+  }, [documentModel, reviewSessionKey]);
+
+  useEffect(() => {
     if (!firstAvailableGapAction || gapRecommendationCounts[activeGapAction] > 0) return;
 
     setActiveGapAction(firstAvailableGapAction);
@@ -629,6 +680,24 @@ export function AnalysisWorkspace() {
 
     gapReviewSessionKeyRef.current = reviewSessionKey;
     setGapReviewById((current) => (Object.keys(current).length ? {} : current));
+  }, [reviewSessionKey]);
+
+  useEffect(() => {
+    if (!reviewSessionKey) {
+      interactionSessionKeyRef.current = null;
+    } else if (interactionSessionKeyRef.current === reviewSessionKey) {
+      return;
+    } else {
+      interactionSessionKeyRef.current = reviewSessionKey;
+    }
+
+    setSelectedRiskId("");
+    setSelectedGapId("");
+    setIsDecisionPanelOpen(false);
+    setReviewLens(null);
+    setPanelFocusTarget("summary");
+    activeAskAiRequestRef.current = null;
+    setActiveAskAiRequest(null);
   }, [reviewSessionKey]);
 
   useEffect(() => {
@@ -680,10 +749,16 @@ export function AnalysisWorkspace() {
   useEffect(() => {
     if (filteredRisks.length > 0) return;
     setIsDecisionPanelOpen(false);
+    activeAskAiRequestRef.current = null;
+    setActiveAskAiRequest(null);
   }, [filteredRisks.length]);
 
   useEffect(() => {
     setReviewLens(null);
+    if (activeAskAiRequestRef.current && activeAskAiRequestRef.current.riskId !== selectedRisk?.riskId) {
+      activeAskAiRequestRef.current = null;
+      setActiveAskAiRequest(null);
+    }
   }, [selectedRisk?.riskId]);
 
   useEffect(() => {
@@ -785,6 +860,10 @@ export function AnalysisWorkspace() {
   const selectedReview = selectedRisk ? getReviewState(effectiveReviewByRiskId, selectedRisk) : undefined;
   const selectedReviewStatus = selectedReview ? getEffectiveReviewStatus(selectedReview) : RISK_REVIEW_STATUSES[0];
   const selectedRiskDraft = getReviewDraftValue(selectedReview?.currentDraft);
+  const selectedRiskActiveAskAiLens =
+    selectedRisk && activeAskAiRequest?.sessionKey === reviewSessionKey && activeAskAiRequest.riskId === selectedRisk.riskId
+      ? activeAskAiRequest.lens
+      : null;
   const finalDecisionRows = reportModel.finalReviewRows;
   const finalDecisionCounts = reportModel.finalReviewCounts;
   const pendingCount = finalDecisionCounts.Pending;
@@ -835,7 +914,7 @@ export function AnalysisWorkspace() {
                   type="button"
                   variant="default"
                   size="sm"
-                  onClick={() => downloadReportPdf(reportModel, gapReviewById)}
+                  onClick={() => downloadReportPdf(reportModel, effectiveGapReviewById)}
                   className="h-8.5 bg-white px-3 text-[#071B3A] shadow-sm hover:bg-blue-50"
                 >
                   View Report
@@ -1030,7 +1109,7 @@ export function AnalysisWorkspace() {
                     ))}
                   </div>
 
-                  <GapRegisterTable gaps={activeGapClauses} reviewById={gapReviewById} onOpenGap={(gap) => setSelectedGapId(gap.id)} />
+                  <GapRegisterTable gaps={activeGapClauses} reviewById={effectiveGapReviewById} onOpenGap={(gap) => setSelectedGapId(gap.id)} />
                 </>
               ) : (
                 <GapRecommendationsEmptyState />
@@ -1087,7 +1166,7 @@ export function AnalysisWorkspace() {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => downloadReportPdf(reportModel, gapReviewById)}
+                    onClick={() => downloadReportPdf(reportModel, effectiveGapReviewById)}
                     className="gap-2"
                   >
                     <Download className="h-4 w-4" />
@@ -1119,7 +1198,7 @@ export function AnalysisWorkspace() {
                   {gapRecommendations.length ? (
                     <GapFinalReviewTable
                       gaps={gapRecommendations}
-                      reviewById={gapReviewById}
+                      reviewById={effectiveGapReviewById}
                       expandedGapId={expandedFinalReviewGapId}
                       onToggleGap={(gapId) => setExpandedFinalReviewGapId((current) => (current === gapId ? null : gapId))}
                     />
@@ -1222,11 +1301,14 @@ export function AnalysisWorkspace() {
         risk={selectedRisk}
         status={selectedReviewStatus}
         reviewLens={reviewLens}
-        activeAskAiLens={activeAskAiLens}
+        activeAskAiLens={selectedRiskActiveAskAiLens}
         draftText={selectedRiskDraft}
         isRecommendationSaved={Boolean(selectedReview?.savedRecommendation && selectedReview.savedRecommendation === selectedRiskDraft)}
         focusTarget={panelFocusTarget}
-        onClose={() => setIsDecisionPanelOpen(false)}
+        onClose={() => {
+          setIsDecisionPanelOpen(false);
+          clearActiveAskAiRequest();
+        }}
         onReviewLensChange={(value) => {
           if (!selectedRisk) return;
           applyReviewLens(selectedRisk, value);
@@ -1256,7 +1338,7 @@ export function AnalysisWorkspace() {
       <GapReviewPanel
         open={Boolean(selectedGap)}
         gap={selectedGap}
-        reviewDecision={selectedGap ? gapReviewById[selectedGap.id] : undefined}
+        reviewDecision={selectedGap ? effectiveGapReviewById[selectedGap.id] : undefined}
         onClose={() => setSelectedGapId("")}
         onAccept={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "accepted" }))}
         onReject={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "rejected" }))}
@@ -1527,7 +1609,10 @@ function GapRegisterTable({
               return (
                 <tr
                   key={gap.id}
-                  onClick={() => onOpenGap(gap)}
+                  onClick={(event) => {
+                    event.currentTarget.focus();
+                    onOpenGap(gap);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return;
                     event.preventDefault();
@@ -1566,6 +1651,7 @@ function GapRegisterTable({
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
+                          event.currentTarget.focus();
                           onOpenGap(gap);
                         }}
                         className="inline-flex min-h-0 items-center justify-center rounded-full border border-slate-200 bg-white px-2 py-1 text-[0.75rem] font-semibold leading-none text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-950"
@@ -1600,6 +1686,37 @@ function GapStatusBadge({ status }: { status: string }) {
   );
 }
 
+function trapFocusInElement(event: KeyboardEvent, container: HTMLElement | null) {
+  if (!container) return;
+
+  const focusableElements = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => !element.hasAttribute("disabled") && element.getClientRects().length > 0);
+
+  if (!focusableElements.length) {
+    event.preventDefault();
+    container.focus({ preventScroll: true });
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  const activeElement = document.activeElement;
+
+  if (event.shiftKey && activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus({ preventScroll: true });
+    return;
+  }
+
+  if (!event.shiftKey && activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus({ preventScroll: true });
+  }
+}
+
 function GapReviewPanel({
   open,
   gap,
@@ -1617,6 +1734,10 @@ function GapReviewPanel({
 }) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const askAiRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
   const [activeVariant, setActiveVariant] = useState<GapAskAiVariantKey | null>(null);
   const [variantMessage, setVariantMessage] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "done">("idle");
@@ -1629,24 +1750,44 @@ function GapReviewPanel({
   const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
 
   useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
     if (!open) return;
 
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key === "Tab") {
+        trapFocusInElement(event, panelRef.current);
       }
     };
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      (closeButtonRef.current ?? panelRef.current)?.focus({ preventScroll: true });
+    });
 
     window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) {
+        window.requestAnimationFrame(() => previousFocus.focus({ preventScroll: true }));
+      }
     };
-  }, [onClose, open]);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !gap) return;
@@ -1671,10 +1812,12 @@ function GapReviewPanel({
       />
 
       <aside
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${gap.clauseName} gap review panel`}
         aria-hidden={!open}
+        tabIndex={-1}
         className={cn(
           "absolute inset-y-0 right-0 h-full w-full max-w-full border-l border-slate-200 bg-white shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out sm:max-w-[44rem] lg:max-w-[52vw]",
           open ? "translate-x-0" : "translate-x-full"
@@ -1699,7 +1842,7 @@ function GapReviewPanel({
               </div>
             </div>
 
-            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
+            <Button ref={closeButtonRef} type="button" variant="ghost" size="sm" onClick={onClose} className="shrink-0 rounded-full">
               <X className="h-4 w-4" />
             </Button>
           </div>

@@ -342,6 +342,7 @@ export function getFinalReviewRows(
     }
 
     if (review.status === "needs_change" && savedClause) {
+      // "Needs Change" is the interactive workflow state; "Revised" is the final review/reporting label for saved recommendations.
       return {
         finding,
         decision: "Revised",
