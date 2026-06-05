@@ -19,7 +19,7 @@ export const RiskClauseVariantsSchema = z.object({
 });
 
 const DEFAULT_RISK_CONFIDENCE = 0.75;
-const DEFAULT_GAP_AI_CONFIDENCE = 75;
+const DEFAULT_GAP_AI_CONFIDENCE = 0.75;
 const DEFAULT_RISK_CLAUSE_TEXT = "Clause evidence was not provided by the analysis.";
 const DEFAULT_RISK_RATIONALE = "Risk rationale was not provided by the analysis.";
 const DEFAULT_RISK_BUSINESS_IMPACT = "Business impact was not provided by the analysis.";
@@ -186,7 +186,7 @@ export const GapAnalysisItemSchema = z.object({
   category: z.string().min(1),
   action: GapAnalysisActionSchema,
   impact: SeveritySchema,
-  aiConfidence: z.number().min(0).max(100),
+  aiConfidence: z.number().min(0).max(1),
   status: GapAnalysisStatusSchema,
   whyThisMatters: z.string().min(1),
   suggestedFix: z.string().min(1),
@@ -417,7 +417,7 @@ function normalizeRiskConfidence(value: unknown, fallbackReasons: string[]) {
   }
 
   if (value > 100) {
-    fallbackReasons.push("Confidence above range -> clamped to 100%");
+    fallbackReasons.push("Confidence above range -> clamped to 1.0 (100% display)");
     return 1;
   }
 
@@ -451,13 +451,12 @@ function normalizeGapAiConfidence(value: unknown, fallbackReasons: string[]) {
   }
 
   if (value > 100) {
-    fallbackReasons.push("aiConfidence above range -> clamped to 100%");
-    return 100;
+    fallbackReasons.push("aiConfidence above range -> clamped to 1.0 (100% display)");
+    return 1;
   }
 
-  const percent = value <= 1 ? value * 100 : value;
-
-  return Math.round(percent);
+  const normalized = value > 1 ? value / 100 : value;
+  return Number(normalized.toFixed(2));
 }
 
 function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<typeof GapAnalysisStatusSchema> {

@@ -146,7 +146,7 @@ export function normalizeOutputAnalysis(
     // Raw AI recommendation is compatibility-only; Final Review uses getFinalReviewDecision().
     rawAiDecisionRecommendation: analysis.decisionRecommendation,
     findings,
-    gapAnalysis: analysis.gapAnalysis ?? [],
+    gapAnalysis: normalizeOutputGapAnalysis(analysis.gapAnalysis),
     topCriticalRiskIds: topCriticalRisks.map((finding) => finding.riskId),
     summary
   };
@@ -789,6 +789,20 @@ function normalizeRawGapStatus(value: unknown): FinalGapReviewDecision {
 
 function getUsableText(value: unknown) {
   return typeof value === "string" ? normalizeWhitespace(value) : "";
+}
+
+function normalizeOutputGapAnalysis(gaps: GapAnalysisItem[] | undefined): GapAnalysisItem[] {
+  return (gaps ?? []).map((gap) => ({
+    ...gap,
+    aiConfidence: normalizeOutputConfidence(gap.aiConfidence)
+  }));
+}
+
+function normalizeOutputConfidence(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0.75;
+  if (value < 0) return 0;
+  if (value > 100) return 1;
+  return Number((value > 1 ? value / 100 : value).toFixed(2));
 }
 
 function getUsableMultilineText(value: unknown) {

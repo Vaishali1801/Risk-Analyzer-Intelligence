@@ -49,7 +49,8 @@ const {
   getFinalGapReviewCounts,
   getFinalReviewDecision,
   getOverallRiskLevel,
-  getReportModel
+  getReportModel,
+  normalizeOutputAnalysis
 } = outputModel;
 const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
@@ -130,13 +131,17 @@ const partialGap = normalizeGapAnalysis([
 
 assertEqual(partialGap.clauseName, "Missing audit rights", "Gap fallback: title aliases clauseName");
 assertEqual(partialGap.category, "General", "Gap fallback: missing category");
-assertEqual(partialGap.aiConfidence, 75, "Gap fallback: missing confidence");
+assertEqual(partialGap.aiConfidence, 0.75, "Gap fallback: missing confidence");
 assertEqual(partialGap.whyThisMatters, "No rationale provided.", "Gap fallback: missing rationale");
 assertEqual(partialGap.suggestedFix, "No suggested fix provided.", "Gap fallback: missing suggested fix");
 assertEqual(partialGap.recommendedClause, "Recommended clause language is not available yet.", "Gap fallback: missing recommended clause");
 assertEqual(partialGap.clauseVariants.balanced, partialGap.recommendedClause, "Gap fallback: balanced variant");
 assertEqual(partialGap.clauseVariants.protective, partialGap.recommendedClause, "Gap fallback: protective variant");
 assertEqual(normalizeGapAnalysis([{ id: "EMPTY-GAP" }]).items.length, 0, "Gap normalization: empty gap drops safely");
+assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-RAW-CONFIDENCE", aiConfidence: 90 }]).items[0].aiConfidence, 0.9, "Gap confidence: raw percent normalizes");
+assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-DECIMAL-CONFIDENCE", aiConfidence: 0.9 }]).items[0].aiConfidence, 0.9, "Gap confidence: decimal remains decimal");
+assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-HIGH-CONFIDENCE", aiConfidence: 150 }]).items[0].aiConfidence, 1, "Gap confidence: high clamps");
+assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-LOW-CONFIDENCE", aiConfidence: -10 }]).items[0].aiConfidence, 0, "Gap confidence: low clamps");
 
 const baseRisk = {
   id: "RISK-1",
@@ -214,6 +219,31 @@ const legacyAnalysis = ContractAnalysisSchema.parse({
 });
 
 assertEqual(Array.isArray(legacyAnalysis.gapAnalysis ?? []), true, "Legacy analysis: missing gapAnalysis remains backward-compatible");
+
+const staleGapConfidenceDocument = normalizeOutputAnalysis(
+  {
+    contractTitle: "Legacy Gap Confidence Agreement",
+    executiveSummary: "This agreement has enough summary detail for validation and review.",
+    overallRiskLevel: "Medium",
+    decisionRecommendation: "Renegotiate",
+    decisionRationale: "The contract should be renegotiated because several terms require review.",
+    riskSummary: {
+      total: 1,
+      high: 1,
+      medium: 0,
+      low: 0,
+      byCategory: { Legal: 1, Financial: 0, Operational: 0, Compliance: 0, Technical: 0 }
+    },
+    topCriticalRisks: ["Broad indemnity exposure"],
+    risks: [baseRisk],
+    gapAnalysis: [{ ...baseGap, id: "GAP-STALE-CONFIDENCE", aiConfidence: 94 }],
+    nextActions: ["Review the indemnity clause before approval."]
+  },
+  { sourceKind: "upload", documentName: "Legacy Gap Confidence Agreement" },
+  new Date(0).toISOString()
+);
+
+assertEqual(staleGapConfidenceDocument.gapAnalysis[0].aiConfidence, 0.94, "Output model: stale gap confidence normalizes");
 
 const acceptedRiskReviewById = {
   "RISK-1": {
@@ -297,6 +327,7 @@ assertEqual(
   partialGap.recommendedClause,
   "PDF gap final review: fallback recommended clause"
 );
+assertEqual(partialGapPdfData.detailedGaps[0].confidenceLabel, "75%", "PDF gap rendering: normalized confidence display");
 
 reportModel = getReportModel(normalizedDocument, acceptedRiskReviewById, { "GAP-1": "rejected" });
 assertEqual(reportModel.canFinalizeAll, true, "Finalize: rejected gap is completed");
