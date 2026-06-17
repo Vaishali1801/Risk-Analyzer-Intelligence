@@ -22,6 +22,14 @@ function assertEqual(actual, expected, message) {
   }
 }
 
+function assertDeepEqual(actual, expected, message) {
+  const actualJson = JSON.stringify(actual);
+  const expectedJson = JSON.stringify(expected);
+  if (actualJson !== expectedJson) {
+    throw new Error(`${message}: expected ${expectedJson}, received ${actualJson}`);
+  }
+}
+
 function assertIncludes(value, expected, message) {
   if (!value.includes(expected)) {
     throw new Error(`${message}: expected to include ${expected}`);
@@ -64,6 +72,7 @@ const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
 });
 
 const {
+  deriveTopRiskDriverIds,
   getEffectiveGapReviewDecision,
   getFinalGapReviewCounts,
   getFinalReviewDecision,
@@ -204,6 +213,33 @@ assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-DECIMAL-CONFIDENCE", ai
 assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-HIGH-CONFIDENCE", aiConfidence: 150 }]).items[0].aiConfidence, 1, "Gap confidence: high clamps");
 assertEqual(normalizeGapAnalysis([{ ...baseGap, id: "GAP-LOW-CONFIDENCE", aiConfidence: -10 }]).items[0].aiConfidence, 0, "Gap confidence: low clamps");
 
+const sourceGroundedGap = normalizeGapAnalysis([
+  {
+    ...baseGap,
+    id: "GAP-SOURCE-GROUNDED",
+    sourceClauseIds: ["CLAUSE-12", "CLAUSE-12"],
+    evidence: {
+      clauseId: "CLAUSE-12",
+      sectionRef: "Section 12",
+      quote: "The agreement does not include audit rights.",
+      confidence: 88
+    },
+    primaryCategory: "Compliance",
+    secondaryCategories: ["Operational", "Operational"],
+    domain: "Compliance",
+    domainSignals: ["audit", "controls"],
+    missingOrWeakProtection: "Audit rights are missing or too weak."
+  }
+]).items[0];
+
+assertDeepEqual(sourceGroundedGap.sourceClauseIds, ["CLAUSE-12"], "Gap source grounding: sourceClauseIds preserved and deduplicated");
+assertEqual(sourceGroundedGap.evidence.confidence, 0.88, "Gap evidence: confidence normalizes to decimal");
+assertEqual(sourceGroundedGap.primaryCategory, "Compliance", "Gap source grounding: primaryCategory preserved");
+assertDeepEqual(sourceGroundedGap.secondaryCategories, ["Operational"], "Gap source grounding: secondaryCategories preserved and deduplicated");
+assertEqual(sourceGroundedGap.domain, "Compliance", "Gap source grounding: domain preserved");
+assertDeepEqual(sourceGroundedGap.domainSignals, ["audit", "controls"], "Gap source grounding: domainSignals preserved");
+assertEqual(sourceGroundedGap.missingOrWeakProtection, "Audit rights are missing or too weak.", "Gap source grounding: missingOrWeakProtection preserved");
+
 const baseRisk = {
   id: "RISK-1",
   title: "Broad indemnity exposure",
@@ -224,6 +260,37 @@ assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-PERCENT-CONFIDENCE",
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-DECIMAL-CONFIDENCE", confidence: 0.82 }]).items[0].confidence, 0.82, "Risk confidence: decimal remains decimal");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-HIGH-CONFIDENCE", confidence: 150 }]).items[0].confidence, 1, "Risk confidence: high clamps");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-LOW-CONFIDENCE", confidence: -10 }]).items[0].confidence, 0, "Risk confidence: low clamps");
+
+const sourceGroundedRisk = normalizeRiskAnalysis([
+  {
+    ...baseRisk,
+    id: "RISK-SOURCE-GROUNDED",
+    sourceClauseIds: ["CLAUSE-8", "CLAUSE-8", "CLAUSE-9"],
+    evidence: {
+      clauseId: "CLAUSE-8",
+      clauseIds: ["CLAUSE-8", "CLAUSE-9"],
+      clauseTitle: "Indemnity",
+      sectionNumber: "8",
+      sectionRef: "Section 8",
+      pageNumber: 3,
+      quote: "Supplier must indemnify customer for all losses without limitation.",
+      highlightedText: "all losses without limitation",
+      confidence: 92
+    },
+    primaryCategory: "Legal",
+    secondaryCategories: ["Financial", "Financial"],
+    domain: "Legal",
+    domainSignals: ["indemnity", "uncapped"]
+  }
+]).items[0];
+
+assertDeepEqual(sourceGroundedRisk.sourceClauseIds, ["CLAUSE-8", "CLAUSE-9"], "Risk source grounding: sourceClauseIds preserved and deduplicated");
+assertEqual(sourceGroundedRisk.evidence.clauseId, "CLAUSE-8", "Risk evidence: clauseId preserved");
+assertEqual(sourceGroundedRisk.evidence.confidence, 0.92, "Risk evidence: confidence normalizes to decimal");
+assertEqual(sourceGroundedRisk.primaryCategory, "Legal", "Risk source grounding: primaryCategory preserved");
+assertDeepEqual(sourceGroundedRisk.secondaryCategories, ["Financial"], "Risk source grounding: secondaryCategories preserved and deduplicated");
+assertEqual(sourceGroundedRisk.domain, "Legal", "Risk source grounding: domain preserved");
+assertDeepEqual(sourceGroundedRisk.domainSignals, ["indemnity", "uncapped"], "Risk source grounding: domainSignals preserved");
 
 const validRisk = normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-VALID" }]).items[0];
 assertEqual(validRisk.whyRisky, baseRisk.whyRisky, "Risk normalization: valid whyRisky remains unchanged");
@@ -305,6 +372,52 @@ const staleGapConfidenceDocument = normalizeOutputAnalysis(
 );
 
 assertEqual(staleGapConfidenceDocument.gapAnalysis[0].aiConfidence, 0.94, "Output model: stale gap confidence normalizes");
+
+const topDriverDocument = normalizeOutputAnalysis(
+  {
+    contractTitle: "Top Driver Agreement",
+    executiveSummary: "This agreement has enough summary detail for deterministic driver validation.",
+    overallRiskLevel: "Medium",
+    decisionRecommendation: "Renegotiate",
+    decisionRationale: "The contract should be renegotiated because several terms require review.",
+    riskSummary: {
+      total: 4,
+      high: 3,
+      medium: 1,
+      low: 0,
+      byCategory: { Legal: 4, Financial: 0, Operational: 0, Compliance: 0, Technical: 0 }
+    },
+    topCriticalRisks: ["AI-provided order should not drive normalized top risk IDs"],
+    risks: [
+      { ...baseRisk, id: "RISK-MEDIUM-HIGH-CONFIDENCE", severity: "Medium", confidence: 0.99 },
+      { ...baseRisk, id: "RISK-HIGH-SAME-CONFIDENCE-NO-EVIDENCE", severity: "High", confidence: 0.7 },
+      { ...baseRisk, id: "RISK-HIGH-SAME-CONFIDENCE-WITH-EVIDENCE", severity: "High", confidence: 0.7, sourceClauseIds: ["CLAUSE-8"] },
+      { ...baseRisk, id: "RISK-HIGH-HIGHEST-CONFIDENCE", severity: "High", confidence: 0.8 }
+    ],
+    gapAnalysis: [],
+    nextActions: ["Review the indemnity clause before approval."]
+  },
+  { sourceKind: "upload", documentName: "Top Driver Agreement", extractedCharacters: 1200 },
+  new Date(0).toISOString()
+);
+
+assertDeepEqual(
+  topDriverDocument.topCriticalRiskIds,
+  [
+    "RISK-HIGH-HIGHEST-CONFIDENCE",
+    "RISK-HIGH-SAME-CONFIDENCE-WITH-EVIDENCE",
+    "RISK-HIGH-SAME-CONFIDENCE-NO-EVIDENCE",
+    "RISK-MEDIUM-HIGH-CONFIDENCE"
+  ],
+  "Output model: topCriticalRiskIds derive deterministically from severity, confidence, evidence, and original order"
+);
+assertDeepEqual(
+  deriveTopRiskDriverIds(topDriverDocument.findings),
+  topDriverDocument.topCriticalRiskIds,
+  "Top risk driver helper: normalized document uses shared deterministic helper"
+);
+assertDeepEqual(topDriverDocument.findings[2].sourceClauseIds, ["CLAUSE-8"], "Output model: sourceClauseIds preserved on normalized finding");
+assertEqual(topDriverDocument.findings[2].primaryCategory, "Legal", "Output model: primaryCategory falls back to category");
 
 const acceptedRiskReviewById = {
   "RISK-1": {

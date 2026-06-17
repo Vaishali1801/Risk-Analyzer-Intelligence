@@ -165,6 +165,7 @@ export function buildPdfReportModel(reportModel: ReportModel, gapReviewById: Pdf
       suggestedFix: getNullableText(gap.suggestedFix),
       recommendedClause: getNullableMultilineText(gap.recommendedClause)
     })),
+    // TODO: When updating PDF risk-driver ordering, consume document.topCriticalRiskIds without changing the report layout.
     summaryRisks: document.findings.map((finding, index) => {
       const reviewRow = finalReviewRowsByRiskId.get(finding.riskId);
       return buildPdfSummaryRisk(finding, reviewRow, index);

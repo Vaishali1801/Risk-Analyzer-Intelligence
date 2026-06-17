@@ -6,6 +6,43 @@ export const MitigabilitySchema = z.enum(["High", "Medium", "Low"]);
 export const DecisionRecommendationSchema = z.enum(["Accept", "Renegotiate", "Reject"]);
 export const GapAnalysisActionSchema = z.enum(["Must Add", "Negotiate", "Optional"]);
 export const GapAnalysisStatusSchema = z.enum(["Pending", "Accepted", "Rejected"]);
+export const DomainSchema = z.union([
+  z.enum(["Financial", "Legal", "Compliance", "Operational", "Technical", "Technical/Data"]),
+  z.string().min(1)
+]);
+export const CategoryLabelSchema = z.union([RiskCategorySchema, z.string().min(1)]);
+export const SourceClauseIdListSchema = z.array(z.string().min(1));
+export const OptionalConfidenceSchema = z.preprocess((value) => {
+  if (typeof value === "undefined") return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) return value;
+  if (value < 0) return 0;
+  if (value > 100) return 1;
+  return Number((value > 1 ? value / 100 : value).toFixed(2));
+}, z.number().min(0).max(1).optional());
+export const ClauseEvidenceSchema = z.object({
+  clauseId: z.string().min(1).optional(),
+  clauseIds: SourceClauseIdListSchema.optional(),
+  clauseTitle: z.string().min(1).optional(),
+  sectionNumber: z.string().min(1).optional(),
+  sectionRef: z.string().min(1).optional(),
+  pageNumber: z.number().int().positive().optional(),
+  quote: z.string().min(1).optional(),
+  highlightedText: z.string().min(1).optional(),
+  confidence: OptionalConfidenceSchema
+});
+export const SourceClauseSchema = z.object({
+  id: z.string().min(1),
+  text: z.string().min(1),
+  clauseTitle: z.string().min(1).optional(),
+  sectionTitle: z.string().min(1).optional(),
+  sectionNumber: z.string().min(1).optional(),
+  sectionRef: z.string().min(1).optional(),
+  pageNumber: z.number().int().positive().optional(),
+  clauseType: z.string().min(1).optional(),
+  domainSignals: z.array(z.string().min(1)).optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+export const ContractClauseSchema = SourceClauseSchema;
 export const GapAnalysisClauseVariantsSchema = z.object({
   balanced: z.string().min(1),
   detailed: z.string().min(1),
@@ -56,7 +93,13 @@ export const ContractRiskSchema = z.object({
   whyRisky: z.string().min(10),
   impactIfIgnored: z.string().min(10),
   suggestedImprovement: z.string().min(10),
-  clauseVariants: OptionalRiskClauseVariantsSchema
+  clauseVariants: OptionalRiskClauseVariantsSchema,
+  sourceClauseIds: SourceClauseIdListSchema.optional(),
+  evidence: ClauseEvidenceSchema.optional(),
+  primaryCategory: CategoryLabelSchema.optional(),
+  secondaryCategories: z.array(CategoryLabelSchema).optional(),
+  domain: DomainSchema.optional(),
+  domainSignals: z.array(z.string().min(1)).optional()
 });
 
 type RiskAnalysisNormalizationDiagnostics = {
@@ -115,6 +158,12 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
     const rawWhyRisky = getCleanString(record.whyRisky);
     const rawImpactIfIgnored = getCleanString(record.impactIfIgnored);
     const rawSuggestedImprovement = getCleanString(record.suggestedImprovement);
+    const sourceClauseIds = getCleanStringArray(record.sourceClauseIds);
+    const evidence = normalizeClauseEvidence(record.evidence, fallbackReasons);
+    const primaryCategory = getCleanString(record.primaryCategory);
+    const secondaryCategories = getCleanStringArray(record.secondaryCategories);
+    const domain = getCleanString(record.domain);
+    const domainSignals = getCleanStringArray(record.domainSignals);
     const whyRisky = getTextMeetingMinimum(rawWhyRisky, DEFAULT_RISK_RATIONALE);
     const impactIfIgnored = getTextMeetingMinimum(rawImpactIfIgnored, DEFAULT_RISK_BUSINESS_IMPACT);
     const suggestedImprovement = getTextMeetingMinimum(rawSuggestedImprovement, DEFAULT_RISK_RECOMMENDATION);
@@ -151,7 +200,13 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
       whyRisky,
       impactIfIgnored,
       suggestedImprovement,
-      clauseVariants: record.clauseVariants
+      clauseVariants: record.clauseVariants,
+      sourceClauseIds,
+      evidence,
+      primaryCategory: primaryCategory || undefined,
+      secondaryCategories,
+      domain: domain || undefined,
+      domainSignals
     };
     const parsed = ContractRiskSchema.safeParse(normalizedItem);
 
@@ -191,7 +246,25 @@ export const GapAnalysisItemSchema = z.object({
   whyThisMatters: z.string().min(1),
   suggestedFix: z.string().min(1),
   recommendedClause: z.string().min(1),
-  clauseVariants: GapAnalysisClauseVariantsSchema
+  clauseVariants: GapAnalysisClauseVariantsSchema,
+  sourceClauseIds: SourceClauseIdListSchema.optional(),
+  evidence: ClauseEvidenceSchema.optional(),
+  primaryCategory: CategoryLabelSchema.optional(),
+  secondaryCategories: z.array(CategoryLabelSchema).optional(),
+  domain: DomainSchema.optional(),
+  domainSignals: z.array(z.string().min(1)).optional(),
+  missingOrWeakProtection: z.string().min(1).optional()
+});
+
+export const DomainFindingSchema = z.object({
+  domain: DomainSchema,
+  risks: z.array(ContractRiskSchema).optional(),
+  gaps: z.array(GapAnalysisItemSchema).optional(),
+  recommendations: z.array(z.string().min(1)).optional(),
+  sourceClauseIds: SourceClauseIdListSchema.optional(),
+  confidence: OptionalConfidenceSchema,
+  primaryDomainSignals: z.array(z.string().min(1)).optional(),
+  secondaryDomainSignals: z.array(z.string().min(1)).optional()
 });
 
 type GapAnalysisNormalizationDiagnostics = {
@@ -254,6 +327,13 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
     const status = normalizeGapStatus(record.status, fallbackReasons);
     const recommendedClause = getCleanMultilineString(record.recommendedClause) || DEFAULT_GAP_RECOMMENDED_CLAUSE;
     const clauseVariants = normalizeGapClauseVariants(record.clauseVariants, recommendedClause, fallbackReasons);
+    const sourceClauseIds = getCleanStringArray(record.sourceClauseIds);
+    const evidence = normalizeClauseEvidence(record.evidence, fallbackReasons);
+    const primaryCategory = getCleanString(record.primaryCategory);
+    const secondaryCategories = getCleanStringArray(record.secondaryCategories);
+    const domain = getCleanString(record.domain);
+    const domainSignals = getCleanStringArray(record.domainSignals);
+    const missingOrWeakProtection = getCleanString(record.missingOrWeakProtection);
     const droppedReasons: string[] = [];
 
     if (!clauseName) droppedReasons.push("Missing clauseName/title");
@@ -281,7 +361,14 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
       whyThisMatters,
       suggestedFix,
       recommendedClause,
-      clauseVariants
+      clauseVariants,
+      sourceClauseIds,
+      evidence,
+      primaryCategory: primaryCategory || undefined,
+      secondaryCategories,
+      domain: domain || undefined,
+      domainSignals,
+      missingOrWeakProtection: missingOrWeakProtection || undefined
     };
     const parsed = GapAnalysisItemSchema.safeParse(normalizedItem);
 
@@ -337,6 +424,60 @@ function getCleanMultilineString(value: unknown) {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function getCleanStringArray(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+
+  const cleaned = value.map((item) => getCleanString(item)).filter(Boolean);
+  return cleaned.length ? Array.from(new Set(cleaned)) : undefined;
+}
+
+function normalizeOptionalConfidence(value: unknown, fallbackReasons: string[], fieldName: string) {
+  if (typeof value === "undefined") return undefined;
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    fallbackReasons.push(`${fieldName} confidence ignored because it was not numeric`);
+    return undefined;
+  }
+
+  if (value < 0) {
+    fallbackReasons.push(`${fieldName} confidence below range -> clamped to 0%`);
+    return 0;
+  }
+
+  if (value > 100) {
+    fallbackReasons.push(`${fieldName} confidence above range -> clamped to 1.0 (100% display)`);
+    return 1;
+  }
+
+  return Number((value > 1 ? value / 100 : value).toFixed(2));
+}
+
+function normalizeClauseEvidence(value: unknown, fallbackReasons: string[]) {
+  const record = getObjectRecord(value);
+  if (!record) return undefined;
+
+  const evidence = {
+    clauseId: getCleanString(record.clauseId) || undefined,
+    clauseIds: getCleanStringArray(record.clauseIds),
+    clauseTitle: getCleanString(record.clauseTitle) || undefined,
+    sectionNumber: getCleanString(record.sectionNumber) || undefined,
+    sectionRef: getCleanString(record.sectionRef) || undefined,
+    pageNumber: normalizePositiveInteger(record.pageNumber),
+    quote: getCleanMultilineString(record.quote) || undefined,
+    highlightedText: getCleanString(record.highlightedText) || undefined,
+    confidence: normalizeOptionalConfidence(record.confidence, fallbackReasons, "Evidence")
+  };
+  const normalizedEvidence = Object.fromEntries(Object.entries(evidence).filter(([, item]) => typeof item !== "undefined"));
+
+  return Object.keys(normalizedEvidence).length ? normalizedEvidence : undefined;
+}
+
+function normalizePositiveInteger(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const integer = Math.trunc(value);
+  return integer > 0 ? integer : undefined;
 }
 
 function getTextMeetingMinimum(value: string, fallback: string, minLength = 10) {
@@ -615,5 +756,7 @@ export const ContractAnalysisSchema = z.object({
   topCriticalRisks: z.array(z.string().min(3)).min(1).max(5),
   risks: RiskAnalysisSchema,
   gapAnalysis: OptionalGapAnalysisSchema,
+  domainFindings: z.array(DomainFindingSchema).optional(),
+  sourceClauses: z.array(SourceClauseSchema).optional(),
   nextActions: z.array(z.string().min(6)).min(1).max(6)
 });

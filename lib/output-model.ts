@@ -1,6 +1,6 @@
 import { RISK_CATEGORIES, severityRank, severityStyles } from "@/constants/risk";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
-import type { AnalysisSource, ContractAnalysis, DecisionRecommendation, GapAnalysisItem, RiskCategory, Severity } from "@/types/contract";
+import type { AnalysisSource, ContractAnalysis, ContractRisk, DecisionRecommendation, GapAnalysisItem, RiskCategory, Severity } from "@/types/contract";
 
 export type ReviewStatus = "pending" | "needs_change" | "accepted";
 export type FinalReviewDecision = "Revised" | "Accepted" | "Pending";
@@ -13,6 +13,7 @@ export type SafeRiskCategory = RiskCategory | "Uncategorized";
 export type SafeSeverity = Severity | "Unknown";
 export type RiskClauseVariantKey = "balanced" | "protective" | "standard";
 export type RiskClauseVariants = Partial<Record<RiskClauseVariantKey, string>>;
+export type NormalizedClauseEvidence = NonNullable<ContractRisk["evidence"]>;
 
 export type NormalizedFinding = {
   riskId: string;
@@ -28,6 +29,12 @@ export type NormalizedFinding = {
   businessImpact: string;
   originalRecommendedDraft: string;
   clauseVariants: RiskClauseVariants;
+  sourceClauseIds: string[];
+  evidence?: NormalizedClauseEvidence;
+  primaryCategory: string;
+  secondaryCategories: string[];
+  domain?: string;
+  domainSignals: string[];
 };
 
 export type RiskReviewState = {
@@ -120,14 +127,20 @@ export function normalizeOutputAnalysis(
     whyItMatters: getUsableText(risk.whyRisky),
     businessImpact: getUsableText(risk.impactIfIgnored),
     originalRecommendedDraft: getUsableText(risk.suggestedImprovement),
-    clauseVariants: getRiskClauseVariants(risk.clauseVariants)
+    clauseVariants: getRiskClauseVariants(risk.clauseVariants),
+    sourceClauseIds: getStringArray(risk.sourceClauseIds),
+    evidence: risk.evidence,
+    primaryCategory: getUsableText(risk.primaryCategory) || risk.category,
+    secondaryCategories: getStringArray(risk.secondaryCategories),
+    domain: getUsableText(risk.domain) || undefined,
+    domainSignals: getStringArray(risk.domainSignals)
   }));
   const summary = {
     totalRiskCount: getTotalRiskCount(findings),
     severityMix: getSeverityMix(findings),
     categoryMix: getCategoryMix(findings)
   };
-  const topCriticalRisks = getTopCriticalRisks(findings);
+  const topCriticalRiskIds = deriveTopRiskDriverIds(findings);
   const aiInsight = getValidAiInsight(analysis.aiInsight) || buildAiInsight(findings, summary.categoryMix);
 
   return {
@@ -147,7 +160,7 @@ export function normalizeOutputAnalysis(
     rawAiDecisionRecommendation: analysis.decisionRecommendation,
     findings,
     gapAnalysis: normalizeOutputGapAnalysis(analysis.gapAnalysis),
-    topCriticalRiskIds: topCriticalRisks.map((finding) => finding.riskId),
+    topCriticalRiskIds,
     summary
   };
 }
@@ -225,14 +238,35 @@ export function getCategoryMix(findings: NormalizedFinding[]): Record<SafeRiskCa
 }
 
 export function getTopCriticalRisks(findings: NormalizedFinding[], limit = 4) {
-  return getPrioritizedFindings(findings).slice(0, limit);
+  const topRiskIds = new Set(deriveTopRiskDriverIds(findings, limit));
+  return getPrioritizedFindings(findings).filter((finding) => topRiskIds.has(finding.riskId));
 }
 
 export function getPrioritizedFindings(findings: NormalizedFinding[]) {
-  return [...findings].sort(
-    (a, b) =>
-      getSafeSeverityRank(b.severity) - getSafeSeverityRank(a.severity) ||
-      getConfidenceSortValue(b.confidence) - getConfidenceSortValue(a.confidence)
+  return findings
+    .map((finding, index) => ({ finding, index }))
+    .sort(compareTopRiskDriverCandidates)
+    .map((item) => item.finding);
+}
+
+export function deriveTopRiskDriverIds(findings: NormalizedFinding[], limit = 4) {
+  return getPrioritizedFindings(findings)
+    .slice(0, limit)
+    .map((finding) => finding.riskId);
+}
+
+export const getTopRiskDriverIds = deriveTopRiskDriverIds;
+
+function compareTopRiskDriverCandidates(
+  a: { finding: NormalizedFinding; index: number },
+  b: { finding: NormalizedFinding; index: number }
+) {
+  return (
+    getSafeSeverityRank(b.finding.severity) - getSafeSeverityRank(a.finding.severity) ||
+    getConfidenceSortValue(b.finding.confidence) - getConfidenceSortValue(a.finding.confidence) ||
+    getEvidenceAvailabilityScore(b.finding) - getEvidenceAvailabilityScore(a.finding) ||
+    getFindingExplanationScore(b.finding) - getFindingExplanationScore(a.finding) ||
+    a.index - b.index
   );
 }
 
@@ -792,6 +826,11 @@ function getUsableText(value: unknown) {
   return typeof value === "string" ? normalizeWhitespace(value) : "";
 }
 
+function getStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return uniqueStrings(value.map((item) => getUsableText(item)).filter(Boolean));
+}
+
 function normalizeOutputGapAnalysis(gaps: GapAnalysisItem[] | undefined): GapAnalysisItem[] {
   return (gaps ?? []).map((gap) => ({
     ...gap,
@@ -838,6 +877,22 @@ function buildShortClauseExcerpt(value: string, maxLength = 140) {
 
 function getConfidenceSortValue(confidence: unknown) {
   return getSafeConfidenceValue(confidence) ?? -1;
+}
+
+function getEvidenceAvailabilityScore(finding: NormalizedFinding) {
+  let score = 0;
+  if ((finding.sourceClauseIds ?? []).length > 0) score += 4;
+  if (finding.evidence) score += 3;
+  if (getUsableText(finding.fullClauseText)) score += 2;
+  if (getUsableText(finding.clauseSnippet) || getUsableText(finding.flaggedText)) score += 1;
+  return score;
+}
+
+function getFindingExplanationScore(finding: NormalizedFinding) {
+  let score = 0;
+  if (getUsableText(finding.businessImpact)) score += 2;
+  if (getUsableText(finding.whyItMatters)) score += 1;
+  return score;
 }
 
 function isRiskCategory(value: unknown): value is RiskCategory {
