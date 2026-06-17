@@ -33,7 +33,7 @@ export type RiskSortKey =
   | "confidence-asc"
   | "category-asc"
   | "category-desc";
-export type RiskReviewLens = "safer" | "simplify" | "hidden" | "standard";
+export type RiskReviewLens = "balanced" | "protective" | "standard" | "simplify" | "hidden" | "safer";
 export type RiskReviewStatus = ReviewStatus;
 export type RiskPanelFocusTarget = "summary" | "ask-ai";
 
@@ -85,8 +85,8 @@ const SORT_OPTIONS: { value: RiskSortKey; label: string }[] = [
 ];
 
 const REVIEW_LENSES: { key: RiskReviewLens; label: string }[] = [
-  { key: "safer", label: "Balanced" },
-  { key: "hidden", label: "More Protective" },
+  { key: "balanced", label: "More Balanced" },
+  { key: "protective", label: "More Protective" },
   { key: "standard", label: "Industry Standard" }
 ];
 
@@ -357,7 +357,7 @@ export function RiskFindingsTable({
                     <TableHeaderLabel align="center">#</TableHeaderLabel>
                   </th>
                   <th className="border-b border-slate-300/80 px-3 py-1.5">
-                    <TableHeaderLabel align="center">Risk</TableHeaderLabel>
+                    <TableHeaderLabel align="center">Risk Title</TableHeaderLabel>
                   </th>
                   <th className="border-b border-slate-300/80 px-3 py-1.5 text-center">
                     <HeaderFilter

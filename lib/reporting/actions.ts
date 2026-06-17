@@ -6,7 +6,7 @@ type ClauseActionRisk = {
   originalRecommendedDraft?: string;
 };
 
-export function buildClauseAction(type: "simplify" | "safer" | "hidden" | "standard", risk: ClauseActionRisk) {
+export function buildClauseAction(type: "simplify" | "balanced" | "protective" | "standard" | "safer" | "hidden", risk: ClauseActionRisk) {
   const whyItMatters = risk.whyItMatters ?? risk.whyRisky ?? "";
   const recommendedDraft = risk.originalRecommendedDraft ?? risk.suggestedImprovement ?? "";
 
@@ -14,8 +14,12 @@ export function buildClauseAction(type: "simplify" | "safer" | "hidden" | "stand
     return `Plain-English version: This clause may create ${risk.category.toLowerCase()} exposure because ${whyItMatters.toLowerCase()}`;
   }
 
-  if (type === "safer") {
+  if (type === "balanced" || type === "safer") {
     return recommendedDraft;
+  }
+
+  if (type === "protective") {
+    return recommendedDraft || "Protective position: revise the clause to narrow exposure, define objective obligations, and preserve practical remedies.";
   }
 
   if (type === "hidden") {

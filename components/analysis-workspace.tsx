@@ -53,7 +53,7 @@ import {
 import type { GapAnalysisItem, Severity } from "@/types/contract";
 
 type SectionId = "summary" | "gaps-recommendations" | "risks" | "final-review";
-type AskAiActionType = "simplify" | "safer_wording" | "hidden_risks" | "compare_standard";
+type AskAiActionType = "simplify" | "balanced" | "protective" | "standard" | "safer_wording" | "hidden_risks" | "compare_standard";
 type GapClauseAction = GapAnalysisItem["action"];
 type GapClauseImpact = GapAnalysisItem["impact"];
 type GapRegisterRow = GapAnalysisItem & {
@@ -95,14 +95,19 @@ const SECTION_HASH_PREFIX = "#";
 const knownSectionIds = sectionTabs.map((tab) => tab.id);
 const askAiActionByLens: Record<RiskReviewLens, AskAiActionType> = {
   simplify: "simplify",
+  balanced: "balanced",
+  protective: "protective",
+  standard: "standard",
+  // Legacy actions remain accepted by the API, but visible Risk buttons use schema-aligned keys.
   safer: "safer_wording",
-  hidden: "hidden_risks",
-  standard: "compare_standard"
+  hidden: "hidden_risks"
 };
 const riskClauseVariantKeyByLens: Partial<Record<RiskReviewLens, keyof NormalizedFinding["clauseVariants"]>> = {
+  balanced: "balanced",
+  protective: "protective",
+  standard: "standard",
   safer: "balanced",
-  hidden: "protective",
-  standard: "standard"
+  hidden: "protective"
 };
 
 export function AnalysisWorkspace() {

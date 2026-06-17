@@ -22,6 +22,24 @@ function assertEqual(actual, expected, message) {
   }
 }
 
+function assertIncludes(value, expected, message) {
+  if (!value.includes(expected)) {
+    throw new Error(`${message}: expected to include ${expected}`);
+  }
+}
+
+function assertNotIncludes(value, unexpected, message) {
+  if (value.includes(unexpected)) {
+    throw new Error(`${message}: expected not to include ${unexpected}`);
+  }
+}
+
+function assertMatches(value, pattern, message) {
+  if (!pattern.test(value)) {
+    throw new Error(`${message}: expected pattern ${pattern}`);
+  }
+}
+
 const outputModel = loadTsModule("lib/output-model.ts", (id) => {
   if (id === "@/constants/risk") {
     return {
@@ -39,6 +57,7 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 });
 
 const schema = loadTsModule("schemas/contract-analysis.ts");
+const actions = loadTsModule("lib/reporting/actions.ts");
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
   if (id === "@/lib/output-model") return outputModel;
   return require(id);
@@ -54,6 +73,48 @@ const {
 } = outputModel;
 const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
+const { buildClauseAction } = actions;
+
+const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
+const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
+const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
+
+assertIncludes(riskUiSource, '{ key: "balanced", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced uses balanced key");
+assertIncludes(riskUiSource, '{ key: "protective", label: "More Protective" }', "Risk Ask AI mapping: More Protective uses protective key");
+assertIncludes(riskUiSource, '{ key: "standard", label: "Industry Standard" }', "Risk Ask AI mapping: Industry Standard uses standard key");
+assertNotIncludes(riskUiSource, '{ key: "safer", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced no longer uses safer key");
+assertNotIncludes(riskUiSource, '{ key: "hidden", label: "More Protective" }', "Risk Ask AI mapping: More Protective no longer uses hidden key");
+assertMatches(
+  analysisWorkspaceSource,
+  /const askAiActionByLens[\s\S]*balanced: "balanced"[\s\S]*protective: "protective"[\s\S]*standard: "standard"/,
+  "Risk Ask AI routing: visible lenses use schema-aligned API actions"
+);
+assertMatches(
+  analysisWorkspaceSource,
+  /const riskClauseVariantKeyByLens[\s\S]*balanced: "balanced"[\s\S]*protective: "protective"[\s\S]*standard: "standard"/,
+  "Risk Ask AI routing: visible lenses use schema-aligned clauseVariants"
+);
+assertIncludes(
+  askAiRouteSource,
+  'const AskAiActionSchema = z.enum(["simplify", "balanced", "protective", "standard", "safer_wording", "hidden_risks", "compare_standard"]);',
+  "Risk Ask AI API: schema-aligned actions are accepted"
+);
+assertIncludes(askAiRouteSource, 'protective: "protective"', "Risk Ask AI API: protective fallback maps to protective action");
+assertNotIncludes(askAiRouteSource, 'protective: "hidden"', "Risk Ask AI API: protective fallback does not map to hidden risks");
+assertIncludes(
+  analysisWorkspaceSource,
+  'type GapAskAiVariantKey = "balanced" | "detailed" | "alternative" | "protective";',
+  "Gap Ask AI mapping: variant key union remains unchanged"
+);
+assertIncludes(analysisWorkspaceSource, '{ key: "balanced", label: "More Balanced" }', "Gap Ask AI mapping: balanced option remains");
+assertIncludes(analysisWorkspaceSource, '{ key: "detailed", label: "More Detailed" }', "Gap Ask AI mapping: detailed option remains");
+assertIncludes(analysisWorkspaceSource, '{ key: "alternative", label: "Alternative Version" }', "Gap Ask AI mapping: alternative option remains");
+assertIncludes(analysisWorkspaceSource, '{ key: "protective", label: "More Protective" }', "Gap Ask AI mapping: protective option remains");
+assertNotIncludes(
+  buildClauseAction("protective", { category: "Legal", originalRecommendedDraft: "" }),
+  "Hidden risk",
+  "Risk Ask AI fallback: protective action does not use hidden-risk language"
+);
 
 const findings = (severities) =>
   severities.map((severity, index) => ({

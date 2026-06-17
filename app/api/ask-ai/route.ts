@@ -6,7 +6,7 @@ import { buildClauseAction } from "@/lib/reporting/actions";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const AskAiActionSchema = z.enum(["simplify", "safer_wording", "hidden_risks", "compare_standard"]);
+const AskAiActionSchema = z.enum(["simplify", "balanced", "protective", "standard", "safer_wording", "hidden_risks", "compare_standard"]);
 
 const AskAiRequestSchema = z.object({
   actionType: AskAiActionSchema,
@@ -26,7 +26,10 @@ type AskAiRequest = z.infer<typeof AskAiRequestSchema>;
 
 const ACTION_FALLBACKS: Record<AskAiAction, Parameters<typeof buildClauseAction>[0]> = {
   simplify: "simplify",
-  safer_wording: "safer",
+  balanced: "balanced",
+  protective: "protective",
+  standard: "standard",
+  safer_wording: "balanced",
   hidden_risks: "hidden",
   compare_standard: "standard"
 };
@@ -103,15 +106,23 @@ function getActionInstruction(actionType: AskAiAction) {
     return "Rewrite the current draft or clause in simpler business-friendly language. Preserve legal meaning. Do not add new obligations unless clearly marked as optional.";
   }
 
-  if (actionType === "safer_wording") {
-    return "Produce a stronger revised clause that reduces customer/business risk. Keep it concise, contract-ready, and practical for negotiation.";
+  if (actionType === "balanced" || actionType === "safer_wording") {
+    return "Produce a more balanced revised clause that is contract-ready, practical for negotiation, and preserves the core business position.";
+  }
+
+  if (actionType === "protective") {
+    return "Produce a more protective revised clause that reduces customer/business risk. Keep it concise, contract-ready, and practical for negotiation.";
   }
 
   if (actionType === "hidden_risks") {
     return "Identify additional risks or missing protections in concise bullet points. Do not invent facts not present in the clause.";
   }
 
-  return "Compare the clause against typical market or industry contracting expectations. Explain where it is stricter, weaker, or unusual in concise business-readable language.";
+  if (actionType === "compare_standard") {
+    return "Compare the clause against typical market or industry contracting expectations. Explain where it is stricter, weaker, or unusual in concise business-readable language.";
+  }
+
+  return "Produce an industry-standard revised clause that reflects typical market contracting expectations in concise, contract-ready language.";
 }
 
 function getFallbackOutput(payload: AskAiRequest) {
