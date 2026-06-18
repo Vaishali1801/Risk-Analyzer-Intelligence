@@ -1,4 +1,5 @@
 import { RISK_CATEGORIES, severityRank, severityStyles } from "@/constants/risk";
+import { SEVERITY_WEIGHTS } from "@/lib/ai/config/severity-rules";
 import { getReportDocumentName } from "@/lib/reporting/metadata";
 import type { AnalysisSource, ContractAnalysis, ContractRisk, DecisionRecommendation, GapAnalysisItem, RiskCategory, Severity } from "@/types/contract";
 
@@ -280,7 +281,11 @@ export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: un
     return safeFallback === "Unknown" ? "Low" : safeFallback;
   }
 
-  const weightedAverage = (5 * severityMix.High + 3 * severityMix.Medium + severityMix.Low) / totalRisks;
+  const weightedAverage =
+    (SEVERITY_WEIGHTS.High * severityMix.High +
+      SEVERITY_WEIGHTS.Medium * severityMix.Medium +
+      SEVERITY_WEIGHTS.Low * severityMix.Low) /
+    totalRisks;
   const highRiskPercentage = severityMix.High / totalRisks;
 
   if (weightedAverage >= 3.8) return "High";

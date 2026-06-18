@@ -48,6 +48,8 @@ function assertMatches(value, pattern, message) {
   }
 }
 
+const severityRules = loadTsModule("lib/ai/config/severity-rules.ts");
+
 const outputModel = loadTsModule("lib/output-model.ts", (id) => {
   if (id === "@/constants/risk") {
     return {
@@ -59,6 +61,10 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 
   if (id === "@/lib/reporting/metadata") {
     return { getReportDocumentName: (name) => name || "Contract" };
+  }
+
+  if (id === "@/lib/ai/config/severity-rules") {
+    return severityRules;
   }
 
   return require(id);
