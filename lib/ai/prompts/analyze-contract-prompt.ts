@@ -94,7 +94,9 @@ Prefer quality over quantity.
 
 EXECUTIVE SUMMARY
 
-Generate an executive summary containing:
+Generate executiveSummary as one concise string, not an object.
+
+The executiveSummary string must contain three labeled parts:
 
 Overall Position:
 Summarize the overall contractual posture.
@@ -124,23 +126,35 @@ RISK FINDINGS
 
 For each Risk generate:
 
+* id
 * title
 * category
 * severity
-* clauseSnippet
+* clauseRef
+* clauseText
+* highlightedText
+* mitigability
 * confidence
-* flaggedClause
-* whyItMatters
-* businessImpact
-* recommendedDraft
+* whyRisky
+* impactIfIgnored
+* suggestedImprovement
+* clauseVariants
+* sourceClauseIds
+* evidence
+* primaryCategory
+* secondaryCategories
+* domain
+* domainSignals
 
-clauseSnippet should contain only the most relevant contractual extract, not the entire clause section.
+clauseText should contain the relevant contractual language supporting the finding.
 
-Generate Ask AI variants:
+highlightedText should contain only the most relevant contractual extract, not the entire clause section.
+
+Generate clauseVariants:
 
 * balanced
 * protective
-* industryStandard
+* standard
 
 Variant guidance:
 
@@ -156,16 +170,28 @@ GAP FINDINGS
 
 For each Gap generate:
 
-* title
+* id
+* clauseName
 * category
-* priority
+* action
 * impact
-* confidence
+* aiConfidence
+* status
 * whyThisMatters
 * suggestedFix
 * recommendedClause
+* clauseVariants
+* sourceClauseIds
+* evidence
+* primaryCategory
+* secondaryCategories
+* domain
+* domainSignals
+* missingOrWeakProtection
 
-Generate Ask AI variants:
+status must be schema-compatible. Review workflow state is managed by the application.
+
+Generate clauseVariants:
 
 * balanced
 * detailed
@@ -225,47 +251,85 @@ Top-level fields:
 * contractTitle
 * executiveSummary
 * aiInsight
+* overallRiskLevel
+* decisionRecommendation
+* decisionRationale
+* riskSummary
+* topCriticalRisks
 * risks[]
-* gaps[]
+* gapAnalysis[]
+* nextActions
 
-Executive summary fields:
+Compatibility fields:
 
-* overallPosition
-* keyDrivers
-* businessImpact
+* overallRiskLevel
+* decisionRecommendation
+* decisionRationale
+* riskSummary
+* topCriticalRisks
+* nextActions
+
+These compatibility fields are required by the current application schema.
+The application may recalculate or override deterministic values after validation.
+Do not over-optimize these fields.
+Keep them reasonable and concise.
+
+executiveSummary must be a string containing:
+
+* Overall Position
+* Key Drivers
+* Business Impact
 
 Risk fields:
 
+* id
 * title
 * category
 * severity
-* clauseSnippet
+* clauseRef
+* clauseText
+* highlightedText
+* mitigability
 * confidence
-* flaggedClause
-* whyItMatters
-* businessImpact
-* recommendedDraft
-* askAI
+* whyRisky
+* impactIfIgnored
+* suggestedImprovement
+* clauseVariants
+* sourceClauseIds
+* evidence
+* primaryCategory
+* secondaryCategories
+* domain
+* domainSignals
 
-Risk askAI fields:
+Risk clauseVariants fields:
 
 * balanced
 * protective
-* industryStandard
+* standard
 
 Gap fields:
 
-* title
+* id
+* clauseName
 * category
-* priority
+* action
 * impact
-* confidence
+* aiConfidence
+* status
 * whyThisMatters
 * suggestedFix
 * recommendedClause
-* askAI
+* clauseVariants
+* sourceClauseIds
+* evidence
+* primaryCategory
+* secondaryCategories
+* domain
+* domainSignals
+* missingOrWeakProtection
 
-Gap askAI fields:
+Gap clauseVariants fields:
 
 * balanced
 * detailed

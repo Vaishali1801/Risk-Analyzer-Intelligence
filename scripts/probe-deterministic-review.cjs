@@ -132,6 +132,16 @@ assertIncludes(promptWithRetrievedGuidance, "Gap impact:", "Analyze prompt: incl
 assertIncludes(promptWithRetrievedGuidance, "Confidence:", "Analyze prompt: includes confidence config guidance");
 assertIncludes(promptWithRetrievedGuidance, "Risk variants:", "Analyze prompt: includes risk variant guidance");
 assertIncludes(promptWithRetrievedGuidance, "Gap variants:", "Analyze prompt: includes gap variant guidance");
+assertIncludes(promptWithRetrievedGuidance, "gapAnalysis[]", "Analyze prompt: uses schema-compatible gapAnalysis field");
+assertIncludes(promptWithRetrievedGuidance, "clauseText", "Analyze prompt: uses schema-compatible risk clauseText field");
+assertIncludes(promptWithRetrievedGuidance, "highlightedText", "Analyze prompt: uses schema-compatible risk highlightedText field");
+assertIncludes(promptWithRetrievedGuidance, "whyRisky", "Analyze prompt: uses schema-compatible risk whyRisky field");
+assertIncludes(promptWithRetrievedGuidance, "impactIfIgnored", "Analyze prompt: uses schema-compatible risk impactIfIgnored field");
+assertIncludes(promptWithRetrievedGuidance, "suggestedImprovement", "Analyze prompt: uses schema-compatible risk suggestedImprovement field");
+assertIncludes(promptWithRetrievedGuidance, "clauseVariants", "Analyze prompt: uses schema-compatible clauseVariants field");
+assertIncludes(promptWithRetrievedGuidance, "standard", "Analyze prompt: uses schema-compatible standard variant field");
+assertIncludes(promptWithRetrievedGuidance, "action", "Analyze prompt: uses schema-compatible gap action field");
+assertIncludes(promptWithRetrievedGuidance, "aiConfidence", "Analyze prompt: uses schema-compatible gap aiConfidence field");
 assertIncludes(
   promptWithRetrievedGuidance,
   "Use enterprise fallback language for audit rights.",
@@ -145,6 +155,12 @@ assertIncludes(
 assertNotIncludes(promptWithRetrievedGuidance, "{{CONTRACT_TEXT}}", "Analyze prompt: replaces contract placeholder");
 assertNotIncludes(promptWithRetrievedGuidance, "{{CONFIG_GUIDANCE}}", "Analyze prompt: replaces config placeholder");
 assertNotIncludes(promptWithRetrievedGuidance, "{{RETRIEVED_GUIDANCE}}", "Analyze prompt: replaces retrieved guidance placeholder");
+assertNotIncludes(promptWithRetrievedGuidance, "gaps[]", "Analyze prompt: no longer uses old gaps array field");
+assertNotIncludes(promptWithRetrievedGuidance, "askAI", "Analyze prompt: no longer uses old askAI field");
+assertNotIncludes(promptWithRetrievedGuidance, "clauseSnippet", "Analyze prompt: no longer uses old clauseSnippet field");
+assertNotIncludes(promptWithRetrievedGuidance, "flaggedClause", "Analyze prompt: no longer uses old flaggedClause field");
+assertNotIncludes(promptWithRetrievedGuidance, "recommendedDraft", "Analyze prompt: no longer uses old recommendedDraft field");
+assertNotIncludes(promptWithRetrievedGuidance, "industryStandard", "Analyze prompt: no longer uses old industryStandard field");
 
 assertIncludes(riskUiSource, '{ key: "balanced", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced uses balanced key");
 assertIncludes(riskUiSource, '{ key: "protective", label: "More Protective" }', "Risk Ask AI mapping: More Protective uses protective key");
