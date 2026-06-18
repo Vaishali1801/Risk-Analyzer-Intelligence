@@ -15,6 +15,7 @@ export function adaptRawAnalysisForSchema(raw: unknown): unknown {
   const gapSource = Array.isArray(adapted.gapAnalysis) ? adapted.gapAnalysis : adapted.gaps;
   const gapAnalysis = getArray(gapSource).map((gap, index) => adaptGapForSchema(gap, index));
 
+  // Top-level defaults are schema compatibility values only; deterministic logic owns final summaries and decisions.
   return {
     ...adapted,
     contractTitle: getExistingOrDefault(adapted.contractTitle, "Uploaded Contract"),
@@ -46,6 +47,7 @@ function adaptRiskForSchema(value: unknown, index: number): unknown {
     ...risk,
     id: getExistingOrDefault(risk.id, `risk-${index + 1}`),
     clauseRef: getExistingOrDefault(risk.clauseRef, getExistingOrDefault(evidence?.sectionRef, "Contract")),
+    // Current deterministic decision logic still reads mitigability, so missing values default conservatively.
     mitigability: typeof risk.mitigability === "string" && risk.mitigability.trim() ? risk.mitigability : "Medium",
   };
 }
@@ -60,11 +62,13 @@ function adaptGapForSchema(value: unknown, index: number): unknown {
   return {
     ...gap,
     id: getExistingOrDefault(gap.id, `gap-${index + 1}`),
+    // Pending is a schema compatibility default only; user review state owns Accepted/Rejected.
     status: getGapStatus(gap.status) ?? "Pending",
   };
 }
 
 function buildRiskSummary(risks: unknown[]) {
+  // Compatibility riskSummary is replaced by deterministic recalculation after schema validation.
   const summary = {
     total: risks.length,
     high: 0,
@@ -99,6 +103,7 @@ function buildRiskSummary(risks: unknown[]) {
 }
 
 function buildTopCriticalRisks(risks: unknown[]) {
+  // Compatibility top-risk labels must not be interpreted as final AI decisions or final driver ordering.
   const titles = risks
     .map((risk) => (isPlainObject(risk) ? getCleanString(risk.title) : ""))
     .filter(Boolean)
@@ -108,6 +113,7 @@ function buildTopCriticalRisks(risks: unknown[]) {
 }
 
 function buildNextActions(risks: unknown[], gaps: unknown[]) {
+  // Compatibility actions are placeholders before deterministic recommended actions are recalculated.
   if (risks.length && gaps.length) {
     return ["Review identified risks and gaps before approval."];
   }
