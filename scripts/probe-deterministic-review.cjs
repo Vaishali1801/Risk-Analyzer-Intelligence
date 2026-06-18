@@ -49,6 +49,25 @@ function assertMatches(value, pattern, message) {
 }
 
 const severityRules = loadTsModule("lib/ai/config/severity-rules.ts");
+const categoryRules = loadTsModule("lib/ai/config/category-rules.ts");
+const gapPriorityRules = loadTsModule("lib/ai/config/gap-priority-rules.ts");
+const impactRules = loadTsModule("lib/ai/config/impact-rules.ts");
+const confidenceRules = loadTsModule("lib/ai/config/confidence-rules.ts");
+const askAiVariants = loadTsModule("lib/ai/config/ask-ai-variants.ts");
+const analyzeContractPrompt = loadTsModule("lib/ai/prompts/analyze-contract-prompt.ts", (id) => {
+  if (id === "@/lib/ai/config") {
+    return {
+      ...severityRules,
+      ...categoryRules,
+      ...gapPriorityRules,
+      ...impactRules,
+      ...confidenceRules,
+      ...askAiVariants
+    };
+  }
+
+  return require(id);
+});
 
 const outputModel = loadTsModule("lib/output-model.ts", (id) => {
   if (id === "@/constants/risk") {
@@ -93,6 +112,39 @@ const { buildClauseAction } = actions;
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
+const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
+  contractText: "Master services agreement with confidentiality, audit, and payment terms.",
+  retrievedGuidance: "Use enterprise fallback language for audit rights."
+});
+const promptWithFallbackGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
+  contractText: "Short contract text for placeholder replacement."
+});
+
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "Master services agreement with confidentiality, audit, and payment terms.",
+  "Analyze prompt: includes provided contract text"
+);
+assertIncludes(promptWithRetrievedGuidance, "Severity values:", "Analyze prompt: includes severity config guidance");
+assertIncludes(promptWithRetrievedGuidance, "Categories:", "Analyze prompt: includes category config guidance");
+assertIncludes(promptWithRetrievedGuidance, "Gap priorities:", "Analyze prompt: includes gap priority config guidance");
+assertIncludes(promptWithRetrievedGuidance, "Gap impact:", "Analyze prompt: includes impact config guidance");
+assertIncludes(promptWithRetrievedGuidance, "Confidence:", "Analyze prompt: includes confidence config guidance");
+assertIncludes(promptWithRetrievedGuidance, "Risk variants:", "Analyze prompt: includes risk variant guidance");
+assertIncludes(promptWithRetrievedGuidance, "Gap variants:", "Analyze prompt: includes gap variant guidance");
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "Use enterprise fallback language for audit rights.",
+  "Analyze prompt: includes retrieved guidance"
+);
+assertIncludes(
+  promptWithFallbackGuidance,
+  "None provided.",
+  "Analyze prompt: includes retrieved guidance fallback"
+);
+assertNotIncludes(promptWithRetrievedGuidance, "{{CONTRACT_TEXT}}", "Analyze prompt: replaces contract placeholder");
+assertNotIncludes(promptWithRetrievedGuidance, "{{CONFIG_GUIDANCE}}", "Analyze prompt: replaces config placeholder");
+assertNotIncludes(promptWithRetrievedGuidance, "{{RETRIEVED_GUIDANCE}}", "Analyze prompt: replaces retrieved guidance placeholder");
 
 assertIncludes(riskUiSource, '{ key: "balanced", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced uses balanced key");
 assertIncludes(riskUiSource, '{ key: "protective", label: "More Protective" }', "Risk Ask AI mapping: More Protective uses protective key");
