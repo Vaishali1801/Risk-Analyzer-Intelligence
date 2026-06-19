@@ -48,6 +48,16 @@ function assertMatches(value, pattern, message) {
   }
 }
 
+function assertThrows(fn, message) {
+  try {
+    fn();
+  } catch {
+    return;
+  }
+
+  throw new Error(`${message}: expected function to throw`);
+}
+
 const severityRules = loadTsModule("lib/ai/config/severity-rules.ts");
 const categoryRules = loadTsModule("lib/ai/config/category-rules.ts");
 const gapPriorityRules = loadTsModule("lib/ai/config/gap-priority-rules.ts");
@@ -114,6 +124,8 @@ const { adaptRawAnalysisForSchema } = analyzeContractCompatibility;
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
+const analyzeContractSource = fs.readFileSync("lib/ai/analyzeContract.ts", "utf8");
+const analyzeContractCompatibilitySource = fs.readFileSync("lib/ai/prompts/analyze-contract-compatibility.ts", "utf8");
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Master services agreement with confidentiality, audit, and payment terms.",
   retrievedGuidance: "Use enterprise fallback language for audit rights."
@@ -163,6 +175,16 @@ assertNotIncludes(promptWithRetrievedGuidance, "clauseSnippet", "Analyze prompt:
 assertNotIncludes(promptWithRetrievedGuidance, "flaggedClause", "Analyze prompt: no longer uses old flaggedClause field");
 assertNotIncludes(promptWithRetrievedGuidance, "recommendedDraft", "Analyze prompt: no longer uses old recommendedDraft field");
 assertNotIncludes(promptWithRetrievedGuidance, "industryStandard", "Analyze prompt: no longer uses old industryStandard field");
+assertIncludes(
+  analyzeContractCompatibilitySource,
+  "export function adaptRawAnalysisForSchema",
+  "Analyze compatibility: experimental adapter file remains present"
+);
+assertNotIncludes(
+  analyzeContractSource,
+  "adaptRawAnalysisForSchema",
+  "Analyze compatibility: experimental adapter remains unwired from runtime analysis"
+);
 
 const rawCompatibilityInput = {
   contractTitle: "Supplied Contract",
@@ -404,11 +426,91 @@ const baseRisk = {
   suggestedImprovement: "Add reasonable exclusions and a liability cap."
 };
 
+const leanSchemaAnalysis = ContractAnalysisSchema.parse({
+  contractTitle: "Lean Services Agreement",
+  executiveSummary:
+    "This lean services agreement contains enough meaningful summary content for validation while leaving application-owned decision fields to deterministic logic.",
+  risks: [
+    {
+      category: "Legal",
+      severity: "High",
+      evidence: { sectionRef: "Section 12" },
+      clauseText: "Supplier may recover unlimited indirect damages from customer without a mutual liability cap or exclusion.",
+      highlightedText: "unlimited indirect damages",
+      confidence: 82,
+      whyRisky: "The clause creates uncapped exposure for indirect damages and lacks mutual limitations.",
+      impactIfIgnored: "The business may accept material financial exposure without a negotiated cap.",
+      suggestedImprovement: "Add a mutual liability cap and exclude indirect or consequential damages."
+    }
+  ],
+  gaps: [
+    {
+      clauseName: "Missing Audit Rights",
+      action: "Must Add",
+      impact: "High",
+      status: "Accepted",
+      whyThisMatters: "The agreement does not provide a way to verify operational controls.",
+      suggestedFix: "Add reasonable audit rights with notice, scope, and confidentiality controls.",
+      recommendedClause: "Customer may audit relevant controls on reasonable notice no more than once per year."
+    }
+  ]
+});
+
+assertEqual(leanSchemaAnalysis.overallRiskLevel, "Medium", "Schema compatibility: missing overallRiskLevel defaults");
+assertEqual(leanSchemaAnalysis.decisionRecommendation, "Renegotiate", "Schema compatibility: missing decisionRecommendation defaults");
+assertIncludes(
+  leanSchemaAnalysis.decisionRationale,
+  "final decision is derived by the application",
+  "Schema compatibility: missing decisionRationale defaults"
+);
+assertDeepEqual(
+  leanSchemaAnalysis.riskSummary,
+  {
+    total: 1,
+    high: 1,
+    medium: 0,
+    low: 0,
+    byCategory: { Legal: 1, Financial: 0, Operational: 0, Compliance: 0, Technical: 0 }
+  },
+  "Schema compatibility: missing riskSummary is synthesized from raw risks"
+);
+assertDeepEqual(
+  leanSchemaAnalysis.topCriticalRisks,
+  ["unlimited indirect damages"],
+  "Schema compatibility: missing topCriticalRisks is synthesized from available risk text"
+);
+assertDeepEqual(
+  leanSchemaAnalysis.nextActions,
+  ["Review identified risks and gaps before approval."],
+  "Schema compatibility: missing nextActions is synthesized from risks and gaps"
+);
+assertEqual(leanSchemaAnalysis.risks[0].id, "RISK-1", "Schema compatibility: missing risk id uses canonical RISK-n id");
+assertEqual(leanSchemaAnalysis.risks[0].title, "unlimited indirect damages", "Schema risk fallback: missing title derives from highlighted text");
+assertEqual(leanSchemaAnalysis.risks[0].clauseRef, "Section 12", "Schema risk fallback: missing clauseRef uses evidence sectionRef");
+assertEqual(leanSchemaAnalysis.risks[0].mitigability, "Medium", "Schema risk fallback: missing mitigability still defaults through nested normalization");
+assertEqual(leanSchemaAnalysis.risks[0].confidence, 0.82, "Schema risk fallback: raw percent confidence still normalizes through nested normalization");
+assertEqual(leanSchemaAnalysis.gapAnalysis.length, 1, "Schema compatibility: gaps aliases to gapAnalysis when gapAnalysis is missing");
+assertEqual(leanSchemaAnalysis.gapAnalysis[0].id, "GAP-1", "Schema compatibility: missing gap id uses canonical GAP-n id");
+assertEqual(leanSchemaAnalysis.gapAnalysis[0].status, "Pending", "Schema gap fallback: raw status still defaults through nested normalization");
+
+assertThrows(
+  () =>
+    ContractAnalysisSchema.parse({
+      contractTitle: "Bad Agreement",
+      executiveSummary: "Too short",
+      risks: [baseRisk]
+    }),
+  "Schema compatibility: executiveSummary remains meaningfully required"
+);
+
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-MISSING-CONFIDENCE", confidence: undefined }]).items[0].confidence, 0.75, "Risk confidence: missing defaults");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-PERCENT-CONFIDENCE", confidence: 82 }]).items[0].confidence, 0.82, "Risk confidence: percent normalizes");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-DECIMAL-CONFIDENCE", confidence: 0.82 }]).items[0].confidence, 0.82, "Risk confidence: decimal remains decimal");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-HIGH-CONFIDENCE", confidence: 150 }]).items[0].confidence, 1, "Risk confidence: high clamps");
 assertEqual(normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-LOW-CONFIDENCE", confidence: -10 }]).items[0].confidence, 0, "Risk confidence: low clamps");
+
+const shortTitleRisk = normalizeRiskAnalysis([{ ...baseRisk, id: "RISK-SHORT-TITLE", title: "AI" }]).items[0];
+assertEqual(shortTitleRisk.title, baseRisk.highlightedText, "Risk fallback: short title derives from highlighted text instead of dropping risk");
 
 const sourceGroundedRisk = normalizeRiskAnalysis([
   {

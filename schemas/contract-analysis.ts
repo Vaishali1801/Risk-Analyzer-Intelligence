@@ -65,6 +65,10 @@ const DEFAULT_GAP_CATEGORY = "General";
 const DEFAULT_GAP_RATIONALE = "No rationale provided.";
 const DEFAULT_GAP_FIX = "No suggested fix provided.";
 const DEFAULT_GAP_RECOMMENDED_CLAUSE = "Recommended clause language is not available yet.";
+const DEFAULT_COMPATIBILITY_DECISION_RATIONALE =
+  "Preliminary compatibility value; final decision is derived by the application.";
+const DEFAULT_COMPATIBILITY_NEXT_ACTION = "Review identified risks and gaps before approval.";
+const DEFAULT_COMPATIBILITY_TOP_CRITICAL_RISK = "Review identified contract risks";
 
 const OptionalRiskClauseVariantsSchema = z.preprocess((value) => {
   const record = getObjectRecord(value);
@@ -145,14 +149,16 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
     const fallbackReasons: string[] = [];
     const droppedReasons: string[] = [];
     const rawId = getCleanString(record.id);
-    const title = getCleanString(record.title);
+    const rawTitle = getCleanString(record.title);
     const category = normalizeRiskCategory(record.category, fallbackReasons);
     const severity = normalizeSeverity(record.severity, fallbackReasons, "Medium");
-    const clauseRef = getCleanString(record.clauseRef) || "Section unknown";
+    const evidenceSectionRef = getEvidenceSectionRef(record.evidence);
+    const clauseRef = getCleanString(record.clauseRef) || evidenceSectionRef || "Section unknown";
     const baseClauseText = getCleanMultilineString(record.clauseText);
     const baseHighlightedText = getCleanString(record.highlightedText);
     const clauseText = baseClauseText || baseHighlightedText;
     const highlightedText = baseHighlightedText || buildShortTextFallback(clauseText, 160);
+    const title = getRiskTitleFallback(rawTitle, [baseHighlightedText, baseClauseText, getCleanString(record.whyRisky), `${category} Risk`]);
     const mitigability = normalizeMitigability(record.mitigability, fallbackReasons);
     const confidence = normalizeRiskConfidence(record.confidence, fallbackReasons);
     const rawWhyRisky = getCleanString(record.whyRisky);
@@ -173,8 +179,10 @@ export function normalizeRiskAnalysis(value: unknown): RiskAnalysisNormalization
     const normalizedHighlightedText = highlightedText.length >= 3 ? highlightedText : buildShortTextFallback(normalizedClauseText, 160);
 
     if (!rawId) fallbackReasons.push("Missing id -> generated fallback id");
-    if (!getCleanString(record.clauseRef)) fallbackReasons.push("Missing clauseRef -> defaulted to Section unknown");
-    if (!title || title.length < 4) droppedReasons.push("Missing or short title");
+    if (!getCleanString(record.clauseRef)) {
+      fallbackReasons.push(evidenceSectionRef ? "Missing clauseRef -> used evidence sectionRef" : "Missing clauseRef -> defaulted to Section unknown");
+    }
+    if (rawTitle.length < 4) fallbackReasons.push("Missing or short title -> derived fallback title");
     if (!hasRiskEvidence && !hasRiskExplanation) droppedReasons.push("Missing clause evidence and risk explanation");
     if (!hasRiskEvidence) fallbackReasons.push("Missing clauseText/highlightedText -> defaulted clause evidence");
     if (rawWhyRisky.length < 10) fallbackReasons.push("Missing or short whyRisky -> defaulted rationale");
@@ -474,6 +482,11 @@ function normalizeClauseEvidence(value: unknown, fallbackReasons: string[]) {
   return Object.keys(normalizedEvidence).length ? normalizedEvidence : undefined;
 }
 
+function getEvidenceSectionRef(value: unknown) {
+  const record = getObjectRecord(value);
+  return record ? getCleanString(record.sectionRef) : "";
+}
+
 function normalizePositiveInteger(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   const integer = Math.trunc(value);
@@ -512,6 +525,14 @@ function getUniqueNormalizedId(rawId: string, prefix: "RISK" | "GAP", usedIds: S
 function buildShortTextFallback(value: string, maxLength: number) {
   const normalized = getCleanString(value);
   return normalized.length > maxLength ? normalized.slice(0, maxLength).trimEnd() : normalized;
+}
+
+function getRiskTitleFallback(rawTitle: string, candidates: string[]) {
+  const candidate = [rawTitle, ...candidates].map((value) => getCleanString(value)).find((value) => value.length >= 4) || "Contract Risk";
+  const sentenceMatch = candidate.match(/^.*?[.!?](?=\s|$)/);
+  const title = sentenceMatch?.[0] || candidate;
+  const conciseTitle = title.replace(/[.!?]+$/, "").trim();
+  return buildShortTextFallback(conciseTitle || "Contract Risk", 72);
 }
 
 function normalizeRiskCategory(value: unknown, fallbackReasons: string[]): z.infer<typeof RiskCategorySchema> {
@@ -745,7 +766,97 @@ export const RiskSummarySchema = z.object({
   })
 });
 
-export const ContractAnalysisSchema = z.object({
+function preprocessContractAnalysis(value: unknown) {
+  const record = getObjectRecord(value);
+  if (!record) return value;
+
+  const risks = Array.isArray(record.risks) ? record.risks : [];
+  const gapAnalysis = typeof record.gapAnalysis === "undefined" && Array.isArray(record.gaps) ? record.gaps : record.gapAnalysis;
+  const gaps = Array.isArray(gapAnalysis) ? gapAnalysis : [];
+
+  return {
+    ...record,
+    gapAnalysis,
+    overallRiskLevel: typeof record.overallRiskLevel === "undefined" ? "Medium" : record.overallRiskLevel,
+    decisionRecommendation: typeof record.decisionRecommendation === "undefined" ? "Renegotiate" : record.decisionRecommendation,
+    decisionRationale: typeof record.decisionRationale === "undefined" ? DEFAULT_COMPATIBILITY_DECISION_RATIONALE : record.decisionRationale,
+    riskSummary: typeof record.riskSummary === "undefined" ? buildCompatibilityRiskSummary(risks) : record.riskSummary,
+    topCriticalRisks: typeof record.topCriticalRisks === "undefined" ? buildCompatibilityTopCriticalRisks(risks) : record.topCriticalRisks,
+    nextActions: typeof record.nextActions === "undefined" ? buildCompatibilityNextActions(risks, gaps) : record.nextActions
+  };
+}
+
+function buildCompatibilityRiskSummary(risks: unknown[]) {
+  return risks.reduce<z.infer<typeof RiskSummarySchema>>(
+    (summary, risk) => {
+      const record = getObjectRecord(risk);
+      const severity = normalizeCompatibilitySeverity(record?.severity);
+      const category = normalizeCompatibilityRiskCategory(record?.category);
+
+      summary.total += 1;
+      summary[severity.toLowerCase() as "high" | "medium" | "low"] += 1;
+      summary.byCategory[category] += 1;
+      return summary;
+    },
+    {
+      total: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      byCategory: {
+        Legal: 0,
+        Financial: 0,
+        Operational: 0,
+        Compliance: 0,
+        Technical: 0
+      }
+    }
+  );
+}
+
+function buildCompatibilityTopCriticalRisks(risks: unknown[]) {
+  const titles = risks
+    .map((risk) => {
+      const record = getObjectRecord(risk);
+      if (!record) return "";
+
+      return getRiskTitleFallback(getCleanString(record.title), [
+        getCleanString(record.highlightedText),
+        getCleanMultilineString(record.clauseText),
+        getCleanString(record.whyRisky),
+        `${normalizeCompatibilityRiskCategory(record.category)} Risk`
+      ]);
+    })
+    .filter((title) => title.length >= 3)
+    .slice(0, 5);
+
+  return titles.length ? titles : [DEFAULT_COMPATIBILITY_TOP_CRITICAL_RISK];
+}
+
+function buildCompatibilityNextActions(risks: unknown[], gaps: unknown[]) {
+  if (risks.length && gaps.length) return [DEFAULT_COMPATIBILITY_NEXT_ACTION];
+  if (risks.length) return ["Review identified risks before approval."];
+  if (gaps.length) return ["Review identified gaps before approval."];
+  return [DEFAULT_COMPATIBILITY_NEXT_ACTION];
+}
+
+function normalizeCompatibilitySeverity(value: unknown): z.infer<typeof SeveritySchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "high") return "High";
+  if (normalizedValue === "low") return "Low";
+  return "Medium";
+}
+
+function normalizeCompatibilityRiskCategory(value: unknown): z.infer<typeof RiskCategorySchema> {
+  const normalizedValue = getNormalizedToken(value);
+  if (normalizedValue === "legal") return "Legal";
+  if (normalizedValue === "financial" || normalizedValue === "finance") return "Financial";
+  if (normalizedValue === "compliance") return "Compliance";
+  if (normalizedValue === "technical" || normalizedValue === "technology") return "Technical";
+  return "Operational";
+}
+
+const ContractAnalysisObjectSchema = z.object({
   contractTitle: z.string().min(3),
   executiveSummary: z.string().min(40),
   aiInsight: z.string().optional(),
@@ -760,3 +871,5 @@ export const ContractAnalysisSchema = z.object({
   sourceClauses: z.array(SourceClauseSchema).optional(),
   nextActions: z.array(z.string().min(6)).min(1).max(6)
 });
+
+export const ContractAnalysisSchema = z.preprocess(preprocessContractAnalysis, ContractAnalysisObjectSchema);
