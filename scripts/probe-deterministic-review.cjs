@@ -78,8 +78,6 @@ const analyzeContractPrompt = loadTsModule("lib/ai/prompts/analyze-contract-prom
 
   return require(id);
 });
-const analyzeContractCompatibility = loadTsModule("lib/ai/prompts/analyze-contract-compatibility.ts");
-
 const outputModel = loadTsModule("lib/output-model.ts", (id) => {
   if (id === "@/constants/risk") {
     return {
@@ -119,13 +117,10 @@ const {
 const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
 const { buildClauseAction } = actions;
-const { adaptRawAnalysisForSchema } = analyzeContractCompatibility;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
-const analyzeContractSource = fs.readFileSync("lib/ai/analyzeContract.ts", "utf8");
-const analyzeContractCompatibilitySource = fs.readFileSync("lib/ai/prompts/analyze-contract-compatibility.ts", "utf8");
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Master services agreement with confidentiality, audit, and payment terms.",
   retrievedGuidance: "Use enterprise fallback language for audit rights."
@@ -175,89 +170,6 @@ assertNotIncludes(promptWithRetrievedGuidance, "clauseSnippet", "Analyze prompt:
 assertNotIncludes(promptWithRetrievedGuidance, "flaggedClause", "Analyze prompt: no longer uses old flaggedClause field");
 assertNotIncludes(promptWithRetrievedGuidance, "recommendedDraft", "Analyze prompt: no longer uses old recommendedDraft field");
 assertNotIncludes(promptWithRetrievedGuidance, "industryStandard", "Analyze prompt: no longer uses old industryStandard field");
-assertIncludes(
-  analyzeContractCompatibilitySource,
-  "export function adaptRawAnalysisForSchema",
-  "Analyze compatibility: experimental adapter file remains present"
-);
-assertNotIncludes(
-  analyzeContractSource,
-  "adaptRawAnalysisForSchema",
-  "Analyze compatibility: experimental adapter remains unwired from runtime analysis"
-);
-
-const rawCompatibilityInput = {
-  contractTitle: "Supplied Contract",
-  executiveSummary: "Existing summary",
-  risks: [
-    {
-      title: "Broad liability exposure",
-      category: "Legal",
-      severity: "High",
-      evidence: { sectionRef: "Section 9" },
-      confidence: 0.8,
-      domainSignals: ["liability"]
-    },
-    {
-      id: "CUSTOM-RISK",
-      title: "Weak SLA wording",
-      category: "Unexpected",
-      severity: "Low",
-      clauseRef: "Section 4",
-      mitigability: "Low"
-    }
-  ],
-  gaps: [
-    {
-      clauseName: "Missing audit rights"
-    }
-  ]
-};
-const rawCompatibilitySnapshot = JSON.parse(JSON.stringify(rawCompatibilityInput));
-const adaptedCompatibilityInput = adaptRawAnalysisForSchema(rawCompatibilityInput);
-
-assertDeepEqual(rawCompatibilityInput, rawCompatibilitySnapshot, "Analyze compatibility: input object is not mutated");
-assertEqual(adaptedCompatibilityInput.contractTitle, "Supplied Contract", "Analyze compatibility: existing contractTitle preserved");
-assertEqual(adaptedCompatibilityInput.overallRiskLevel, "Medium", "Analyze compatibility: missing overallRiskLevel defaults");
-assertEqual(adaptedCompatibilityInput.decisionRecommendation, "Renegotiate", "Analyze compatibility: missing decisionRecommendation defaults");
-assertIncludes(
-  adaptedCompatibilityInput.decisionRationale,
-  "final decision is derived by the application",
-  "Analyze compatibility: missing decisionRationale defaults"
-);
-assertDeepEqual(
-  adaptedCompatibilityInput.riskSummary,
-  {
-    total: 2,
-    high: 1,
-    medium: 0,
-    low: 1,
-    byCategory: { Legal: 1, Financial: 0, Operational: 1, Compliance: 0, Technical: 0 }
-  },
-  "Analyze compatibility: riskSummary is synthesized from risks"
-);
-assertDeepEqual(
-  adaptedCompatibilityInput.topCriticalRisks,
-  ["Broad liability exposure", "Weak SLA wording"],
-  "Analyze compatibility: topCriticalRisks defaults from risk titles"
-);
-assertDeepEqual(
-  adaptedCompatibilityInput.nextActions,
-  ["Review identified risks and gaps before approval."],
-  "Analyze compatibility: nextActions defaults safely"
-);
-assertEqual(adaptedCompatibilityInput.risks[0].id, "risk-1", "Analyze compatibility: missing risk id defaults");
-assertEqual(adaptedCompatibilityInput.risks[0].clauseRef, "Section 9", "Analyze compatibility: risk clauseRef defaults from evidence");
-assertEqual(adaptedCompatibilityInput.risks[0].mitigability, "Medium", "Analyze compatibility: missing mitigability defaults");
-assertEqual(adaptedCompatibilityInput.risks[0].confidence, 0.8, "Analyze compatibility: existing risk confidence preserved");
-assertDeepEqual(adaptedCompatibilityInput.risks[0].domainSignals, ["liability"], "Analyze compatibility: risk domain fields preserved");
-assertEqual(adaptedCompatibilityInput.risks[1].id, "CUSTOM-RISK", "Analyze compatibility: existing risk id preserved");
-assertEqual(adaptedCompatibilityInput.risks[1].clauseRef, "Section 4", "Analyze compatibility: existing risk clauseRef preserved");
-assertEqual(adaptedCompatibilityInput.risks[1].mitigability, "Low", "Analyze compatibility: existing risk mitigability preserved");
-assertEqual(adaptedCompatibilityInput.gapAnalysis.length, 1, "Analyze compatibility: gaps maps to gapAnalysis");
-assertEqual(adaptedCompatibilityInput.gapAnalysis[0].id, "gap-1", "Analyze compatibility: missing gap id defaults");
-assertEqual(adaptedCompatibilityInput.gapAnalysis[0].status, "Pending", "Analyze compatibility: missing gap status defaults");
-assertEqual(adaptRawAnalysisForSchema("not-json"), "not-json", "Analyze compatibility: non-object raw value passes through");
 
 assertIncludes(riskUiSource, '{ key: "balanced", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced uses balanced key");
 assertIncludes(riskUiSource, '{ key: "protective", label: "More Protective" }', "Risk Ask AI mapping: More Protective uses protective key");
