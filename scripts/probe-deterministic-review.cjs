@@ -141,16 +141,70 @@ assertIncludes(promptWithRetrievedGuidance, "Gap impact:", "Analyze prompt: incl
 assertIncludes(promptWithRetrievedGuidance, "Confidence:", "Analyze prompt: includes confidence config guidance");
 assertIncludes(promptWithRetrievedGuidance, "Risk variants:", "Analyze prompt: includes risk variant guidance");
 assertIncludes(promptWithRetrievedGuidance, "Gap variants:", "Analyze prompt: includes gap variant guidance");
+assertIncludes(promptWithRetrievedGuidance, "The application derives or defaults system-owned outputs", "Analyze prompt: includes system-owned fields note");
+assertIncludes(promptWithRetrievedGuidance, "overall risk level", "Analyze prompt: ownership note covers risk level");
+assertIncludes(promptWithRetrievedGuidance, "risk summary", "Analyze prompt: ownership note covers risk summary");
+assertIncludes(promptWithRetrievedGuidance, "top risk drivers", "Analyze prompt: ownership note covers top drivers");
+assertIncludes(promptWithRetrievedGuidance, "decision recommendation", "Analyze prompt: ownership note covers decision recommendation");
+assertIncludes(promptWithRetrievedGuidance, "recommended actions", "Analyze prompt: ownership note covers recommended actions");
+assertIncludes(promptWithRetrievedGuidance, "risk and gap review status", "Analyze prompt: ownership note covers review status");
+assertIncludes(promptWithRetrievedGuidance, "PDF layout, counts, summaries, status messages, final review, ordering, and rendering are system-derived.", "Analyze prompt: preserves PDF ownership note");
+assertIncludes(promptWithRetrievedGuidance, "Do not output application-derived decision, summary, review, recommended actions, status, or PDF fields.", "Analyze prompt: tells LLM not to emit app-owned output fields");
+assertIncludes(promptWithRetrievedGuidance, "Return valid JSON only.", "Analyze prompt: preserves JSON-only guardrail");
+assertIncludes(promptWithRetrievedGuidance, "Do not include comments.", "Analyze prompt: preserves no-comments guardrail");
+assertIncludes(promptWithRetrievedGuidance, "Do not invent clause references.", "Analyze prompt: preserves no-invented-clause-reference guardrail");
+assertIncludes(promptWithRetrievedGuidance, 'use "Section unknown"', "Analyze prompt: preserves unclear clause reference fallback");
+assertIncludes(promptWithRetrievedGuidance, "Keep quoted clause text minimal and relevant.", "Analyze prompt: preserves minimal quote guardrail");
+assertIncludes(promptWithRetrievedGuidance, "Confidence must be a JSON number between 0 and 1.", "Analyze prompt: preserves confidence JSON number guardrail");
+["contractTitle", "executiveSummary", "aiInsight", "risks[]", "gapAnalysis[]"].forEach((field) => {
+  assertIncludes(promptWithRetrievedGuidance, field, `Analyze prompt: keeps top-level LLM field ${field}`);
+});
 assertIncludes(promptWithRetrievedGuidance, "gapAnalysis[]", "Analyze prompt: uses schema-compatible gapAnalysis field");
-assertIncludes(promptWithRetrievedGuidance, "clauseText", "Analyze prompt: uses schema-compatible risk clauseText field");
-assertIncludes(promptWithRetrievedGuidance, "highlightedText", "Analyze prompt: uses schema-compatible risk highlightedText field");
-assertIncludes(promptWithRetrievedGuidance, "whyRisky", "Analyze prompt: uses schema-compatible risk whyRisky field");
-assertIncludes(promptWithRetrievedGuidance, "impactIfIgnored", "Analyze prompt: uses schema-compatible risk impactIfIgnored field");
-assertIncludes(promptWithRetrievedGuidance, "suggestedImprovement", "Analyze prompt: uses schema-compatible risk suggestedImprovement field");
-assertIncludes(promptWithRetrievedGuidance, "clauseVariants", "Analyze prompt: uses schema-compatible clauseVariants field");
+[
+  "id (optional if available)",
+  "title",
+  "category",
+  "severity",
+  "clauseRef",
+  "clauseText",
+  "highlightedText",
+  "mitigability",
+  "confidence",
+  "whyRisky",
+  "impactIfIgnored",
+  "suggestedImprovement",
+  "clauseVariants",
+  "sourceClauseIds",
+  "evidence",
+  "primaryCategory",
+  "secondaryCategories",
+  "domain",
+  "domainSignals"
+].forEach((field) => {
+  assertIncludes(promptWithRetrievedGuidance, field, `Analyze prompt: keeps canonical risk field ${field}`);
+});
 assertIncludes(promptWithRetrievedGuidance, "standard", "Analyze prompt: uses schema-compatible standard variant field");
-assertIncludes(promptWithRetrievedGuidance, "action", "Analyze prompt: uses schema-compatible gap action field");
-assertIncludes(promptWithRetrievedGuidance, "aiConfidence", "Analyze prompt: uses schema-compatible gap aiConfidence field");
+[
+  "id (optional if available)",
+  "clauseName",
+  "category",
+  "action",
+  "impact",
+  "aiConfidence",
+  "whyThisMatters",
+  "suggestedFix",
+  "recommendedClause",
+  "clauseVariants",
+  "sourceClauseIds",
+  "evidence",
+  "primaryCategory",
+  "secondaryCategories",
+  "domain",
+  "domainSignals",
+  "missingOrWeakProtection"
+].forEach((field) => {
+  assertIncludes(promptWithRetrievedGuidance, field, `Analyze prompt: keeps canonical gap field ${field}`);
+});
 assertIncludes(
   promptWithRetrievedGuidance,
   "Use enterprise fallback language for audit rights.",
@@ -170,6 +224,15 @@ assertNotIncludes(promptWithRetrievedGuidance, "clauseSnippet", "Analyze prompt:
 assertNotIncludes(promptWithRetrievedGuidance, "flaggedClause", "Analyze prompt: no longer uses old flaggedClause field");
 assertNotIncludes(promptWithRetrievedGuidance, "recommendedDraft", "Analyze prompt: no longer uses old recommendedDraft field");
 assertNotIncludes(promptWithRetrievedGuidance, "industryStandard", "Analyze prompt: no longer uses old industryStandard field");
+assertNotIncludes(promptWithRetrievedGuidance, "overallRiskLevel", "Analyze prompt: no longer asks for overallRiskLevel output");
+assertNotIncludes(promptWithRetrievedGuidance, "decisionRecommendation", "Analyze prompt: no longer asks for decisionRecommendation output");
+assertNotIncludes(promptWithRetrievedGuidance, "decisionRationale", "Analyze prompt: no longer asks for decisionRationale output");
+assertNotIncludes(promptWithRetrievedGuidance, "riskSummary", "Analyze prompt: no longer asks for riskSummary output");
+assertNotIncludes(promptWithRetrievedGuidance, "topCriticalRisks", "Analyze prompt: no longer asks for topCriticalRisks output");
+assertNotIncludes(promptWithRetrievedGuidance, "nextActions", "Analyze prompt: no longer asks for nextActions output");
+assertNotIncludes(promptWithRetrievedGuidance, "* status", "Analyze prompt: no longer asks for status output fields");
+assertNotIncludes(promptWithRetrievedGuidance, "Gap status compatibility", "Analyze prompt: removes old gap status compatibility section");
+assertNotIncludes(promptWithRetrievedGuidance, "Do not generate or reason about gap status", "Analyze prompt: removes gap-status-as-output wording");
 
 assertIncludes(riskUiSource, '{ key: "balanced", label: "More Balanced" }', "Risk Ask AI mapping: More Balanced uses balanced key");
 assertIncludes(riskUiSource, '{ key: "protective", label: "More Protective" }', "Risk Ask AI mapping: More Protective uses protective key");

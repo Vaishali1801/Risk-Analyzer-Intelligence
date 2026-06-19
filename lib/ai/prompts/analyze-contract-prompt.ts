@@ -99,7 +99,7 @@ The LLM generates evidence-supported analysis content:
 * risk and gap finding titles
 * risk and gap categories
 * risk severity
-* gap action/priority
+* gap action
 * gap impact
 * confidence scores
 * risk and gap explanations
@@ -112,18 +112,7 @@ CONFIG_GUIDANCE does not generate recommended drafts, recommended clauses, summa
 
 The application validates and normalizes LLM-proposed labels and confidence values.
 
-The application derives system-owned outputs:
-
-* overallRiskLevel / risk level
-* riskSummary / risk mix
-* category mix
-* topCriticalRisks / top risk drivers
-* decisionRecommendation / final decision
-* decisionRationale
-* nextActions / recommended actions
-* risk and gap review status
-* final review decisions
-* final review counts
+The application derives or defaults system-owned outputs: overall risk level, risk summary, severity mix, category mix, top risk drivers, decision recommendation, final decision, decision rationale, recommended actions, next actions, risk and gap review status, final review decisions, and final review counts.
 
 User review state owns risk acceptance, risk revision state, and gap Accepted/Rejected decisions.
 
@@ -165,7 +154,7 @@ RISK FINDINGS
 
 For each Risk generate:
 
-* id
+* id (optional if available; the application can generate one)
 * title
 * category
 * severity
@@ -188,6 +177,11 @@ For each Risk generate:
 clauseText should contain the relevant contractual language supporting the finding.
 
 highlightedText should contain only the most relevant contractual extract, not the entire clause section.
+
+Keep quoted clause text minimal and relevant.
+
+Do not invent clause references.
+If the clause reference is unclear, use "Section unknown".
 
 Use CONFIG_GUIDANCE when proposing risk category, severity, confidence, and clause variant styles.
 
@@ -216,7 +210,7 @@ GAP FINDINGS
 
 For each Gap generate:
 
-* id
+* id (optional if available; the application can generate one)
 * clauseName
 * category
 * action
@@ -234,11 +228,7 @@ For each Gap generate:
 * domainSignals
 * missingOrWeakProtection
 
-Use CONFIG_GUIDANCE when proposing gap category, action/priority, impact, confidence, and clause variant styles.
-
-Do not generate or reason about gap status.
-User review state owns Accepted/Rejected decisions.
-Compatibility defaults may set status to Pending only to satisfy the current schema.
+Use CONFIG_GUIDANCE when proposing gap category, action, impact, confidence, and clause variant styles.
 
 recommendedClause is the LLM-generated recommended clause for the gap.
 It is not a deterministic config output.
@@ -267,7 +257,7 @@ Follow the supplied CONFIG_GUIDANCE for:
 
 * severity
 * category
-* gap priority
+* gap action
 * impact
 * confidence
 * Ask AI variant styles
@@ -291,6 +281,8 @@ Do not include comments.
 
 Use concise enterprise language.
 
+Confidence must be a JSON number between 0 and 1.
+
 Confidence represents the strength of contractual evidence supporting the finding, not its business importance or severity.
 
 Determine confidence using the supplied CONFIG_GUIDANCE.
@@ -311,31 +303,7 @@ Primary top-level LLM fields:
 * risks[]
 * gapAnalysis[]
 
-System-owned compatibility fields currently required by the schema:
-
-* overallRiskLevel
-* decisionRecommendation
-* decisionRationale
-* riskSummary
-* topCriticalRisks
-* nextActions
-
-These compatibility fields are not true LLM analysis responsibilities.
-They are system-derived from normalized risks and review state.
-If present, they exist only for current schema compatibility.
-The compatibility normalizer may provide defaults before deterministic logic recalculates them.
-Do not over-optimize these fields.
-Keep them reasonable and concise.
-Do not treat these fields as final AI decisions.
-
-riskSummary is system-derived from normalized risks.
-It includes total, high, medium, low, and byCategory counts.
-
-topCriticalRisks / top risk drivers are system-derived from normalized risk severity, confidence, evidence, and ordering.
-
-nextActions / recommended actions are system-derived.
-
-decisionRecommendation and decisionRationale are system-derived compatibility fields.
+Do not output application-derived decision, summary, review, recommended actions, status, or PDF fields.
 
 executiveSummary must be a string containing:
 
@@ -345,7 +313,7 @@ executiveSummary must be a string containing:
 
 Risk fields:
 
-* id
+* id (optional if available)
 * title
 * category
 * severity
@@ -375,7 +343,7 @@ Risk clauseVariants fields:
 
 Gap fields:
 
-* id
+* id (optional if available)
 * clauseName
 * category
 * action
@@ -401,13 +369,6 @@ Gap clauseVariants fields:
 * detailed
 * alternative
 * protective
-
-Gap status compatibility:
-
-* status is schema compatibility only.
-* The app/user review state owns actual review status.
-* If status is included for current schema compatibility, use Pending.
-* Do not decide Accepted or Rejected.
 
 CONTRACT TEXT
 
