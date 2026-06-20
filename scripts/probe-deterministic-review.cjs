@@ -125,6 +125,13 @@ const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
 });
 const clauseBatch = loadTsModule("lib/clauses/batch.ts");
 const clauseRender = loadTsModule("lib/clauses/render.ts");
+const clauseInput = loadTsModule("lib/clauses/input.ts", (id) => {
+  if (id === "./segment") return clauseSegment;
+  if (id === "./tag") return clauseTag;
+  if (id === "./batch") return clauseBatch;
+  if (id === "./render") return clauseRender;
+  return require(id);
+});
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
   if (id === "@/lib/output-model") return outputModel;
   return require(id);
@@ -146,6 +153,7 @@ const { segmentContractClauses } = clauseSegment;
 const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
 const { renderClauseBatch, renderClauseBatches } = clauseRender;
+const { buildClauseAwareAnalysisInput } = clauseInput;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
@@ -1062,6 +1070,45 @@ assertEqual(
 assertEqual(renderClauseBatches([]), "DOCUMENT CLAUSE MAP\nNo clauses available.", "Clause renderer: empty batches fallback");
 assertEqual(JSON.stringify(renderFixtureBatches), renderFixtureBefore, "Clause renderer: does not mutate input batches");
 
+const clauseAwareInputSource = `1. Payment Terms
+Customer shall pay undisputed invoices within thirty days. Fees, taxes, and price increases require prior written approval.
+
+2. Limitation of Liability
+Supplier liability shall not exceed fees paid in the prior twelve months.
+
+3. Security
+Supplier shall maintain encryption, access controls, and breach notification processes.`;
+const clauseAwareInputBefore = clauseAwareInputSource.slice();
+const clauseAwareAnalysisInput = buildClauseAwareAnalysisInput(clauseAwareInputSource);
+
+assertIncludes(clauseAwareAnalysisInput, "DOCUMENT CLAUSE MAP", "Clause input helper: renders document clause map");
+assertIncludes(clauseAwareAnalysisInput, "Batch BATCH-001", "Clause input helper: includes first batch id");
+assertIncludes(clauseAwareAnalysisInput, "[CL-001]", "Clause input helper: includes first source clause id");
+assertIncludes(
+  clauseAwareAnalysisInput,
+  "Domain and clause type hints are advisory routing metadata only.",
+  "Clause input helper: includes renderer advisory note"
+);
+assertEqual(
+  clauseAwareAnalysisInput.indexOf("[CL-001]") < clauseAwareAnalysisInput.indexOf("[CL-002]") &&
+    clauseAwareAnalysisInput.indexOf("[CL-002]") < clauseAwareAnalysisInput.indexOf("[CL-003]"),
+  true,
+  "Clause input helper: preserves clause order"
+);
+assertIncludes(clauseAwareAnalysisInput, "sectionRef: 1.", "Clause input helper: includes sectionRef");
+assertIncludes(clauseAwareAnalysisInput, "title: Payment Terms", "Clause input helper: includes title");
+assertIncludes(clauseAwareAnalysisInput, "domainHints: Financial", "Clause input helper: includes domain hints");
+assertIncludes(clauseAwareAnalysisInput, "clauseTypeHints: payment", "Clause input helper: includes clause type hints");
+assertIncludes(
+  clauseAwareAnalysisInput,
+  "Customer shall pay undisputed invoices within thirty days.",
+  "Clause input helper: includes clause text"
+);
+["routingReason", "relevanceScore", "estimatedTokens", "order", "pageRef"].forEach((internalField) => {
+  assertNotIncludes(clauseAwareAnalysisInput, internalField, `Clause input helper: ${internalField} does not render`);
+});
+assertEqual(clauseAwareInputSource, clauseAwareInputBefore, "Clause input helper: does not mutate input string");
+
 const runtimeSourceFiles = [
   ...listSourceFiles("app"),
   ...listSourceFiles("components"),
@@ -1077,6 +1124,8 @@ runtimeSourceFiles.forEach((sourceFile) => {
   assertNotIncludes(source, "lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by path`);
   assertNotIncludes(source, "@/lib/clauses/render", `Runtime wiring: ${sourceFile} does not import clause renderer by alias`);
   assertNotIncludes(source, "lib/clauses/render", `Runtime wiring: ${sourceFile} does not import clause renderer by path`);
+  assertNotIncludes(source, "@/lib/clauses/input", `Runtime wiring: ${sourceFile} does not import clause input helper by alias`);
+  assertNotIncludes(source, "lib/clauses/input", `Runtime wiring: ${sourceFile} does not import clause input helper by path`);
 });
 
 console.log("Deterministic review probes passed.");
