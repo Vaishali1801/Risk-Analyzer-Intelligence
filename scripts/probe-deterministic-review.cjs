@@ -58,6 +58,24 @@ function assertThrows(fn, message) {
   throw new Error(`${message}: expected function to throw`);
 }
 
+function listSourceFiles(dir, excludedPathParts = []) {
+  if (!fs.existsSync(dir)) return [];
+
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${dir}/${entry.name}`;
+
+    if (excludedPathParts.some((excludedPathPart) => path.includes(excludedPathPart))) {
+      return [];
+    }
+
+    if (entry.isDirectory()) {
+      return listSourceFiles(path, excludedPathParts);
+    }
+
+    return /\.(ts|tsx|js|jsx|cjs)$/.test(entry.name) ? [path] : [];
+  });
+}
+
 const severityRules = loadTsModule("lib/ai/config/severity-rules.ts");
 const categoryRules = loadTsModule("lib/ai/config/category-rules.ts");
 const gapPriorityRules = loadTsModule("lib/ai/config/gap-priority-rules.ts");
@@ -100,6 +118,12 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 
 const schema = loadTsModule("schemas/contract-analysis.ts");
 const actions = loadTsModule("lib/reporting/actions.ts");
+const clauseSegment = loadTsModule("lib/clauses/segment.ts");
+const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
+  if (id === "../ai/config/category-rules") return categoryRules;
+  return require(id);
+});
+const clauseBatch = loadTsModule("lib/clauses/batch.ts");
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
   if (id === "@/lib/output-model") return outputModel;
   return require(id);
@@ -117,10 +141,15 @@ const {
 const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
 const { buildClauseAction } = actions;
+const { segmentContractClauses } = clauseSegment;
+const { tagClause, tagClauses } = clauseTag;
+const { createClauseBatches, estimateClauseTokens } = clauseBatch;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
+const clauseTagSource = fs.readFileSync("lib/clauses/tag.ts", "utf8");
+const canonicalRiskDomains = [...categoryRules.RISK_DOMAINS];
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Master services agreement with confidentiality, audit, and payment terms.",
   retrievedGuidance: "Use enterprise fallback language for audit rights."
@@ -736,5 +765,208 @@ assertEqual(
   "Approve",
   "Final Review: raw AI Reject does not drive completed review decision"
 );
+
+assertDeepEqual(
+  canonicalRiskDomains,
+  ["Financial", "Legal", "Compliance", "Operational", "Technical"],
+  "Clause tagging: canonical app domains remain aligned"
+);
+assertIncludes(
+  clauseTagSource,
+  "../ai/config/category-rules",
+  "Clause tagging: imports canonical category domain config"
+);
+[
+  "severity-rules",
+  "confidence-rules",
+  "impact-rules",
+  "gap-priority-rules",
+  "ask-ai-variants",
+  "normalizeSeverity",
+  "normalizeConfidenceScore",
+  "normalizeImpact",
+  "normalizeGapPriority",
+  "formatAskAiVariantRulesForPrompt"
+].forEach((unexpectedConfigSignal) => {
+  assertNotIncludes(
+    clauseTagSource,
+    unexpectedConfigSignal,
+    `Clause tagging: does not use unrelated config signal ${unexpectedConfigSignal}`
+  );
+});
+
+const segmentedClauses = segmentContractClauses(`1. Payment Terms
+Customer shall pay all undisputed invoices within thirty days after receipt. Taxes and price increases require written approval.
+
+2. Limitation of Liability
+Neither party will be liable for indirect damages, and aggregate liability is capped at fees paid in the prior twelve months.
+
+Section 5. Confidentiality
+Each party shall protect confidential information using reasonable safeguards and limit disclosure to authorized personnel.`);
+
+assertEqual(segmentedClauses.length, 3, "Clause segmentation: numbered and section clauses are detected");
+assertEqual(segmentedClauses[0].clauseId, "CL-001", "Clause segmentation: first canonical source-clause id");
+assertEqual(segmentedClauses[1].clauseId, "CL-002", "Clause segmentation: second canonical source-clause id");
+assertEqual(segmentedClauses[0].sectionRef, "1.", "Clause segmentation: numbered sectionRef preserved");
+assertEqual(segmentedClauses[0].title, "Payment Terms", "Clause segmentation: numbered title preserved");
+assertEqual(segmentedClauses[1].sectionRef, "2.", "Clause segmentation: second numbered sectionRef preserved");
+assertEqual(segmentedClauses[1].title, "Limitation of Liability", "Clause segmentation: second numbered title preserved");
+assertEqual(segmentedClauses[2].sectionRef, "Section 5", "Clause segmentation: section heading reference preserved");
+assertEqual(segmentedClauses[2].title, "Confidentiality", "Clause segmentation: section heading title preserved");
+
+const fallbackClause = segmentContractClauses(
+  "This short services agreement describes general cooperation obligations without formal numbered headings or article labels."
+);
+
+assertEqual(fallbackClause.length, 1, "Clause segmentation fallback: one clause when no headings exist");
+assertEqual(fallbackClause[0].clauseId, "CL-001", "Clause segmentation fallback: canonical source-clause id");
+assertEqual(fallbackClause[0].sectionRef, "Section unknown", "Clause segmentation fallback: unknown sectionRef");
+assertEqual(fallbackClause[0].title, "Contract text", "Clause segmentation fallback: contract text title");
+
+const paymentTag = tagClause(segmentedClauses[0]);
+assertIncludes(paymentTag.domainHints, "Financial", "Clause tagging: payment terms route to Financial");
+assertIncludes(paymentTag.clauseTypeHints, "payment", "Clause tagging: payment type hint");
+assertEqual(paymentTag.relevanceScore >= 0 && paymentTag.relevanceScore <= 1, true, "Clause tagging: payment relevance is bounded");
+
+const legalTag = tagClause({
+  clauseId: "CL-900",
+  order: 900,
+  sectionRef: "8.",
+  title: "Indemnity and Liability",
+  text: "Supplier shall indemnify customer for third party claims, subject to the limitation of liability and liability cap."
+});
+
+assertIncludes(legalTag.domainHints, "Legal", "Clause tagging: liability and indemnity route to Legal");
+assertIncludes(legalTag.clauseTypeHints, "liability", "Clause tagging: liability type hint");
+assertIncludes(legalTag.clauseTypeHints, "indemnity", "Clause tagging: indemnity type hint");
+assertEqual(legalTag.relevanceScore >= 0 && legalTag.relevanceScore <= 1, true, "Clause tagging: legal relevance is bounded");
+
+const securityDataTag = tagClause({
+  clauseId: "CL-901",
+  order: 901,
+  sectionRef: "9.",
+  title: "Data Security",
+  text: "Supplier shall maintain security controls, encryption, access control, breach notification, privacy, data protection, and retention safeguards."
+});
+
+assertIncludes(securityDataTag.domainHints, "Technical", "Clause tagging: security and breach language routes to Technical");
+assertIncludes(securityDataTag.domainHints, "Compliance", "Clause tagging: data and privacy language routes to Compliance");
+assertIncludes(securityDataTag.clauseTypeHints, "security", "Clause tagging: security type hint");
+assertIncludes(securityDataTag.clauseTypeHints, "data-protection", "Clause tagging: data-protection type hint");
+assertEqual(securityDataTag.relevanceScore >= 0 && securityDataTag.relevanceScore <= 1, true, "Clause tagging: security relevance is bounded");
+
+const generalTag = tagClause({
+  clauseId: "CL-902",
+  order: 902,
+  sectionRef: "Section unknown",
+  title: "General",
+  text: "The parties will cooperate in good faith on routine administrative matters."
+});
+
+assertDeepEqual(generalTag.domainHints, ["Operational"], "Clause tagging: weak signal defaults to Operational");
+assertDeepEqual(generalTag.clauseTypeHints, ["general"], "Clause tagging: weak signal defaults to general");
+assertEqual(generalTag.relevanceScore >= 0 && generalTag.relevanceScore <= 1, true, "Clause tagging: general relevance is bounded");
+
+const clauseTaggings = [paymentTag, legalTag, securityDataTag, generalTag];
+clauseTaggings.forEach((tagging) => {
+  tagging.domainHints.forEach((domainHint) => {
+    assertIncludes(canonicalRiskDomains, domainHint, `Clause tagging: ${domainHint} is a canonical app domain`);
+  });
+});
+canonicalRiskDomains.forEach((canonicalDomain) => {
+  assertEqual(
+    clauseTaggings.some((tagging) => tagging.domainHints.includes(canonicalDomain)),
+    true,
+    `Clause tagging: ${canonicalDomain} hint can be produced`
+  );
+});
+
+const taggedSegmentedClauses = tagClauses(segmentedClauses);
+const tightTokenBatches = createClauseBatches(taggedSegmentedClauses.slice(0, 2), { maxEstimatedTokens: 35, maxClausesPerBatch: 12 });
+
+assertEqual(tightTokenBatches.length, 2, "Clause batching: moves full clause to next batch when token limit would be exceeded");
+assertEqual(tightTokenBatches[0].clauses.length, 1, "Clause batching: first tight batch keeps first complete clause");
+assertEqual(tightTokenBatches[1].clauses.length, 1, "Clause batching: second tight batch keeps second complete clause");
+assertEqual(tightTokenBatches[0].clauses[0].clause.text, segmentedClauses[0].text, "Clause batching: first clause text is not cut");
+assertEqual(tightTokenBatches[1].clauses[0].clause.text, segmentedClauses[1].text, "Clause batching: second clause text is not cut");
+assertMatches(tightTokenBatches[0].batchId, /^BATCH-\d{3}$/, "Clause batching: batch id format");
+
+const clauseLimitBatches = createClauseBatches(taggedSegmentedClauses, { maxEstimatedTokens: 6000, maxClausesPerBatch: 2 });
+assertEqual(clauseLimitBatches.length, 2, "Clause batching: respects maxClausesPerBatch");
+assertEqual(clauseLimitBatches[0].clauses.length, 2, "Clause batching: first clause-limited batch has requested maximum");
+assertEqual(clauseLimitBatches[1].clauses.length, 1, "Clause batching: remaining clause starts next batch");
+
+const tokenLimitedBatches = createClauseBatches(taggedSegmentedClauses, { maxEstimatedTokens: 45, maxClausesPerBatch: 12 });
+assertEqual(
+  tokenLimitedBatches.every((batch) => batch.estimatedTokens <= 45),
+  true,
+  "Clause batching: respects maxEstimatedTokens where clauses are not oversized"
+);
+
+const oversizedTaggedClause = tagClauses([
+  {
+    clauseId: "CL-999",
+    order: 999,
+    sectionRef: "99.",
+    title: "Oversized Security Exhibit",
+    text: `Security controls ${"and operational safeguards ".repeat(80)}`
+  }
+]);
+const oversizedBatches = createClauseBatches(oversizedTaggedClause, { maxEstimatedTokens: 20, maxClausesPerBatch: 12 });
+
+assertEqual(oversizedBatches.length, 1, "Clause batching: oversized single clause remains in one batch");
+assertEqual(oversizedBatches[0].clauses.length, 1, "Clause batching: oversized batch contains only the oversized clause");
+assertIncludes(oversizedBatches[0].routingReason.toLowerCase(), "oversized", "Clause batching: oversized condition is noted");
+assertEqual(oversizedBatches[0].clauses[0].clause.text, oversizedTaggedClause[0].clause.text, "Clause batching: oversized clause is not split");
+
+const defaultClauseLimitClauses = Array.from({ length: 13 }, (_, index) => ({
+  clauseId: `CL-D${index + 1}`,
+  order: index + 1,
+  sectionRef: `${index + 1}.`,
+  title: `Default Batch Clause ${index + 1}`,
+  text: "Routine support obligations apply to administrative notices and operational cooperation."
+}));
+const defaultClauseLimitBatches = createClauseBatches(tagClauses(defaultClauseLimitClauses));
+
+assertEqual(defaultClauseLimitBatches.length, 2, "Clause batching defaults: maxClausesPerBatch is 12");
+assertEqual(defaultClauseLimitBatches[0].clauses.length, 12, "Clause batching defaults: first default batch has 12 clauses");
+assertEqual(defaultClauseLimitBatches[1].clauses.length, 1, "Clause batching defaults: thirteenth clause starts next batch");
+
+const defaultTokenLimitBatches = createClauseBatches(
+  tagClauses([
+    {
+      clauseId: "CL-T1",
+      order: 1,
+      sectionRef: "T1.",
+      title: "Large Clause One",
+      text: "a".repeat(12004)
+    },
+    {
+      clauseId: "CL-T2",
+      order: 2,
+      sectionRef: "T2.",
+      title: "Large Clause Two",
+      text: "b".repeat(12004)
+    }
+  ])
+);
+
+assertEqual(estimateClauseTokens("a".repeat(24000)), 6000, "Clause batching: token heuristic is character length divided by four");
+assertEqual(defaultTokenLimitBatches.length, 2, "Clause batching defaults: maxEstimatedTokens is 6000");
+
+const runtimeSourceFiles = [
+  ...listSourceFiles("app"),
+  ...listSourceFiles("components"),
+  ...listSourceFiles("hooks"),
+  ...listSourceFiles("lib", ["lib/clauses"]),
+  ...listSourceFiles("schemas"),
+  ...listSourceFiles("types")
+];
+
+runtimeSourceFiles.forEach((sourceFile) => {
+  const source = fs.readFileSync(sourceFile, "utf8");
+  assertNotIncludes(source, "@/lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by alias`);
+  assertNotIncludes(source, "lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by path`);
+});
 
 console.log("Deterministic review probes passed.");
