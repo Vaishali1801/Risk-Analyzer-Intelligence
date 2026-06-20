@@ -124,6 +124,7 @@ const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
   return require(id);
 });
 const clauseBatch = loadTsModule("lib/clauses/batch.ts");
+const clauseRender = loadTsModule("lib/clauses/render.ts");
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
   if (id === "@/lib/output-model") return outputModel;
   return require(id);
@@ -144,6 +145,7 @@ const { buildClauseAction } = actions;
 const { segmentContractClauses } = clauseSegment;
 const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
+const { renderClauseBatch, renderClauseBatches } = clauseRender;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
@@ -954,6 +956,112 @@ const defaultTokenLimitBatches = createClauseBatches(
 assertEqual(estimateClauseTokens("a".repeat(24000)), 6000, "Clause batching: token heuristic is character length divided by four");
 assertEqual(defaultTokenLimitBatches.length, 2, "Clause batching defaults: maxEstimatedTokens is 6000");
 
+const renderFixtureBatches = [
+  {
+    batchId: "BATCH-001",
+    domainHints: ["Legal", "Financial", "Legal"],
+    clauseTypeHints: ["liability", "payment", "liability"],
+    estimatedTokens: 456,
+    routingReason: "Internal batch routing reason should not render.",
+    clauses: [
+      {
+        clause: {
+          clauseId: "CL-001",
+          order: 1,
+          sectionRef: "Section 8",
+          title: "Limitation of Liability",
+          text: " Supplier liability shall not exceed fees paid in the prior twelve months. ",
+          pageRef: 4
+        },
+        tagging: {
+          clauseId: "CL-001",
+          clauseTypeHints: ["liability", "liability"],
+          domainHints: ["Legal", "Financial", "Legal"],
+          relevanceScore: 0.91,
+          routingReason: "Internal clause routing reason should not render."
+        }
+      },
+      {
+        clause: {
+          clauseId: "CL-002",
+          order: 2,
+          sectionRef: "Section 9",
+          title: "Indemnity",
+          text: "Supplier shall indemnify customer for third party claims."
+        },
+        tagging: {
+          clauseId: "CL-002",
+          clauseTypeHints: ["indemnity"],
+          domainHints: ["Legal"],
+          relevanceScore: 0.88,
+          routingReason: "Internal clause routing reason should not render."
+        }
+      }
+    ]
+  },
+  {
+    batchId: "BATCH-002",
+    domainHints: ["Technical"],
+    clauseTypeHints: ["security"],
+    estimatedTokens: 123,
+    routingReason: "Internal second batch routing reason should not render.",
+    clauses: [
+      {
+        clause: {
+          clauseId: "CL-003",
+          order: 3,
+          sectionRef: "Section 10",
+          title: "Security",
+          text: "Vendor must maintain encryption, access controls, and breach notification processes.",
+          pageRef: 5
+        },
+        tagging: {
+          clauseId: "CL-003",
+          clauseTypeHints: ["security"],
+          domainHints: ["Technical"],
+          relevanceScore: 0.86,
+          routingReason: "Internal security routing reason should not render."
+        }
+      }
+    ]
+  }
+];
+const renderFixtureBefore = JSON.stringify(renderFixtureBatches);
+const renderedBatch = renderClauseBatch(renderFixtureBatches[0]);
+const renderedBatches = renderClauseBatches(renderFixtureBatches);
+
+assertIncludes(renderedBatch, "Batch BATCH-001", "Clause renderer: renderClauseBatch includes batch ID");
+assertIncludes(renderedBatches, "DOCUMENT CLAUSE MAP", "Clause renderer: renderClauseBatches includes document map heading");
+assertIncludes(renderedBatches, "[CL-001]", "Clause renderer: clause IDs render in bracket format");
+assertIncludes(renderedBatches, "sectionRef: Section 8", "Clause renderer: sectionRef renders");
+assertIncludes(renderedBatches, "title: Limitation of Liability", "Clause renderer: title renders");
+assertIncludes(renderedBatches, "Supplier liability shall not exceed fees paid in the prior twelve months.", "Clause renderer: text renders and trims");
+assertIncludes(renderedBatches, "domains: Legal, Financial", "Clause renderer: batch domain hints render and dedupe");
+assertIncludes(renderedBatches, "types: liability, payment", "Clause renderer: batch clause type hints render and dedupe");
+assertIncludes(renderedBatches, "domainHints: Legal, Financial", "Clause renderer: clause domain hints render and dedupe");
+assertIncludes(renderedBatches, "clauseTypeHints: liability", "Clause renderer: clause type hints render");
+assertIncludes(
+  renderedBatches,
+  "Domain and clause type hints are advisory routing metadata only.",
+  "Clause renderer: advisory note exists"
+);
+["routingReason", "relevanceScore", "estimatedTokens", "order", "pageRef"].forEach((internalField) => {
+  assertNotIncludes(renderedBatches, internalField, `Clause renderer: ${internalField} does not render`);
+});
+assertEqual(
+  renderedBatches.indexOf("Batch BATCH-001") < renderedBatches.indexOf("Batch BATCH-002"),
+  true,
+  "Clause renderer: preserves batch order"
+);
+assertEqual(
+  renderedBatches.indexOf("[CL-001]") < renderedBatches.indexOf("[CL-002]") &&
+    renderedBatches.indexOf("[CL-002]") < renderedBatches.indexOf("[CL-003]"),
+  true,
+  "Clause renderer: preserves clause order"
+);
+assertEqual(renderClauseBatches([]), "DOCUMENT CLAUSE MAP\nNo clauses available.", "Clause renderer: empty batches fallback");
+assertEqual(JSON.stringify(renderFixtureBatches), renderFixtureBefore, "Clause renderer: does not mutate input batches");
+
 const runtimeSourceFiles = [
   ...listSourceFiles("app"),
   ...listSourceFiles("components"),
@@ -967,6 +1075,8 @@ runtimeSourceFiles.forEach((sourceFile) => {
   const source = fs.readFileSync(sourceFile, "utf8");
   assertNotIncludes(source, "@/lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by alias`);
   assertNotIncludes(source, "lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by path`);
+  assertNotIncludes(source, "@/lib/clauses/render", `Runtime wiring: ${sourceFile} does not import clause renderer by alias`);
+  assertNotIncludes(source, "lib/clauses/render", `Runtime wiring: ${sourceFile} does not import clause renderer by path`);
 });
 
 console.log("Deterministic review probes passed.");
