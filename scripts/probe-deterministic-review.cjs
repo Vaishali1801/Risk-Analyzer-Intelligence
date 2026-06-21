@@ -58,6 +58,18 @@ function assertThrows(fn, message) {
   throw new Error(`${message}: expected function to throw`);
 }
 
+function assertThrowsInputError(fn, expectedStatusCode, expectedMessagePart, message) {
+  try {
+    fn();
+  } catch (error) {
+    assertEqual(error.statusCode, expectedStatusCode, `${message}: status code`);
+    assertIncludes(error.message, expectedMessagePart, `${message}: message`);
+    return;
+  }
+
+  throw new Error(`${message}: expected input validation error`);
+}
+
 function listSourceFiles(dir, excludedPathParts = []) {
   if (!fs.existsSync(dir)) return [];
 
@@ -119,6 +131,7 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 const schema = loadTsModule("schemas/contract-analysis.ts");
 const actions = loadTsModule("lib/reporting/actions.ts");
 const parserPreprocess = loadTsModule("lib/parsers/preprocess.ts");
+const analyzeInputValidation = loadTsModule("lib/validation/analyze-input.ts");
 const clauseSegment = loadTsModule("lib/clauses/segment.ts");
 const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
   if (id === "../ai/config/category-rules") return categoryRules;
@@ -151,6 +164,16 @@ const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
 const { buildClauseAction } = actions;
 const { preprocessContractText } = parserPreprocess;
+const {
+  MAX_CLEAN_TEXT_CHARS,
+  MAX_FILE_SIZE_BYTES,
+  MIN_TEXT_LENGTH,
+  assessTextQuality,
+  normalizeDocumentName,
+  validatePastedTextPayload,
+  validatePreparedText,
+  validateUploadedFile
+} = analyzeInputValidation;
 const { segmentContractClauses } = clauseSegment;
 const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
@@ -160,6 +183,7 @@ const { buildClauseAwareAnalysisInput } = clauseInput;
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
+const analyzeRouteSource = fs.readFileSync("app/api/analyze/route.ts", "utf8");
 const clauseTagSource = fs.readFileSync("lib/clauses/tag.ts", "utf8");
 const canonicalRiskDomains = [...categoryRules.RISK_DOMAINS];
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
@@ -198,6 +222,106 @@ assertEqual(
 );
 assertEqual(preprocessContractText("Supplier shall indem-\nnify customer."), "Supplier shall indemnify customer.", "Preprocess: simple hyphen line break is repaired");
 assertEqual(preprocessContractText("   \r\n\t  "), "", "Preprocess: whitespace-only input returns empty string");
+
+assertEqual(MAX_FILE_SIZE_BYTES, 4 * 1024 * 1024, "Analyze input guardrails: max upload size is 4 MB");
+assertEqual(MIN_TEXT_LENGTH, 200, "Analyze input guardrails: minimum text length is 200");
+assertEqual(MAX_CLEAN_TEXT_CHARS, 80000, "Analyze input guardrails: max cleaned text length is 80,000");
+assertEqual(normalizeDocumentName("  Master Services Agreement  ", "Fallback"), "Master Services Agreement", "Analyze input guardrails: document name trims");
+assertEqual(normalizeDocumentName("   ", "Fallback"), "Fallback", "Analyze input guardrails: blank document name falls back");
+assertThrowsInputError(
+  () => validateUploadedFile(null),
+  400,
+  "Please upload a PDF or DOCX contract.",
+  "Analyze input guardrails: missing upload file"
+);
+assertThrowsInputError(
+  () => validateUploadedFile({ name: "empty.pdf", size: 0, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+  400,
+  "The uploaded file is empty.",
+  "Analyze input guardrails: empty upload file"
+);
+assertThrowsInputError(
+  () =>
+    validateUploadedFile({
+      name: "large.pdf",
+      size: MAX_FILE_SIZE_BYTES + 1,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
+    }),
+  400,
+  "under 4 MB",
+  "Analyze input guardrails: oversized upload file"
+);
+assertDeepEqual(
+  validatePastedTextPayload({ text: "  Payment terms apply.  ", documentName: "  Pasted MSA  " }),
+  { rawText: "Payment terms apply.", documentName: "Pasted MSA" },
+  "Analyze input guardrails: pasted payload trims text and document name"
+);
+assertThrowsInputError(
+  () => validatePastedTextPayload({ text: "   " }),
+  400,
+  "Paste contract text before running the review.",
+  "Analyze input guardrails: empty pasted text"
+);
+
+const goodContractQualityText = `1. Payment Terms
+This agreement is entered into by the parties for services, payment, obligations, confidentiality, termination, liability, indemnity, and governing law. Customer shall pay undisputed invoices within thirty days and supplier shall perform the services in accordance with the agreed term.`;
+const goodQuality = assessTextQuality(goodContractQualityText);
+assertEqual(goodQuality.ok, true, "Analyze input guardrails: good contract text passes quality check");
+assertEqual(goodQuality.likelyScanned, false, "Analyze input guardrails: good contract text is not likely scanned");
+assertThrowsInputError(
+  () => validatePreparedText("This agreement is too short.", "paste"),
+  422,
+  "too short. Paste a longer contract or clause set.",
+  "Analyze input guardrails: short pasted text keeps friendly short-text behavior"
+);
+assertThrowsInputError(
+  () => validatePreparedText("", "upload"),
+  422,
+  "text-based PDF or DOCX",
+  "Analyze input guardrails: empty upload extraction keeps scanned/text-based PDF guidance"
+);
+
+const symbolHeavyGarbage = "@@@ ### $$$ %%% ??? \uFFFD ".repeat(30);
+const garbageQuality = assessTextQuality(symbolHeavyGarbage);
+assertEqual(garbageQuality.ok, false, "Analyze input guardrails: symbol-heavy garbage fails quality check");
+assertEqual(garbageQuality.likelyScanned, true, "Analyze input guardrails: symbol-heavy garbage is likely scanned/unreadable");
+
+const repeatedLineNoise = Array.from({ length: 8 }, () => "The parties agree to provide services and payment obligations under this agreement.").join("\n");
+const repeatedLineQuality = assessTextQuality(repeatedLineNoise);
+assertEqual(repeatedLineQuality.ok, true, "Analyze input guardrails: repeated-line noise is diagnostic, not a hard fail");
+assertEqual(
+  repeatedLineQuality.issues.some((issue) => issue.includes("repeated lines")),
+  true,
+  "Analyze input guardrails: repeated-line noise is flagged"
+);
+
+const noHeadingContractText =
+  "This agreement between the parties describes services, payment obligations, confidentiality duties, termination rights, liability limits, indemnity obligations, and governing law. Supplier shall provide support and customer shall pay all undisputed invoices within thirty days after receipt.";
+const noHeadingQuality = assessTextQuality(noHeadingContractText);
+assertEqual(noHeadingQuality.ok, true, "Analyze input guardrails: normal contract text without many headings still passes");
+assertEqual(
+  noHeadingQuality.issues.some((issue) => issue.includes("no obvious clause headings")),
+  true,
+  "Analyze input guardrails: missing headings are diagnostic only"
+);
+assertThrowsInputError(
+  () => validatePreparedText(symbolHeavyGarbage, "upload"),
+  422,
+  "Scanned image PDFs may need OCR first.",
+  "Analyze input guardrails: unreadable upload extraction gets scanned-style guidance"
+);
+assertThrowsInputError(
+  () => validatePreparedText("Agreement ".repeat(9000), "paste"),
+  413,
+  "under 80,000 characters",
+  "Analyze input guardrails: text over 80,000 chars fails"
+);
+assertMatches(
+  analyzeRouteSource,
+  /new AnalyzeInputError\("Invalid JSON request\. Paste contract text before running the review\.", 400\)/,
+  "Analyze route guardrails: malformed JSON path returns friendly 400"
+);
+assertIncludes(analyzeRouteSource, "validatePreparedText(text, analysisSourceKind)", "Analyze route guardrails: route validates prepared text through helper");
 
 assertIncludes(
   promptWithRetrievedGuidance,
