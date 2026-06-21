@@ -118,6 +118,7 @@ const outputModel = loadTsModule("lib/output-model.ts", (id) => {
 
 const schema = loadTsModule("schemas/contract-analysis.ts");
 const actions = loadTsModule("lib/reporting/actions.ts");
+const parserPreprocess = loadTsModule("lib/parsers/preprocess.ts");
 const clauseSegment = loadTsModule("lib/clauses/segment.ts");
 const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
   if (id === "../ai/config/category-rules") return categoryRules;
@@ -149,6 +150,7 @@ const {
 const { buildPdfReportModel } = pdfModel;
 const { ContractAnalysisSchema, normalizeGapAnalysis, normalizeRiskAnalysis } = schema;
 const { buildClauseAction } = actions;
+const { preprocessContractText } = parserPreprocess;
 const { segmentContractClauses } = clauseSegment;
 const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
@@ -167,6 +169,35 @@ const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPr
 const promptWithFallbackGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Short contract text for placeholder replacement."
 });
+
+assertEqual(preprocessContractText("Alpha\r\nBeta\rGamma"), "Alpha\nBeta\nGamma", "Preprocess: CRLF and CR normalize to LF");
+assertEqual(preprocessContractText("Alpha   Beta\t\tGamma"), "Alpha Beta Gamma", "Preprocess: repeated spaces and tabs collapse");
+assertEqual(preprocessContractText("Alpha\n\n\n\nBeta"), "Alpha\n\nBeta", "Preprocess: three or more newlines collapse to one blank line");
+assertEqual(preprocessContractText("Alpha\nPage 12 of 34\n\nBeta"), "Alpha\n\nBeta", "Preprocess: Page X of Y marker is removed");
+assertIncludes(preprocessContractText("1. Payment Terms\nCustomer shall pay invoices."), "1. Payment Terms", "Preprocess: numbered heading is preserved");
+assertIncludes(preprocessContractText("1.1 Fees\nFees are due monthly."), "1.1 Fees", "Preprocess: nested heading is preserved");
+assertIncludes(
+  preprocessContractText("Section 5. Confidentiality\nEach party protects confidential information."),
+  "Section 5. Confidentiality",
+  "Preprocess: Section heading is preserved"
+);
+assertIncludes(
+  preprocessContractText("ARTICLE IV - TERMINATION\nEither party may terminate for material breach."),
+  "ARTICLE IV - TERMINATION",
+  "Preprocess: ARTICLE heading is preserved"
+);
+assertEqual(
+  preprocessContractText("1. Payment Terms\nCustomer shall pay invoices.\n\n2. Liability\nLiability is capped."),
+  "1. Payment Terms\nCustomer shall pay invoices.\n\n2. Liability\nLiability is capped.",
+  "Preprocess: paragraph boundaries remain suitable for clause segmentation"
+);
+assertEqual(
+  preprocessContractText("- First item\n* Second item\n\u2022 Third item\n(a) Fourth item\n(i) Fifth item"),
+  "- First item\n* Second item\n\u2022 Third item\n(a) Fourth item\n(i) Fifth item",
+  "Preprocess: bullet and list markers are preserved"
+);
+assertEqual(preprocessContractText("Supplier shall indem-\nnify customer."), "Supplier shall indemnify customer.", "Preprocess: simple hyphen line break is repaired");
+assertEqual(preprocessContractText("   \r\n\t  "), "", "Preprocess: whitespace-only input returns empty string");
 
 assertIncludes(
   promptWithRetrievedGuidance,
