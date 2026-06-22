@@ -118,6 +118,14 @@ export function buildClauseAwarePrompt(text: string): string {
   return buildAnalyzeContractPrompt({ contractText: clauseAwareInput });
 }
 
+function shouldUseLegacyPrompt(): boolean {
+  return process.env.USE_LEGACY_PROMPT === "true";
+}
+
+export function selectAnalysisPrompt(text: string): string {
+  return shouldUseLegacyPrompt() ? buildPrompt(text) : buildClauseAwarePrompt(text);
+}
+
 export function repairJSON(response: string): string {
   const trimmed = response.trim();
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
@@ -170,7 +178,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
     throw new Error("OPENAI_API_KEY is not configured. Add it to .env.local to analyze uploaded contracts.");
   }
 
-  const prompt = buildPrompt(text);
+  const prompt = selectAnalysisPrompt(text);
   let firstResponse = "";
 
   try {

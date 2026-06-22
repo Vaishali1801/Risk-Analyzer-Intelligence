@@ -100,6 +100,27 @@ function listSourceFiles(dir, excludedPathParts = []) {
   });
 }
 
+function withTemporaryEnvValue(name, value, fn) {
+  const hadValue = Object.prototype.hasOwnProperty.call(process.env, name);
+  const previousValue = process.env[name];
+
+  try {
+    if (typeof value === "undefined") {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+
+    return fn();
+  } finally {
+    if (hadValue) {
+      process.env[name] = previousValue;
+    } else {
+      delete process.env[name];
+    }
+  }
+}
+
 const severityRules = loadTsModule("lib/ai/config/severity-rules.ts");
 const categoryRules = loadTsModule("lib/ai/config/category-rules.ts");
 const gapPriorityRules = loadTsModule("lib/ai/config/gap-priority-rules.ts");
@@ -199,7 +220,7 @@ const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
 const { renderClauseBatch, renderClauseBatches } = clauseRender;
 const { buildClauseAwareAnalysisInput } = clauseInput;
-const { buildClauseAwarePrompt, buildPrompt } = analyzeContractRuntime;
+const { buildClauseAwarePrompt, buildPrompt, selectAnalysisPrompt } = analyzeContractRuntime;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
@@ -222,6 +243,8 @@ Customer shall pay all undisputed invoices within thirty days after receipt. Tax
 Each party shall protect confidential information using reasonable safeguards and limit disclosure to authorized personnel.`;
 const clauseAwarePrompt = buildClauseAwarePrompt(clauseAwarePromptFixture);
 const legacyPrompt = buildPrompt(clauseAwarePromptFixture);
+const defaultSelectedPrompt = withTemporaryEnvValue("USE_LEGACY_PROMPT", undefined, () => selectAnalysisPrompt(clauseAwarePromptFixture));
+const legacySelectedPrompt = withTemporaryEnvValue("USE_LEGACY_PROMPT", "true", () => selectAnalysisPrompt(clauseAwarePromptFixture));
 const missingUploadMessage = "Please upload a PDF or DOCX contract.";
 const emptyUploadMessage = "The uploaded file is empty.";
 const tooLargeUploadMessage =
@@ -389,10 +412,33 @@ assertIncludes(clauseAwarePrompt, "Gap priorities:", "Clause-aware prompt: inclu
 assertIncludes(clauseAwarePrompt, "Return valid JSON only.", "Clause-aware prompt: includes JSON-only output rule");
 assertNotIncludes(clauseAwarePrompt, "--- CHUNK 1 ---", "Clause-aware prompt: does not include legacy chunk labels");
 assertIncludes(legacyPrompt, "--- CHUNK 1 ---", "Legacy prompt: old buildPrompt still includes chunk labels");
-assertIncludes(analyzeContractSource, "const prompt = buildPrompt(text)", "Analyze runtime: analyzeContract still calls old buildPrompt");
+assertIncludes(defaultSelectedPrompt, "DOCUMENT CLAUSE MAP", "Prompt selection: default unset flag uses clause-aware prompt");
+assertIncludes(defaultSelectedPrompt, "[CL-001]", "Prompt selection: default selected prompt includes first source-clause id");
+assertNotIncludes(defaultSelectedPrompt, "--- CHUNK 1 ---", "Prompt selection: default selected prompt omits legacy chunk labels");
+assertIncludes(legacySelectedPrompt, "--- CHUNK 1 ---", "Prompt selection: USE_LEGACY_PROMPT=true selects legacy chunk prompt");
+assertNotIncludes(legacySelectedPrompt, "DOCUMENT CLAUSE MAP", "Prompt selection: legacy selected prompt omits clause-aware map");
+assertIncludes(analyzeContractSource, "const prompt = selectAnalysisPrompt(text)", "Analyze runtime: analyzeContract calls prompt selector");
+assertNotIncludes(analyzeContractSource, "const prompt = buildPrompt(text)", "Analyze runtime: analyzeContract no longer calls buildPrompt directly");
+assertIncludes(analyzeContractSource, "export function buildPrompt(text: string)", "Analyze runtime: old buildPrompt still exists");
+assertIncludes(analyzeContractSource, "const allChunks = chunkText(text)", "Analyze runtime: old buildPrompt still uses chunkText");
+assertIncludes(analyzeContractSource, "export function chunkText(text: string", "Analyze runtime: chunkText still exists");
+assertIncludes(analyzeContractSource, "const MAX_CHUNK_CHARS = 7000", "Analyze runtime: chunkText max chunk constant remains unchanged");
+assertIncludes(analyzeContractSource, "const CHUNK_OVERLAP_CHARS = 600", "Analyze runtime: chunkText overlap constant remains unchanged");
+assertIncludes(analyzeContractSource, "const MAX_PROMPT_CHUNKS = 10", "Analyze runtime: legacy max prompt chunks remains unchanged");
+assertIncludes(
+  analyzeContractSource,
+  "const clauseAwareInput = buildClauseAwareAnalysisInput(text);",
+  "Analyze runtime: buildClauseAwarePrompt still builds clause-aware input"
+);
+assertIncludes(
+  analyzeContractSource,
+  "return buildAnalyzeContractPrompt({ contractText: clauseAwareInput });",
+  "Analyze runtime: buildClauseAwarePrompt still returns new prompt builder output"
+);
 assertNotIncludes(analyzeRouteSource, "buildClauseAwarePrompt", "Analyze route runtime: route is not wired to clause-aware prompt helper");
 assertNotIncludes(analyzeRouteSource, "buildClauseAwareAnalysisInput", "Analyze route runtime: route is not wired to clause-aware input helper");
 assertNotIncludes(analyzeRouteSource, "buildAnalyzeContractPrompt", "Analyze route runtime: route is not wired to new prompt builder");
+assertNotIncludes(analyzeRouteSource, "selectAnalysisPrompt", "Analyze route runtime: route does not choose prompt path");
 
 assertIncludes(
   promptWithRetrievedGuidance,
@@ -1371,10 +1417,12 @@ runtimeSourceFiles.forEach((sourceFile) => {
   const source = fs.readFileSync(sourceFile, "utf8");
 
   if (sourceFile === "lib/ai/analyzeContract.ts") {
-    assertIncludes(source, "@/lib/clauses/input", "Runtime wiring: analyzeContract exposes dormant clause-aware helper import");
-    assertIncludes(source, "export function buildClauseAwarePrompt", "Runtime wiring: analyzeContract exposes non-wired clause-aware helper");
-    assertIncludes(source, "const prompt = buildPrompt(text)", "Runtime wiring: analyzeContract active path still uses legacy buildPrompt");
-    assertNotIncludes(source, "const prompt = buildClauseAwarePrompt(text)", "Runtime wiring: analyzeContract does not activate clause-aware prompt");
+    assertIncludes(source, "@/lib/clauses/input", "Runtime wiring: analyzeContract owns clause-aware helper import");
+    assertIncludes(source, "export function buildClauseAwarePrompt", "Runtime wiring: analyzeContract exposes clause-aware helper");
+    assertIncludes(source, "export function selectAnalysisPrompt", "Runtime wiring: analyzeContract exposes prompt selector");
+    assertIncludes(source, "process.env.USE_LEGACY_PROMPT === \"true\"", "Runtime wiring: prompt selector keeps legacy feature flag");
+    assertIncludes(source, "const prompt = selectAnalysisPrompt(text)", "Runtime wiring: analyzeContract active path uses prompt selector");
+    assertNotIncludes(source, "const prompt = buildPrompt(text)", "Runtime wiring: analyzeContract does not call legacy buildPrompt directly");
     return;
   }
 
