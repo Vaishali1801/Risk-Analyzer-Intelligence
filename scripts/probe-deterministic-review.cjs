@@ -22,6 +22,12 @@ function assertEqual(actual, expected, message) {
   }
 }
 
+function assertNotEqual(actual, expected, message) {
+  if (actual === expected) {
+    throw new Error(`${message}: expected values to differ, received ${actual}`);
+  }
+}
+
 function assertDeepEqual(actual, expected, message) {
   const actualJson = JSON.stringify(actual);
   const expectedJson = JSON.stringify(expected);
@@ -165,6 +171,7 @@ const schema = loadTsModule("schemas/contract-analysis.ts");
 const actions = loadTsModule("lib/reporting/actions.ts");
 const parserPreprocess = loadTsModule("lib/parsers/preprocess.ts");
 const analyzeInputValidation = loadTsModule("lib/validation/analyze-input.ts");
+const observability = loadTsModule("lib/ai/observability.ts");
 const clauseSegment = loadTsModule("lib/clauses/segment.ts");
 const clauseTag = loadTsModule("lib/clauses/tag.ts", (id) => {
   if (id === "../ai/config/category-rules") return categoryRules;
@@ -185,6 +192,7 @@ const analyzeContractRuntime = loadTsModule("lib/ai/analyzeContract.ts", (id) =>
   if (id === "@/schemas/contract-analysis") return schema;
   if (id === "./decision") return { applyDecisionLogic: (analysis) => analysis };
   if (id === "./fallback") return { createFallbackAnalysis: (reason) => ({ reason }) };
+  if (id === "./observability") return observability;
   return require(id);
 });
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
@@ -221,12 +229,22 @@ const { createClauseBatches, estimateClauseTokens } = clauseBatch;
 const { renderClauseBatch, renderClauseBatches } = clauseRender;
 const { buildClauseAwareAnalysisInput } = clauseInput;
 const { buildClauseAwarePrompt, buildPrompt, selectAnalysisPrompt } = analyzeContractRuntime;
+const {
+  PROMPT_VERSION,
+  computeOutputQualityMetrics,
+  createRunId,
+  estimateOpenAICostUsd,
+  estimateTokensFromChars,
+  getPromptPath,
+  logAnalysisRunMetrics
+} = observability;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
 const analyzeRouteSource = fs.readFileSync("app/api/analyze/route.ts", "utf8");
 const analyzeContractSource = fs.readFileSync("lib/ai/analyzeContract.ts", "utf8");
+const observabilitySource = fs.readFileSync("lib/ai/observability.ts", "utf8");
 const clauseTagSource = fs.readFileSync("lib/clauses/tag.ts", "utf8");
 const canonicalRiskDomains = [...categoryRules.RISK_DOMAINS];
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
@@ -258,6 +276,122 @@ const uploadTextTooShortMessage =
 const cleanedTextTooLongMessage =
   "This contract is too long for the current demo limits. Please upload a shorter agreement or try one of the sample contracts available on the homepage.";
 const malformedJsonMessage = "Invalid request format. Please try again.";
+
+assertIncludes(observabilitySource, "export type AnalysisRunMetrics", "Observability: AnalysisRunMetrics type is exported");
+[
+  "runId",
+  "timestamp",
+  "model",
+  "promptPath",
+  "promptVersion",
+  "cleanedTextChars",
+  "estimatedInputTokens",
+  "llmLatencyMs",
+  "retryCount",
+  "repairUsed",
+  "fallbackUsed",
+  "jsonParsePassed",
+  "schemaValidationPassed",
+  "risksGenerated",
+  "gapsGenerated",
+  "risksWithSourceClauseIdsPct",
+  "gapsWithSourceClauseIdsPct",
+  "risksWithEvidencePct",
+  "gapsWithEvidencePct"
+].forEach((field) => {
+  assertIncludes(observabilitySource, field, `Observability: AnalysisRunMetrics includes ${field}`);
+});
+assertEqual(PROMPT_VERSION, "clause-aware-v1", "Observability: prompt version constant is stable");
+
+const firstRunId = createRunId();
+const secondRunId = createRunId();
+assertMatches(firstRunId, /^run_[0-9a-f-]{36}$/i, "Observability: createRunId returns prefixed UUID-like id");
+assertNotEqual(firstRunId, secondRunId, "Observability: createRunId returns unique-looking ids");
+assertEqual(estimateTokensFromChars(0), 0, "Observability: token estimate handles zero chars");
+assertEqual(estimateTokensFromChars(1), 1, "Observability: token estimate rounds one char up");
+assertEqual(estimateTokensFromChars(7), 2, "Observability: token estimate uses Math.ceil(chars / 4)");
+assertEqual(withTemporaryEnvValue("USE_LEGACY_PROMPT", undefined, () => getPromptPath()), "clause-aware", "Observability: default prompt path is clause-aware");
+assertEqual(withTemporaryEnvValue("USE_LEGACY_PROMPT", "true", () => getPromptPath()), "legacy", "Observability: legacy prompt path follows feature flag");
+assertEqual(estimateOpenAICostUsd("gpt-4o-mini", 1_000_000, 1_000_000), 0.75, "Observability: known model cost is estimated");
+assertEqual(estimateOpenAICostUsd("gpt-4o-mini"), undefined, "Observability: missing usage leaves cost undefined");
+assertEqual(estimateOpenAICostUsd("unknown-model", 100, 100), undefined, "Observability: unknown model leaves cost undefined");
+
+const qualityMetrics = computeOutputQualityMetrics({
+  risks: [
+    {
+      sourceClauseIds: ["CL-001"],
+      evidence: { clauseId: "CL-001", quote: "Payment is due within thirty days." }
+    },
+    {
+      sourceClauseIds: [],
+      evidence: undefined
+    }
+  ],
+  gapAnalysis: [
+    {
+      sourceClauseIds: ["CL-002"],
+      evidence: { clauseIds: ["CL-002"], highlightedText: "No audit right is stated." }
+    },
+    {
+      sourceClauseIds: undefined,
+      evidence: { confidence: 0.8 }
+    }
+  ]
+});
+assertEqual(qualityMetrics.jsonParsePassed, true, "Observability: quality metrics mark JSON passed for validated analysis");
+assertEqual(qualityMetrics.schemaValidationPassed, true, "Observability: quality metrics mark schema passed for validated analysis");
+assertEqual(qualityMetrics.risksGenerated, 2, "Observability: risk count is computed");
+assertEqual(qualityMetrics.gapsGenerated, 2, "Observability: gap count is computed");
+assertEqual(qualityMetrics.risksWithSourceClauseIdsPct, 50, "Observability: risk sourceClauseIds percentage is computed");
+assertEqual(qualityMetrics.gapsWithSourceClauseIdsPct, 50, "Observability: gap sourceClauseIds percentage is computed");
+assertEqual(qualityMetrics.risksWithEvidencePct, 50, "Observability: risk evidence percentage is computed");
+assertEqual(qualityMetrics.gapsWithEvidencePct, 50, "Observability: gap evidence percentage ignores confidence-only evidence");
+
+const emptyQualityMetrics = computeOutputQualityMetrics({ risks: [], gapAnalysis: [] });
+assertEqual(emptyQualityMetrics.risksWithSourceClauseIdsPct, 0, "Observability: zero-risk source percentage is 0");
+assertEqual(emptyQualityMetrics.gapsWithSourceClauseIdsPct, 0, "Observability: zero-gap source percentage is 0");
+assertEqual(emptyQualityMetrics.risksWithEvidencePct, 0, "Observability: zero-risk evidence percentage is 0");
+assertEqual(emptyQualityMetrics.gapsWithEvidencePct, 0, "Observability: zero-gap evidence percentage is 0");
+
+let loggedAnalysisRunArgs = null;
+const originalConsoleInfo = console.info;
+console.info = (...args) => {
+  loggedAnalysisRunArgs = args;
+};
+try {
+  logAnalysisRunMetrics({
+    runId: "run_test",
+    timestamp: "2026-06-22T00:00:00.000Z",
+    model: "gpt-4o-mini",
+    promptPath: "clause-aware",
+    promptVersion: PROMPT_VERSION,
+    cleanedTextChars: 100,
+    estimatedInputTokens: 25,
+    promptChars: 200,
+    estimatedPromptTokens: 50,
+    llmLatencyMs: 12,
+    retryCount: 0,
+    repairUsed: false,
+    fallbackUsed: false,
+    jsonParsePassed: true,
+    schemaValidationPassed: true,
+    risksGenerated: 0,
+    gapsGenerated: 0,
+    risksWithSourceClauseIdsPct: 0,
+    gapsWithSourceClauseIdsPct: 0,
+    risksWithEvidencePct: 0,
+    gapsWithEvidencePct: 0,
+    contractText: "private contract text",
+    prompt: "private prompt",
+    rawResponse: "private model output"
+  });
+} finally {
+  console.info = originalConsoleInfo;
+}
+assertEqual(loggedAnalysisRunArgs[0], "[analysis-run]", "Observability: analysis run logs use structured marker");
+assertNotIncludes(JSON.stringify(loggedAnalysisRunArgs[1]), "private contract text", "Observability: log strips contract text");
+assertNotIncludes(JSON.stringify(loggedAnalysisRunArgs[1]), "private prompt", "Observability: log strips prompt text");
+assertNotIncludes(JSON.stringify(loggedAnalysisRunArgs[1]), "private model output", "Observability: log strips raw model output");
 
 assertEqual(preprocessContractText("Alpha\r\nBeta\rGamma"), "Alpha\nBeta\nGamma", "Preprocess: CRLF and CR normalize to LF");
 assertEqual(preprocessContractText("Alpha   Beta\t\tGamma"), "Alpha Beta Gamma", "Preprocess: repeated spaces and tabs collapse");
@@ -439,6 +573,8 @@ assertNotIncludes(analyzeRouteSource, "buildClauseAwarePrompt", "Analyze route r
 assertNotIncludes(analyzeRouteSource, "buildClauseAwareAnalysisInput", "Analyze route runtime: route is not wired to clause-aware input helper");
 assertNotIncludes(analyzeRouteSource, "buildAnalyzeContractPrompt", "Analyze route runtime: route is not wired to new prompt builder");
 assertNotIncludes(analyzeRouteSource, "selectAnalysisPrompt", "Analyze route runtime: route does not choose prompt path");
+assertNotIncludes(analyzeRouteSource, "AnalysisRunMetrics", "Analyze route runtime: API response shape does not expose metrics type");
+assertNotIncludes(analyzeRouteSource, "metrics", "Analyze route runtime: API response shape does not include metrics field");
 
 assertIncludes(
   promptWithRetrievedGuidance,
@@ -1420,7 +1556,8 @@ runtimeSourceFiles.forEach((sourceFile) => {
     assertIncludes(source, "@/lib/clauses/input", "Runtime wiring: analyzeContract owns clause-aware helper import");
     assertIncludes(source, "export function buildClauseAwarePrompt", "Runtime wiring: analyzeContract exposes clause-aware helper");
     assertIncludes(source, "export function selectAnalysisPrompt", "Runtime wiring: analyzeContract exposes prompt selector");
-    assertIncludes(source, "process.env.USE_LEGACY_PROMPT === \"true\"", "Runtime wiring: prompt selector keeps legacy feature flag");
+    assertIncludes(source, "getPromptPath() === \"legacy\"", "Runtime wiring: analyzeContract prompt selector delegates to observability prompt path");
+    assertIncludes(observabilitySource, "process.env.USE_LEGACY_PROMPT === \"true\"", "Runtime wiring: observability prompt path keeps legacy feature flag");
     assertIncludes(source, "const prompt = selectAnalysisPrompt(text)", "Runtime wiring: analyzeContract active path uses prompt selector");
     assertNotIncludes(source, "const prompt = buildPrompt(text)", "Runtime wiring: analyzeContract does not call legacy buildPrompt directly");
     return;

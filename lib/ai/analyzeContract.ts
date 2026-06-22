@@ -5,6 +5,16 @@ import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
 import type { ContractAnalysis } from "@/types/contract";
 import { applyDecisionLogic } from "./decision";
 import { createFallbackAnalysis } from "./fallback";
+import {
+  PROMPT_VERSION,
+  computeOutputQualityMetrics,
+  createRunId,
+  estimateOpenAICostUsd,
+  estimateTokensFromChars,
+  getPromptPath,
+  logAnalysisRunMetrics,
+  type AnalysisRunMetrics
+} from "./observability";
 
 const SYSTEM_PROMPT = `You are an expert enterprise contract risk analyst.
 
@@ -118,12 +128,8 @@ export function buildClauseAwarePrompt(text: string): string {
   return buildAnalyzeContractPrompt({ contractText: clauseAwareInput });
 }
 
-function shouldUseLegacyPrompt(): boolean {
-  return process.env.USE_LEGACY_PROMPT === "true";
-}
-
 export function selectAnalysisPrompt(text: string): string {
-  return shouldUseLegacyPrompt() ? buildPrompt(text) : buildClauseAwarePrompt(text);
+  return getPromptPath() === "legacy" ? buildPrompt(text) : buildClauseAwarePrompt(text);
 }
 
 export function repairJSON(response: string): string {
@@ -142,20 +148,42 @@ export function repairJSON(response: string): string {
 
 export function validateResponse(rawResponse: string): ContractAnalysis {
   const repaired = repairJSON(rawResponse);
-  const parsed: unknown = JSON.parse(repaired);
-  const validated = ContractAnalysisSchema.parse(parsed);
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(repaired);
+  } catch (error) {
+    annotateValidationError(error, false, false);
+    throw error;
+  }
+
+  let validated: ContractAnalysis;
+
+  try {
+    validated = ContractAnalysisSchema.parse(parsed);
+  } catch (error) {
+    annotateValidationError(error, true, false);
+    throw error;
+  }
+
   // AI decision fields stay schema-compatible; output-model helpers own displayed Risk Level and Final Review decisions.
   return applyDecisionLogic(validated);
 }
 
-async function callOpenAI(prompt: string) {
+type OpenAIUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+async function callOpenAI(prompt: string, model = getOpenAIModel()) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured. Add it to .env.local to analyze uploaded contracts.");
   }
 
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const completion = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+    model,
     temperature: 0.1,
     response_format: { type: "json_object" },
     messages: [
@@ -164,7 +192,10 @@ async function callOpenAI(prompt: string) {
     ]
   });
 
-  return completion.choices[0]?.message?.content ?? "";
+  return {
+    content: completion.choices[0]?.message?.content ?? "",
+    usage: completion.usage
+  };
 }
 
 type AnalyzeContractOptions = {
@@ -173,34 +204,130 @@ type AnalyzeContractOptions = {
 
 export async function analyzeContract(text: string, options: AnalyzeContractOptions = {}): Promise<ContractAnalysis> {
   const allowFallbackAnalysis = options.allowFallbackAnalysis ?? true;
+  const model = getOpenAIModel();
+  const promptPath = getPromptPath();
+  const prompt = selectAnalysisPrompt(text);
+  const metrics: AnalysisRunMetrics = {
+    runId: createRunId(),
+    timestamp: new Date().toISOString(),
+    model,
+    promptPath,
+    promptVersion: PROMPT_VERSION,
+    cleanedTextChars: text.length,
+    estimatedInputTokens: estimateTokensFromChars(text.length),
+    promptChars: prompt.length,
+    estimatedPromptTokens: estimateTokensFromChars(prompt.length),
+    llmLatencyMs: 0,
+    retryCount: 0,
+    repairUsed: false,
+    fallbackUsed: false,
+    jsonParsePassed: false,
+    schemaValidationPassed: false,
+    risksGenerated: 0,
+    gapsGenerated: 0,
+    risksWithSourceClauseIdsPct: 0,
+    gapsWithSourceClauseIdsPct: 0,
+    risksWithEvidencePct: 0,
+    gapsWithEvidencePct: 0
+  };
 
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is not configured. Add it to .env.local to analyze uploaded contracts.");
   }
 
-  const prompt = selectAnalysisPrompt(text);
   let firstResponse = "";
 
   try {
-    firstResponse = await callOpenAI(prompt);
-    return validateResponse(firstResponse);
+    const firstCompletion = await callOpenAIWithMetrics(prompt, model, metrics);
+    firstResponse = firstCompletion.content;
+    const analysis = validateResponse(firstResponse);
+    markValidationSuccess(metrics, analysis);
+    logAnalysisRunMetrics(metrics);
+    return analysis;
   } catch (firstError) {
+    markValidationFailure(metrics, firstError);
+
     try {
+      metrics.retryCount = 1;
+      metrics.repairUsed = true;
       const repairPrompt = `${prompt}
 
 Your previous output was invalid or did not match the schema. Return corrected JSON only. No markdown. No commentary.
 Previous output:
 ${firstResponse || String(firstError)}`;
 
-      const retryResponse = await callOpenAI(repairPrompt);
-      return validateResponse(retryResponse);
+      const retryCompletion = await callOpenAIWithMetrics(repairPrompt, model, metrics);
+      const analysis = validateResponse(retryCompletion.content);
+      markValidationSuccess(metrics, analysis);
+      logAnalysisRunMetrics(metrics);
+      return analysis;
     } catch (retryError) {
+      markValidationFailure(metrics, retryError);
       const reason = retryError instanceof Error ? retryError.message : "Model output failed validation after retry.";
       if (!allowFallbackAnalysis) {
+        logAnalysisRunMetrics(metrics);
         throw new Error(reason);
       }
 
-      return createFallbackAnalysis(reason);
+      metrics.fallbackUsed = true;
+      const fallbackAnalysis = createFallbackAnalysis(reason);
+      const jsonParsePassed = metrics.jsonParsePassed;
+      const schemaValidationPassed = metrics.schemaValidationPassed;
+      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), {
+        jsonParsePassed,
+        schemaValidationPassed
+      });
+      logAnalysisRunMetrics(metrics);
+      return fallbackAnalysis;
     }
+  }
+}
+
+function getOpenAIModel() {
+  return process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+}
+
+async function callOpenAIWithMetrics(prompt: string, model: string, metrics: AnalysisRunMetrics) {
+  const startedAt = Date.now();
+
+  try {
+    const completion = await callOpenAI(prompt, model);
+    metrics.llmLatencyMs += Date.now() - startedAt;
+    applyUsageMetrics(metrics, model, completion.usage);
+    return completion;
+  } catch (error) {
+    metrics.llmLatencyMs += Date.now() - startedAt;
+    throw error;
+  }
+}
+
+function applyUsageMetrics(metrics: AnalysisRunMetrics, model: string, usage?: OpenAIUsage | null) {
+  if (!usage) return;
+
+  metrics.promptTokens = (metrics.promptTokens ?? 0) + (usage.prompt_tokens ?? 0);
+  metrics.outputTokens = (metrics.outputTokens ?? 0) + (usage.completion_tokens ?? 0);
+  metrics.totalTokens = (metrics.totalTokens ?? 0) + (usage.total_tokens ?? 0);
+  metrics.estimatedCostUsd = estimateOpenAICostUsd(model, metrics.promptTokens, metrics.outputTokens);
+}
+
+function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis) {
+  Object.assign(metrics, computeOutputQualityMetrics(analysis));
+}
+
+function markValidationFailure(metrics: AnalysisRunMetrics, error: unknown) {
+  const validationError = error as { jsonParsePassed?: unknown; schemaValidationPassed?: unknown };
+
+  if (typeof validationError.jsonParsePassed === "boolean") {
+    metrics.jsonParsePassed = validationError.jsonParsePassed;
+  }
+
+  if (typeof validationError.schemaValidationPassed === "boolean") {
+    metrics.schemaValidationPassed = validationError.schemaValidationPassed;
+  }
+}
+
+function annotateValidationError(error: unknown, jsonParsePassed: boolean, schemaValidationPassed: boolean) {
+  if (error && typeof error === "object") {
+    Object.assign(error, { jsonParsePassed, schemaValidationPassed });
   }
 }
