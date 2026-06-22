@@ -2,6 +2,19 @@ export const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
 export const MIN_TEXT_LENGTH = 200;
 export const MAX_CLEAN_TEXT_CHARS = 80_000;
 
+const MISSING_UPLOAD_MESSAGE = "Please upload a PDF or DOCX contract.";
+const EMPTY_UPLOAD_MESSAGE = "The uploaded file is empty.";
+const TOO_LARGE_UPLOAD_MESSAGE =
+  "File is too large. This demo supports text-based PDF/DOCX contracts up to 4 MB. For a quick walkthrough, you can also try one of the sample contracts available on the homepage.";
+const UNSUPPORTED_FILE_MESSAGE = "Unsupported file type. Please upload a PDF or DOCX contract.";
+const EMPTY_PASTED_TEXT_MESSAGE = "Paste contract text before running the review.";
+const PASTED_TEXT_TOO_SHORT_MESSAGE =
+  "The pasted text is too short to analyze. Please paste a fuller contract section or upload a PDF/DOCX.";
+const UPLOAD_TEXT_TOO_SHORT_MESSAGE =
+  "We could not extract enough readable contract text. If this is a scanned PDF, please upload a text-based PDF or DOCX.";
+const CLEAN_TEXT_TOO_LONG_MESSAGE =
+  "This contract is too long for the current demo limits. Please upload a shorter agreement or try one of the sample contracts available on the homepage.";
+
 export type AnalysisInputSourceKind = "upload" | "paste";
 
 export type TextQualityAssessment = {
@@ -43,17 +56,38 @@ function isFileLike(file: File | null | undefined): file is File {
   );
 }
 
+function getFileExtension(fileName: string) {
+  const parts = fileName.toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() : "";
+}
+
+function isSupportedFile(file: File) {
+  const extension = getFileExtension(file.name);
+  const mimeType = file.type;
+
+  return (
+    extension === "pdf" ||
+    extension === "docx" ||
+    mimeType === "application/pdf" ||
+    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
+}
+
 export function validateUploadedFile(file: File | null | undefined): void {
   if (!isFileLike(file)) {
-    throw new AnalyzeInputError("Please upload a PDF or DOCX contract.", 400);
+    throw new AnalyzeInputError(MISSING_UPLOAD_MESSAGE, 400);
   }
 
   if (file.size === 0) {
-    throw new AnalyzeInputError("The uploaded file is empty.", 400);
+    throw new AnalyzeInputError(EMPTY_UPLOAD_MESSAGE, 400);
   }
 
   if (file.size > MAX_FILE_SIZE_BYTES) {
-    throw new AnalyzeInputError("File is too large. Please upload a contract under 4 MB.", 400);
+    throw new AnalyzeInputError(TOO_LARGE_UPLOAD_MESSAGE, 400);
+  }
+
+  if (!isSupportedFile(file)) {
+    throw new AnalyzeInputError(UNSUPPORTED_FILE_MESSAGE, 415);
   }
 }
 
@@ -62,7 +96,7 @@ export function validatePastedTextPayload(payload: unknown): { rawText: string; 
   const text = typeof body.text === "string" ? body.text.trim() : "";
 
   if (!text) {
-    throw new AnalyzeInputError("Paste contract text before running the review.", 400);
+    throw new AnalyzeInputError(EMPTY_PASTED_TEXT_MESSAGE, 400);
   }
 
   return {
@@ -117,11 +151,11 @@ export function assessTextQuality(text: string): TextQualityAssessment {
     issues.push("Text is below the minimum analyzable length.");
   }
 
-  if (length > 0 && alphabeticRatio < 0.45) {
+  if (length > 0 && alphabeticRatio < 0.25) {
     issues.push("Text has an unusually low alphabetic character ratio.");
   }
 
-  if (garbageRatio > 0.05) {
+  if (garbageRatio > 0.08) {
     issues.push("Text contains too many unreadable or replacement characters.");
   }
 
@@ -137,11 +171,11 @@ export function assessTextQuality(text: string): TextQualityAssessment {
     issues.push("Text contains no obvious clause headings.");
   }
 
-  const hardFailure = length < MIN_TEXT_LENGTH || (length > 0 && alphabeticRatio < 0.45) || garbageRatio > 0.05;
+  const hardFailure = length < MIN_TEXT_LENGTH || (length > 0 && alphabeticRatio < 0.25) || garbageRatio > 0.08;
 
   return {
     ok: !hardFailure,
-    likelyScanned: length < MIN_TEXT_LENGTH || (length > 0 && alphabeticRatio < 0.45),
+    likelyScanned: length < MIN_TEXT_LENGTH || (length > 0 && alphabeticRatio < 0.25) || garbageRatio > 0.08,
     issues,
     metrics: {
       length,
@@ -158,26 +192,16 @@ export function validatePreparedText(text: string, sourceKind: AnalysisInputSour
   const assessment = assessTextQuality(text);
 
   if (text.length > MAX_CLEAN_TEXT_CHARS) {
-    throw new AnalyzeInputError(
-      "This contract is too long to analyze in one review. Please upload or paste a shorter contract under 80,000 characters.",
-      413
-    );
+    throw new AnalyzeInputError(CLEAN_TEXT_TOO_LONG_MESSAGE, 413);
   }
 
   if (text.length < MIN_TEXT_LENGTH) {
-    throw new AnalyzeInputError(
-      sourceKind === "paste"
-        ? "We could not analyze this text because it is too short. Paste a longer contract or clause set."
-        : "We could not extract enough contract text to analyze. Please try a clearer text-based PDF or DOCX. Scanned image PDFs may need OCR first.",
-      422
-    );
+    throw new AnalyzeInputError(sourceKind === "paste" ? PASTED_TEXT_TOO_SHORT_MESSAGE : UPLOAD_TEXT_TOO_SHORT_MESSAGE, 422);
   }
 
   if (!assessment.ok) {
     throw new AnalyzeInputError(
-      sourceKind === "paste"
-        ? "We could not analyze this text because it appears unreadable. Paste clearer contract text and try again."
-        : "We could not extract readable contract text. Please try a clearer text-based PDF or DOCX. Scanned image PDFs may need OCR first.",
+      sourceKind === "paste" ? "The pasted text appears unreadable. Please paste clearer contract text." : UPLOAD_TEXT_TOO_SHORT_MESSAGE,
       422
     );
   }

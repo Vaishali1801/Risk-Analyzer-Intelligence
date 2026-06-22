@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       try {
         body = await request.json();
       } catch {
-        throw new AnalyzeInputError("Invalid JSON request. Paste contract text before running the review.", 400);
+        throw new AnalyzeInputError("Invalid request format. Please try again.", 400);
       }
 
       const pastedInput = validatePastedTextPayload(body);

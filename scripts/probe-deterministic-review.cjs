@@ -70,6 +70,18 @@ function assertThrowsInputError(fn, expectedStatusCode, expectedMessagePart, mes
   throw new Error(`${message}: expected input validation error`);
 }
 
+function assertThrowsInputErrorExact(fn, expectedStatusCode, expectedMessage, message) {
+  try {
+    fn();
+  } catch (error) {
+    assertEqual(error.statusCode, expectedStatusCode, `${message}: status code`);
+    assertEqual(error.message, expectedMessage, `${message}: message`);
+    return;
+  }
+
+  throw new Error(`${message}: expected input validation error`);
+}
+
 function listSourceFiles(dir, excludedPathParts = []) {
   if (!fs.existsSync(dir)) return [];
 
@@ -193,6 +205,19 @@ const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPr
 const promptWithFallbackGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Short contract text for placeholder replacement."
 });
+const missingUploadMessage = "Please upload a PDF or DOCX contract.";
+const emptyUploadMessage = "The uploaded file is empty.";
+const tooLargeUploadMessage =
+  "File is too large. This demo supports text-based PDF/DOCX contracts up to 4 MB. For a quick walkthrough, you can also try one of the sample contracts available on the homepage.";
+const unsupportedFileMessage = "Unsupported file type. Please upload a PDF or DOCX contract.";
+const emptyPastedTextMessage = "Paste contract text before running the review.";
+const pastedTextTooShortMessage =
+  "The pasted text is too short to analyze. Please paste a fuller contract section or upload a PDF/DOCX.";
+const uploadTextTooShortMessage =
+  "We could not extract enough readable contract text. If this is a scanned PDF, please upload a text-based PDF or DOCX.";
+const cleanedTextTooLongMessage =
+  "This contract is too long for the current demo limits. Please upload a shorter agreement or try one of the sample contracts available on the homepage.";
+const malformedJsonMessage = "Invalid request format. Please try again.";
 
 assertEqual(preprocessContractText("Alpha\r\nBeta\rGamma"), "Alpha\nBeta\nGamma", "Preprocess: CRLF and CR normalize to LF");
 assertEqual(preprocessContractText("Alpha   Beta\t\tGamma"), "Alpha Beta Gamma", "Preprocess: repeated spaces and tabs collapse");
@@ -228,19 +253,19 @@ assertEqual(MIN_TEXT_LENGTH, 200, "Analyze input guardrails: minimum text length
 assertEqual(MAX_CLEAN_TEXT_CHARS, 80000, "Analyze input guardrails: max cleaned text length is 80,000");
 assertEqual(normalizeDocumentName("  Master Services Agreement  ", "Fallback"), "Master Services Agreement", "Analyze input guardrails: document name trims");
 assertEqual(normalizeDocumentName("   ", "Fallback"), "Fallback", "Analyze input guardrails: blank document name falls back");
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validateUploadedFile(null),
   400,
-  "Please upload a PDF or DOCX contract.",
-  "Analyze input guardrails: missing upload file"
+  missingUploadMessage,
+  "Analyze input guardrails: missing upload file message is exact"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validateUploadedFile({ name: "empty.pdf", size: 0, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
   400,
-  "The uploaded file is empty.",
-  "Analyze input guardrails: empty upload file"
+  emptyUploadMessage,
+  "Analyze input guardrails: empty upload file message is exact"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () =>
     validateUploadedFile({
       name: "large.pdf",
@@ -248,19 +273,30 @@ assertThrowsInputError(
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
     }),
   400,
-  "under 4 MB",
-  "Analyze input guardrails: oversized upload file"
+  tooLargeUploadMessage,
+  "Analyze input guardrails: oversized upload file message is exact"
+);
+assertIncludes(
+  tooLargeUploadMessage,
+  "sample contracts available on the homepage",
+  "Analyze input guardrails: oversized upload message mentions homepage sample contracts"
+);
+assertThrowsInputErrorExact(
+  () => validateUploadedFile({ name: "notes.txt", size: 12, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+  415,
+  unsupportedFileMessage,
+  "Analyze input guardrails: unsupported file message is exact"
 );
 assertDeepEqual(
   validatePastedTextPayload({ text: "  Payment terms apply.  ", documentName: "  Pasted MSA  " }),
   { rawText: "Payment terms apply.", documentName: "Pasted MSA" },
   "Analyze input guardrails: pasted payload trims text and document name"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validatePastedTextPayload({ text: "   " }),
   400,
-  "Paste contract text before running the review.",
-  "Analyze input guardrails: empty pasted text"
+  emptyPastedTextMessage,
+  "Analyze input guardrails: empty pasted text message is exact"
 );
 
 const goodContractQualityText = `1. Payment Terms
@@ -268,17 +304,17 @@ This agreement is entered into by the parties for services, payment, obligations
 const goodQuality = assessTextQuality(goodContractQualityText);
 assertEqual(goodQuality.ok, true, "Analyze input guardrails: good contract text passes quality check");
 assertEqual(goodQuality.likelyScanned, false, "Analyze input guardrails: good contract text is not likely scanned");
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validatePreparedText("This agreement is too short.", "paste"),
   422,
-  "too short. Paste a longer contract or clause set.",
-  "Analyze input guardrails: short pasted text keeps friendly short-text behavior"
+  pastedTextTooShortMessage,
+  "Analyze input guardrails: pasted short text message is exact"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validatePreparedText("", "upload"),
   422,
-  "text-based PDF or DOCX",
-  "Analyze input guardrails: empty upload extraction keeps scanned/text-based PDF guidance"
+  uploadTextTooShortMessage,
+  "Analyze input guardrails: empty/scanned-like upload extraction message is exact"
 );
 
 const symbolHeavyGarbage = "@@@ ### $$$ %%% ??? \uFFFD ".repeat(30);
@@ -304,22 +340,27 @@ assertEqual(
   true,
   "Analyze input guardrails: missing headings are diagnostic only"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validatePreparedText(symbolHeavyGarbage, "upload"),
   422,
-  "Scanned image PDFs may need OCR first.",
-  "Analyze input guardrails: unreadable upload extraction gets scanned-style guidance"
+  uploadTextTooShortMessage,
+  "Analyze input guardrails: uploaded low-text extraction message is exact"
 );
-assertThrowsInputError(
+assertThrowsInputErrorExact(
   () => validatePreparedText("Agreement ".repeat(9000), "paste"),
   413,
-  "under 80,000 characters",
-  "Analyze input guardrails: text over 80,000 chars fails"
+  cleanedTextTooLongMessage,
+  "Analyze input guardrails: text over 80,000 chars message is exact"
 );
 assertMatches(
   analyzeRouteSource,
-  /new AnalyzeInputError\("Invalid JSON request\. Paste contract text before running the review\.", 400\)/,
-  "Analyze route guardrails: malformed JSON path returns friendly 400"
+  /new AnalyzeInputError\("Invalid request format\. Please try again\.", 400\)/,
+  "Analyze route guardrails: malformed JSON path returns exact friendly 400 message"
+);
+assertIncludes(
+  analyzeRouteSource,
+  malformedJsonMessage,
+  "Analyze route guardrails: malformed JSON message copy is present"
 );
 assertIncludes(analyzeRouteSource, "validatePreparedText(text, analysisSourceKind)", "Analyze route guardrails: route validates prepared text through helper");
 
