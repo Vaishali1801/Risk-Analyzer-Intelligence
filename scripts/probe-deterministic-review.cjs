@@ -158,6 +158,14 @@ const clauseInput = loadTsModule("lib/clauses/input.ts", (id) => {
   if (id === "./render") return clauseRender;
   return require(id);
 });
+const analyzeContractRuntime = loadTsModule("lib/ai/analyzeContract.ts", (id) => {
+  if (id === "@/lib/ai/prompts/analyze-contract-prompt") return analyzeContractPrompt;
+  if (id === "@/lib/clauses/input") return clauseInput;
+  if (id === "@/schemas/contract-analysis") return schema;
+  if (id === "./decision") return { applyDecisionLogic: (analysis) => analysis };
+  if (id === "./fallback") return { createFallbackAnalysis: (reason) => ({ reason }) };
+  return require(id);
+});
 const pdfModel = loadTsModule("lib/reporting/pdf-model.ts", (id) => {
   if (id === "@/lib/output-model") return outputModel;
   return require(id);
@@ -191,11 +199,13 @@ const { tagClause, tagClauses } = clauseTag;
 const { createClauseBatches, estimateClauseTokens } = clauseBatch;
 const { renderClauseBatch, renderClauseBatches } = clauseRender;
 const { buildClauseAwareAnalysisInput } = clauseInput;
+const { buildClauseAwarePrompt, buildPrompt } = analyzeContractRuntime;
 
 const riskUiSource = fs.readFileSync("components/risk-findings-ui.tsx", "utf8");
 const analysisWorkspaceSource = fs.readFileSync("components/analysis-workspace.tsx", "utf8");
 const askAiRouteSource = fs.readFileSync("app/api/ask-ai/route.ts", "utf8");
 const analyzeRouteSource = fs.readFileSync("app/api/analyze/route.ts", "utf8");
+const analyzeContractSource = fs.readFileSync("lib/ai/analyzeContract.ts", "utf8");
 const clauseTagSource = fs.readFileSync("lib/clauses/tag.ts", "utf8");
 const canonicalRiskDomains = [...categoryRules.RISK_DOMAINS];
 const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
@@ -205,6 +215,13 @@ const promptWithRetrievedGuidance = analyzeContractPrompt.buildAnalyzeContractPr
 const promptWithFallbackGuidance = analyzeContractPrompt.buildAnalyzeContractPrompt({
   contractText: "Short contract text for placeholder replacement."
 });
+const clauseAwarePromptFixture = `1. Payment Terms
+Customer shall pay all undisputed invoices within thirty days after receipt. Taxes and price increases require written approval.
+
+2. Confidentiality
+Each party shall protect confidential information using reasonable safeguards and limit disclosure to authorized personnel.`;
+const clauseAwarePrompt = buildClauseAwarePrompt(clauseAwarePromptFixture);
+const legacyPrompt = buildPrompt(clauseAwarePromptFixture);
 const missingUploadMessage = "Please upload a PDF or DOCX contract.";
 const emptyUploadMessage = "The uploaded file is empty.";
 const tooLargeUploadMessage =
@@ -364,6 +381,19 @@ assertIncludes(
 );
 assertIncludes(analyzeRouteSource, "validatePreparedText(text, analysisSourceKind)", "Analyze route guardrails: route validates prepared text through helper");
 
+assertIncludes(clauseAwarePrompt, "DOCUMENT CLAUSE MAP", "Clause-aware prompt: includes rendered document clause map");
+assertIncludes(clauseAwarePrompt, "[CL-001]", "Clause-aware prompt: includes first canonical source-clause id");
+assertIncludes(clauseAwarePrompt, "CONFIG GUIDANCE", "Clause-aware prompt: includes config guidance section");
+assertIncludes(clauseAwarePrompt, "Severity values:", "Clause-aware prompt: includes severity config guidance");
+assertIncludes(clauseAwarePrompt, "Gap priorities:", "Clause-aware prompt: includes gap priority config guidance");
+assertIncludes(clauseAwarePrompt, "Return valid JSON only.", "Clause-aware prompt: includes JSON-only output rule");
+assertNotIncludes(clauseAwarePrompt, "--- CHUNK 1 ---", "Clause-aware prompt: does not include legacy chunk labels");
+assertIncludes(legacyPrompt, "--- CHUNK 1 ---", "Legacy prompt: old buildPrompt still includes chunk labels");
+assertIncludes(analyzeContractSource, "const prompt = buildPrompt(text)", "Analyze runtime: analyzeContract still calls old buildPrompt");
+assertNotIncludes(analyzeRouteSource, "buildClauseAwarePrompt", "Analyze route runtime: route is not wired to clause-aware prompt helper");
+assertNotIncludes(analyzeRouteSource, "buildClauseAwareAnalysisInput", "Analyze route runtime: route is not wired to clause-aware input helper");
+assertNotIncludes(analyzeRouteSource, "buildAnalyzeContractPrompt", "Analyze route runtime: route is not wired to new prompt builder");
+
 assertIncludes(
   promptWithRetrievedGuidance,
   "Master services agreement with confidentiality, audit, and payment terms.",
@@ -391,6 +421,27 @@ assertIncludes(promptWithRetrievedGuidance, "Do not invent clause references.", 
 assertIncludes(promptWithRetrievedGuidance, 'use "Section unknown"', "Analyze prompt: preserves unclear clause reference fallback");
 assertIncludes(promptWithRetrievedGuidance, "Keep quoted clause text minimal and relevant.", "Analyze prompt: preserves minimal quote guardrail");
 assertIncludes(promptWithRetrievedGuidance, "Confidence must be a JSON number between 0 and 1.", "Analyze prompt: preserves confidence JSON number guardrail");
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "If the contract text is provided as a DOCUMENT CLAUSE MAP with [CL-###] IDs",
+  "Analyze prompt: includes explicit CL source grounding instruction"
+);
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "use those IDs in sourceClauseIds for every risk and gap whenever applicable",
+  "Analyze prompt: tells LLM to use CL ids in sourceClauseIds"
+);
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "evidence should reference the same source clause IDs",
+  "Analyze prompt: ties evidence to source clause ids"
+);
+assertIncludes(promptWithRetrievedGuidance, "Do not invent CL-### IDs", "Analyze prompt: forbids invented CL ids");
+assertIncludes(
+  promptWithRetrievedGuidance,
+  "leave sourceClauseIds empty and use \"Section unknown\" only where necessary",
+  "Analyze prompt: handles missing source ids"
+);
 ["contractTitle", "executiveSummary", "aiInsight", "risks[]", "gapAnalysis[]"].forEach((field) => {
   assertIncludes(promptWithRetrievedGuidance, field, `Analyze prompt: keeps top-level LLM field ${field}`);
 });
@@ -466,6 +517,8 @@ assertNotIncludes(promptWithRetrievedGuidance, "riskSummary", "Analyze prompt: n
 assertNotIncludes(promptWithRetrievedGuidance, "topCriticalRisks", "Analyze prompt: no longer asks for topCriticalRisks output");
 assertNotIncludes(promptWithRetrievedGuidance, "nextActions", "Analyze prompt: no longer asks for nextActions output");
 assertNotIncludes(promptWithRetrievedGuidance, "* status", "Analyze prompt: no longer asks for status output fields");
+assertNotIncludes(promptWithRetrievedGuidance, "risk status", "Analyze prompt: does not request risk status");
+assertNotIncludes(promptWithRetrievedGuidance, "gap status", "Analyze prompt: does not request gap status");
 assertNotIncludes(promptWithRetrievedGuidance, "Gap status compatibility", "Analyze prompt: removes old gap status compatibility section");
 assertNotIncludes(promptWithRetrievedGuidance, "Do not generate or reason about gap status", "Analyze prompt: removes gap-status-as-output wording");
 
@@ -1316,6 +1369,15 @@ const runtimeSourceFiles = [
 
 runtimeSourceFiles.forEach((sourceFile) => {
   const source = fs.readFileSync(sourceFile, "utf8");
+
+  if (sourceFile === "lib/ai/analyzeContract.ts") {
+    assertIncludes(source, "@/lib/clauses/input", "Runtime wiring: analyzeContract exposes dormant clause-aware helper import");
+    assertIncludes(source, "export function buildClauseAwarePrompt", "Runtime wiring: analyzeContract exposes non-wired clause-aware helper");
+    assertIncludes(source, "const prompt = buildPrompt(text)", "Runtime wiring: analyzeContract active path still uses legacy buildPrompt");
+    assertNotIncludes(source, "const prompt = buildClauseAwarePrompt(text)", "Runtime wiring: analyzeContract does not activate clause-aware prompt");
+    return;
+  }
+
   assertNotIncludes(source, "@/lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by alias`);
   assertNotIncludes(source, "lib/clauses", `Runtime wiring: ${sourceFile} does not import clause module by path`);
   assertNotIncludes(source, "@/lib/clauses/render", `Runtime wiring: ${sourceFile} does not import clause renderer by alias`);

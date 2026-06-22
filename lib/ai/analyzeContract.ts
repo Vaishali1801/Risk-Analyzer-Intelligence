@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { buildAnalyzeContractPrompt } from "@/lib/ai/prompts/analyze-contract-prompt";
+import { buildClauseAwareAnalysisInput } from "@/lib/clauses/input";
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
 import type { ContractAnalysis } from "@/types/contract";
 import { applyDecisionLogic } from "./decision";
@@ -109,6 +111,11 @@ ${omittedChunks ? `- The document was very long; ${omittedChunks} trailing chunk
 
 Contract text:
 ${chunkPayload}`;
+}
+
+export function buildClauseAwarePrompt(text: string): string {
+  const clauseAwareInput = buildClauseAwareAnalysisInput(text);
+  return buildAnalyzeContractPrompt({ contractText: clauseAwareInput });
 }
 
 export function repairJSON(response: string): string {
