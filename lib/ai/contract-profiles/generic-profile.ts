@@ -5,6 +5,12 @@ export const genericProfile: ContractReviewProfile = {
   displayName: "Generic Agreement",
   description:
     "Fallback enterprise review profile for contracts that do not clearly match a specific agreement type or combine multiple agreement patterns.",
+  // Generic profile signals are intentionally empty because Generic Agreement is selected only as a fallback.
+  profileSignals: {
+    strongTitleSignals: [],
+    bodySignals: [],
+    negativeSignals: []
+  },
   generallyRequiredClauses: [
     {
       name: "Parties and scope",

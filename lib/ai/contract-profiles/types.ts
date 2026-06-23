@@ -11,6 +11,12 @@ export type ContractExpectedClause = {
   domainFocus?: RiskDomain[];
 };
 
+export type ContractProfileSignals = {
+  strongTitleSignals: string[];
+  bodySignals: string[];
+  negativeSignals?: string[];
+};
+
 export type ContractReviewProfile = {
   contractType: ContractType;
   displayName: string;
@@ -20,4 +26,5 @@ export type ContractReviewProfile = {
   elevatedReviewTriggers: string[];
   domainFocus: RiskDomain[];
   reviewInstructions: string[];
+  profileSignals?: ContractProfileSignals;
 };
