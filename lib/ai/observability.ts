@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { ContractType } from "@/lib/ai/contract-profiles";
 import type { ContractAnalysis } from "@/types/contract";
 
-export const PROMPT_VERSION = "clause-aware-v2";
+export const PROMPT_VERSION = "clause-aware-v3";
 
 export type PromptPath = "clause-aware" | "legacy";
 

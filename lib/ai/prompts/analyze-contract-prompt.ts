@@ -38,7 +38,7 @@ Do not invent:
 * legal requirements
 * findings unsupported by evidence
 
-Prefer fewer high-quality findings over speculative findings.
+Prefer complete, evidence-supported material findings over speculative or duplicate findings.
 
 Every finding must be supported by contractual language or by the complete absence of an expected enterprise protection.
 
@@ -78,12 +78,14 @@ RISK VS GAP RULES
 Risk:
 A contractual provision exists but creates exposure because it is weak, vague, ambiguous, incomplete, commercially imbalanced, operationally unclear, overly broad, or insufficiently enforceable.
 
-Weak or incomplete clauses should be classified as Risks.
+Existing weak or incomplete clauses should be classified as Risks.
 
 Gap:
 A contractual protection, governance obligation, operational safeguard, or enterprise control is completely absent.
 
-Missing protections should be classified as Gaps.
+Completely absent material protections should be classified as Gaps.
+
+Partially addressed protections may be Risks if weak wording exists, or Gaps if the protection is effectively absent.
 
 Rules:
 
@@ -120,7 +122,7 @@ Where compensating controls exist, consider them when determining severity or im
 
 Return only evidence-supported findings.
 
-Prefer quality over quantity.
+Prefer complete, evidence-supported material findings over speculative or duplicate findings.
 
 APPLICATION OWNERSHIP
 
@@ -329,6 +331,17 @@ Determine confidence using the supplied CONFIG_GUIDANCE.
 
 Do not attempt to produce a predetermined number of Risks or Gaps.
 
+Before producing JSON, review each generally required and recommended profile clause and determine whether it is:
+
+* sufficient
+* missing
+* weak / incomplete
+* conflicting with related clauses
+
+Report only material supported risks or gaps.
+
+Do not stop after the first few findings if additional material supported findings remain.
+
 If only a few evidence-supported findings exist, return only those findings.
 
 Do not create speculative findings simply to increase finding count.
@@ -410,13 +423,13 @@ Gap clauseVariants fields:
 * alternative
 * protective
 
-CONTRACT TEXT
-
-{{CONTRACT_TEXT}}
-
 CONTRACT PROFILE GUIDANCE
 
 {{CONTRACT_PROFILE_GUIDANCE}}
+
+CONTRACT TEXT
+
+{{CONTRACT_TEXT}}
 
 CONFIG GUIDANCE
 
