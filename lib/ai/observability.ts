@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { ContractType } from "@/lib/ai/contract-profiles";
 import type { ContractAnalysis } from "@/types/contract";
 
-export const PROMPT_VERSION = "clause-aware-v1";
+export const PROMPT_VERSION = "clause-aware-v2";
 
 export type PromptPath = "clause-aware" | "legacy";
 
@@ -27,6 +27,7 @@ export type AnalysisRunMetrics = OutputQualityMetrics & {
   estimatedInputTokens: number;
   promptChars: number;
   estimatedPromptTokens: number;
+  profileGuidanceInjected?: boolean;
   detectedContractType?: ContractType;
   contractTypeConfidence?: number;
   contractTypeEvidence?: string[];

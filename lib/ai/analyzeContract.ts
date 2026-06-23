@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import {
   detectContractType,
   getProfileForContractType,
+  type ContractReviewProfile,
   type ContractTypeDetectionResult
 } from "@/lib/ai/contract-profiles";
 import { buildAnalyzeContractPrompt } from "@/lib/ai/prompts/analyze-contract-prompt";
@@ -128,13 +129,13 @@ Contract text:
 ${chunkPayload}`;
 }
 
-export function buildClauseAwarePrompt(text: string): string {
+export function buildClauseAwarePrompt(text: string, selectedProfile?: ContractReviewProfile): string {
   const clauseAwareInput = buildClauseAwareAnalysisInput(text);
-  return buildAnalyzeContractPrompt({ contractText: clauseAwareInput });
+  return buildAnalyzeContractPrompt({ contractText: clauseAwareInput, selectedProfile });
 }
 
-export function selectAnalysisPrompt(text: string): string {
-  return getPromptPath() === "legacy" ? buildPrompt(text) : buildClauseAwarePrompt(text);
+export function selectAnalysisPrompt(text: string, selectedProfile?: ContractReviewProfile): string {
+  return getPromptPath() === "legacy" ? buildPrompt(text) : buildClauseAwarePrompt(text, selectedProfile);
 }
 
 export function repairJSON(response: string): string {
@@ -212,7 +213,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
   const model = getOpenAIModel();
   const promptPath = getPromptPath();
   const contractTypeDetection = safelyDetectContractType(text);
-  const prompt = selectAnalysisPrompt(text);
+  const prompt = selectAnalysisPrompt(text, contractTypeDetection.selectedProfile);
   const metrics: AnalysisRunMetrics = {
     runId: createRunId(),
     timestamp: new Date().toISOString(),
@@ -223,6 +224,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
     estimatedInputTokens: estimateTokensFromChars(text.length),
     promptChars: prompt.length,
     estimatedPromptTokens: estimateTokensFromChars(prompt.length),
+    profileGuidanceInjected: promptPath === "clause-aware",
     ...buildContractTypeMetrics(contractTypeDetection),
     llmLatencyMs: 0,
     retryCount: 0,

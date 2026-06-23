@@ -6,6 +6,7 @@ import {
   formatImpactRulesForPrompt,
   formatSeverityRulesForPrompt,
 } from "@/lib/ai/config";
+import type { ContractExpectedClause, ContractReviewProfile } from "@/lib/ai/contract-profiles";
 
 export const ANALYZE_CONTRACT_PROMPT_TEMPLATE = `You are an enterprise contract risk analysis assistant for internal contract review and governance support.
 
@@ -42,6 +43,35 @@ Prefer fewer high-quality findings over speculative findings.
 Every finding must be supported by contractual language or by the complete absence of an expected enterprise protection.
 
 If sufficient evidence does not exist, do not generate the finding.
+
+PROFILE-AWARE REVIEW RULES
+
+Use CONTRACT_PROFILE_GUIDANCE as advisory review guidance, not as automatic findings.
+
+Do not artificially limit the review to only top risks.
+
+Return every material supported risk or gap.
+
+Never create unsupported findings just to increase the count.
+
+Evaluate expected clauses as:
+
+* sufficient
+* missing
+* weak / incomplete
+* conflicting with related clauses
+
+Check elevated review triggers for this contract type.
+
+Identify both explicit risks in existing clauses and material gaps caused by missing or weak protections.
+
+Create a risk only when supported by clause text, cross-clause conflict, or clear contract language.
+
+Create a gap only when an expected protection is materially absent, weak, vague, incomplete, or inconsistent for this contract type.
+
+If a listed expected clause is not relevant due to contract scope, do not create a gap for it.
+
+If only a few material findings exist, return only those few findings.
 
 RISK VS GAP RULES
 
@@ -384,6 +414,10 @@ CONTRACT TEXT
 
 {{CONTRACT_TEXT}}
 
+CONTRACT PROFILE GUIDANCE
+
+{{CONTRACT_PROFILE_GUIDANCE}}
+
 CONFIG GUIDANCE
 
 {{CONFIG_GUIDANCE}}
@@ -395,6 +429,7 @@ OPTIONAL RETRIEVED GUIDANCE
 export type BuildAnalyzeContractPromptInput = {
   contractText: string;
   retrievedGuidance?: string;
+  selectedProfile?: ContractReviewProfile;
 };
 
 export function buildAnalyzeContractConfigGuidance(): string {
@@ -411,10 +446,42 @@ export function buildAnalyzeContractConfigGuidance(): string {
 }
 
 export function buildAnalyzeContractPrompt(input: BuildAnalyzeContractPromptInput): string {
-  // This prompt builder is intentionally not wired into runtime yet.
   // Raw LLM output still requires schema validation and output normalization before use.
   // Deterministic app logic handles risk summaries, overall risk, top drivers, final review, and UI/PDF report models.
   return ANALYZE_CONTRACT_PROMPT_TEMPLATE.replace("{{CONTRACT_TEXT}}", input.contractText)
+    .replace("{{CONTRACT_PROFILE_GUIDANCE}}", formatContractProfileGuidance(input.selectedProfile))
     .replace("{{CONFIG_GUIDANCE}}", buildAnalyzeContractConfigGuidance())
     .replace("{{RETRIEVED_GUIDANCE}}", input.retrievedGuidance || "None provided.");
+}
+
+function formatContractProfileGuidance(profile?: ContractReviewProfile): string {
+  if (!profile) return "None provided.";
+
+  return [
+    `Detected contract type: ${profile.contractType}`,
+    `Profile: ${profile.displayName}`,
+    `Domain focus: ${formatList(profile.domainFocus)}`,
+    "",
+    "Generally required clauses:",
+    ...profile.generallyRequiredClauses.map(formatExpectedClause),
+    "",
+    "Recommended clauses:",
+    ...profile.recommendedClauses.map(formatExpectedClause),
+    "",
+    "Elevated review triggers:",
+    ...profile.elevatedReviewTriggers.map((trigger) => `* ${trigger}`),
+    "",
+    "Review instructions:",
+    ...profile.reviewInstructions.map((instruction) => `* ${instruction}`)
+  ].join("\n").trim();
+}
+
+function formatExpectedClause(clause: ContractExpectedClause): string {
+  const description = clause.description ? ` - ${clause.description}` : "";
+  const domains = clause.domainFocus?.length ? ` [${formatList(clause.domainFocus)}]` : "";
+  return `* ${clause.name}${domains}${description}`;
+}
+
+function formatList(values: readonly string[]) {
+  return values.join(", ");
 }
