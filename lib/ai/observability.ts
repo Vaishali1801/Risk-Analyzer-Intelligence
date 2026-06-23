@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { ContractType } from "@/lib/ai/contract-profiles";
 import type { ContractAnalysis } from "@/types/contract";
 
 export const PROMPT_VERSION = "clause-aware-v1";
@@ -26,6 +27,19 @@ export type AnalysisRunMetrics = OutputQualityMetrics & {
   estimatedInputTokens: number;
   promptChars: number;
   estimatedPromptTokens: number;
+  detectedContractType?: ContractType;
+  contractTypeConfidence?: number;
+  contractTypeEvidence?: string[];
+  contractTypeScoreMargin?: number;
+  contractTypeStrongTitleMatched?: boolean;
+  contractTypeDetectorVersion?: string;
+  selectedProfile?: {
+    contractType: ContractType;
+    displayName: string;
+  };
+  profileDomainFocus?: string[];
+  contractTypeScores?: Record<string, number>;
+  contractTypeDetectionError?: string;
   clauseCount?: number;
   batchCount?: number;
   extractionQualityIssues?: string[];

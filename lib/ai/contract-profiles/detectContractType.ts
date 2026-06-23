@@ -11,6 +11,9 @@ export type ContractTypeDetectionResult = {
   confidence: number;
   evidence: string[];
   selectedProfile: ContractReviewProfile;
+  scoreMargin: number;
+  strongTitleMatched: boolean;
+  detectorVersion: typeof CONTRACT_TYPE_DETECTOR_VERSION;
   scores?: Record<string, number>;
 };
 
@@ -30,6 +33,7 @@ const BODY_SIGNAL_WEIGHT = 2;
 const NEGATIVE_SIGNAL_WEIGHT = 3;
 const MIN_SPECIFIC_SCORE = 4;
 const AMBIGUOUS_MARGIN = 3;
+export const CONTRACT_TYPE_DETECTOR_VERSION = "profile-signals-v1";
 
 export function detectContractType(text: string): ContractTypeDetectionResult {
   const normalizedText = normalizeSignalText(text);
@@ -58,7 +62,8 @@ export function detectContractType(text: string): ContractTypeDetectionResult {
         `${topScore.profile.contractType} and ${secondScore.profile.contractType} signals were too close without a strong title signal.`,
         ...buildMatchEvidence(topScore)
       ],
-      scores
+      scores,
+      margin
     );
   }
 
@@ -71,6 +76,9 @@ export function detectContractType(text: string): ContractTypeDetectionResult {
       secondScore ? `Next closest profile was ${secondScore.profile.contractType} with score ${secondScore.score}.` : ""
     ].filter(Boolean),
     selectedProfile: topScore.profile,
+    scoreMargin: margin,
+    strongTitleMatched: hasStrongTitleSignal,
+    detectorVersion: CONTRACT_TYPE_DETECTOR_VERSION,
     scores
   };
 }
@@ -133,12 +141,15 @@ function clampConfidence(value: number) {
   return Number(Math.min(0.98, Math.max(0.4, value)).toFixed(2));
 }
 
-function buildGenericResult(evidence: string[], scores?: Record<string, number>): ContractTypeDetectionResult {
+function buildGenericResult(evidence: string[], scores?: Record<string, number>, scoreMargin = 0): ContractTypeDetectionResult {
   return {
     contractType: genericProfile.contractType,
     confidence: 0.4,
     evidence: [`Selected ${genericProfile.contractType} fallback.`, ...evidence],
     selectedProfile: genericProfile,
+    scoreMargin,
+    strongTitleMatched: false,
+    detectorVersion: CONTRACT_TYPE_DETECTOR_VERSION,
     scores
   };
 }

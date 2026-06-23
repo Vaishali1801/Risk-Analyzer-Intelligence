@@ -1,4 +1,9 @@
 import OpenAI from "openai";
+import {
+  detectContractType,
+  getProfileForContractType,
+  type ContractTypeDetectionResult
+} from "@/lib/ai/contract-profiles";
 import { buildAnalyzeContractPrompt } from "@/lib/ai/prompts/analyze-contract-prompt";
 import { buildClauseAwareAnalysisInput } from "@/lib/clauses/input";
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
@@ -206,6 +211,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
   const allowFallbackAnalysis = options.allowFallbackAnalysis ?? true;
   const model = getOpenAIModel();
   const promptPath = getPromptPath();
+  const contractTypeDetection = safelyDetectContractType(text);
   const prompt = selectAnalysisPrompt(text);
   const metrics: AnalysisRunMetrics = {
     runId: createRunId(),
@@ -217,6 +223,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
     estimatedInputTokens: estimateTokensFromChars(text.length),
     promptChars: prompt.length,
     estimatedPromptTokens: estimateTokensFromChars(prompt.length),
+    ...buildContractTypeMetrics(contractTypeDetection),
     llmLatencyMs: 0,
     retryCount: 0,
     repairUsed: false,
@@ -281,6 +288,45 @@ ${firstResponse || String(firstError)}`;
       return fallbackAnalysis;
     }
   }
+}
+
+function safelyDetectContractType(text: string): ContractTypeDetectionResult & { detectionError?: string } {
+  try {
+    return detectContractType(text);
+  } catch (error) {
+    const selectedProfile = getProfileForContractType("Generic Agreement");
+    const message = error instanceof Error ? error.message : "Unknown contract type detection error.";
+
+    return {
+      contractType: "Generic Agreement",
+      confidence: 0.4,
+      evidence: ["Selected Generic Agreement fallback because contract type detection failed."],
+      selectedProfile,
+      scoreMargin: 0,
+      strongTitleMatched: false,
+      detectorVersion: "profile-signals-v1",
+      scores: {},
+      detectionError: message
+    };
+  }
+}
+
+function buildContractTypeMetrics(detection: ContractTypeDetectionResult & { detectionError?: string }): Partial<AnalysisRunMetrics> {
+  return {
+    detectedContractType: detection.contractType,
+    contractTypeConfidence: detection.confidence,
+    contractTypeEvidence: detection.evidence,
+    contractTypeScoreMargin: detection.scoreMargin,
+    contractTypeStrongTitleMatched: detection.strongTitleMatched,
+    contractTypeDetectorVersion: detection.detectorVersion,
+    selectedProfile: {
+      contractType: detection.selectedProfile.contractType,
+      displayName: detection.selectedProfile.displayName
+    },
+    profileDomainFocus: detection.selectedProfile.domainFocus,
+    contractTypeScores: detection.scores,
+    contractTypeDetectionError: detection.detectionError
+  };
 }
 
 function getOpenAIModel() {
