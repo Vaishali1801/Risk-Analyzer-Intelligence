@@ -7,6 +7,7 @@ import {
 } from "@/lib/ai/contract-profiles";
 import { buildAnalyzeContractPrompt } from "@/lib/ai/prompts/analyze-contract-prompt";
 import { buildClauseAwareAnalysisInput } from "@/lib/clauses/input";
+import { getFinalGapReviewCounts, getFinalReviewDecisionComputation, getOverallRiskLevelComputation } from "@/lib/output-model";
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
 import type { ContractAnalysis } from "@/types/contract";
 import { applyDecisionLogic } from "./decision";
@@ -18,6 +19,7 @@ import {
   estimateOpenAICostUsd,
   estimateTokensFromChars,
   getPromptPath,
+  hasKnownOpenAIModelPricing,
   logAnalysisRunMetrics,
   type AnalysisRunMetrics
 } from "./observability";
@@ -224,6 +226,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
     estimatedInputTokens: estimateTokensFromChars(text.length),
     promptChars: prompt.length,
     estimatedPromptTokens: estimateTokensFromChars(prompt.length),
+    pricingKnown: hasKnownOpenAIModelPricing(model),
     profileGuidanceInjected: promptPath === "clause-aware",
     ...buildContractTypeMetrics(contractTypeDetection),
     llmLatencyMs: 0,
@@ -282,7 +285,7 @@ ${firstResponse || String(firstError)}`;
       const fallbackAnalysis = createFallbackAnalysis(reason);
       const jsonParsePassed = metrics.jsonParsePassed;
       const schemaValidationPassed = metrics.schemaValidationPassed;
-      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), {
+      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), computeDeterministicReviewDiagnostics(fallbackAnalysis), {
         jsonParsePassed,
         schemaValidationPassed
       });
@@ -355,11 +358,27 @@ function applyUsageMetrics(metrics: AnalysisRunMetrics, model: string, usage?: O
   metrics.promptTokens = (metrics.promptTokens ?? 0) + (usage.prompt_tokens ?? 0);
   metrics.outputTokens = (metrics.outputTokens ?? 0) + (usage.completion_tokens ?? 0);
   metrics.totalTokens = (metrics.totalTokens ?? 0) + (usage.total_tokens ?? 0);
+  metrics.pricingKnown = hasKnownOpenAIModelPricing(model);
   metrics.estimatedCostUsd = estimateOpenAICostUsd(model, metrics.promptTokens, metrics.outputTokens);
 }
 
 function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis) {
-  Object.assign(metrics, computeOutputQualityMetrics(analysis));
+  Object.assign(metrics, computeOutputQualityMetrics(analysis), computeDeterministicReviewDiagnostics(analysis));
+}
+
+function computeDeterministicReviewDiagnostics(analysis: ContractAnalysis): Partial<AnalysisRunMetrics> {
+  const overallRiskComputation = getOverallRiskLevelComputation(analysis.risks, analysis.overallRiskLevel);
+  const finalDecisionComputation = getFinalReviewDecisionComputation(
+    { Revised: 0, Accepted: 0, Pending: analysis.risks.length },
+    getFinalGapReviewCounts(analysis.gapAnalysis ?? [])
+  );
+
+  return {
+    overallRiskLevel: overallRiskComputation.finalOverallRiskLevel,
+    overallRiskComputation,
+    finalRecommendedDecision: finalDecisionComputation.finalRecommendedDecision,
+    finalDecisionComputation
+  };
 }
 
 function markValidationFailure(metrics: AnalysisRunMetrics, error: unknown) {

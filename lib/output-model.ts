@@ -12,9 +12,29 @@ export type GapReviewDecision = "accepted" | "rejected";
 export type GapReviewById = Record<string, GapReviewDecision | FinalGapReviewDecision | undefined>;
 export type SafeRiskCategory = RiskCategory | "Uncategorized";
 export type SafeSeverity = Severity | "Unknown";
+export type OverallRiskComputation = {
+  totalRisks: number;
+  highRiskCount: number;
+  mediumRiskCount: number;
+  lowRiskCount: number;
+  weightedAverage: number | null;
+  highRiskPercentage: number | null;
+  finalOverallRiskLevel: Severity;
+  triggeredRule: string;
+};
+export type FinalDecisionComputation = {
+  pendingRiskCount: number;
+  pendingGapCount: number;
+  revisedRiskCount: number;
+  acceptedGapCount: number;
+  finalRecommendedDecision: FinalOverallDecision;
+  triggeredRule: string;
+  note: string;
+};
 export type RiskClauseVariantKey = "balanced" | "protective" | "standard";
 export type RiskClauseVariants = Partial<Record<RiskClauseVariantKey, string>>;
 export type NormalizedClauseEvidence = NonNullable<ContractRisk["evidence"]>;
+type SeverityFindingInput = Pick<NormalizedFinding, "severity">;
 
 export type NormalizedFinding = {
   riskId: string;
@@ -209,7 +229,7 @@ export function getTotalRiskCount(findings: NormalizedFinding[]) {
   return findings.length;
 }
 
-export function getSeverityMix(findings: NormalizedFinding[]): Record<Severity, number> {
+export function getSeverityMix(findings: SeverityFindingInput[]): Record<Severity, number> {
   return findings.reduce<Record<Severity, number>>(
     (mix, finding) => {
       if (finding.severity !== "Unknown") {
@@ -272,13 +292,27 @@ function compareTopRiskDriverCandidates(
 }
 
 // Single displayed Risk Level source: analytical severity distribution, not AI overallRiskLevel.
-export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: unknown): Severity {
+export function getOverallRiskLevel(findings: SeverityFindingInput[], fallback?: unknown): Severity {
+  return getOverallRiskLevelComputation(findings, fallback).finalOverallRiskLevel;
+}
+
+export function getOverallRiskLevelComputation(findings: SeverityFindingInput[], fallback?: unknown): OverallRiskComputation {
   const severityMix = getSeverityMix(findings);
   const totalRisks = severityMix.High + severityMix.Medium + severityMix.Low;
 
   if (totalRisks <= 0) {
     const safeFallback = getSafeSeverity(fallback);
-    return safeFallback === "Unknown" ? "Low" : safeFallback;
+    const finalOverallRiskLevel = safeFallback === "Unknown" ? "Low" : safeFallback;
+    return {
+      totalRisks,
+      highRiskCount: severityMix.High,
+      mediumRiskCount: severityMix.Medium,
+      lowRiskCount: severityMix.Low,
+      weightedAverage: null,
+      highRiskPercentage: null,
+      finalOverallRiskLevel,
+      triggeredRule: safeFallback === "Unknown" ? "no_risks_default_low" : "no_risks_used_fallback"
+    };
   }
 
   const weightedAverage =
@@ -287,11 +321,30 @@ export function getOverallRiskLevel(findings: NormalizedFinding[], fallback?: un
       SEVERITY_WEIGHTS.Low * severityMix.Low) /
     totalRisks;
   const highRiskPercentage = severityMix.High / totalRisks;
+  let finalOverallRiskLevel: Severity = "Low";
+  let triggeredRule = "weighted_average_below_medium_threshold";
 
-  if (weightedAverage >= 3.8) return "High";
-  if (totalRisks >= 2 && highRiskPercentage >= 0.4) return "High";
-  if (weightedAverage >= 2.2) return "Medium";
-  return "Low";
+  if (weightedAverage >= 3.8) {
+    finalOverallRiskLevel = "High";
+    triggeredRule = "weighted_average_at_or_above_high_threshold";
+  } else if (totalRisks >= 2 && highRiskPercentage >= 0.4) {
+    finalOverallRiskLevel = "High";
+    triggeredRule = "high_risk_percentage_at_or_above_threshold";
+  } else if (weightedAverage >= 2.2) {
+    finalOverallRiskLevel = "Medium";
+    triggeredRule = "weighted_average_at_or_above_medium_threshold";
+  }
+
+  return {
+    totalRisks,
+    highRiskCount: severityMix.High,
+    mediumRiskCount: severityMix.Medium,
+    lowRiskCount: severityMix.Low,
+    weightedAverage,
+    highRiskPercentage,
+    finalOverallRiskLevel,
+    triggeredRule
+  };
 }
 
 export function getSafeSeverity(severity: unknown): SafeSeverity {
@@ -427,10 +480,38 @@ export function getFinalReviewDecision(
   finalReviewCounts: FinalReviewCounts,
   gapReviewCounts: FinalGapReviewCounts = { Accepted: 0, Rejected: 0, Pending: 0 }
 ): FinalOverallDecision {
+  return getFinalReviewDecisionComputation(finalReviewCounts, gapReviewCounts).finalRecommendedDecision;
+}
+
+export function getFinalReviewDecisionComputation(
+  finalReviewCounts: FinalReviewCounts,
+  gapReviewCounts: FinalGapReviewCounts = { Accepted: 0, Rejected: 0, Pending: 0 }
+): FinalDecisionComputation {
   // Final Review is review-state driven; AI recommendation/rationale must not affect this outcome.
-  if (finalReviewCounts.Pending > 0 || gapReviewCounts.Pending > 0) return "Hold for Review";
-  if (finalReviewCounts.Revised > 0 || gapReviewCounts.Accepted > 0) return "Approve with Changes";
-  return "Approve";
+  const pendingRiskCount = finalReviewCounts.Pending;
+  const pendingGapCount = gapReviewCounts.Pending;
+  const revisedRiskCount = finalReviewCounts.Revised;
+  const acceptedGapCount = gapReviewCounts.Accepted;
+  let finalRecommendedDecision: FinalOverallDecision = "Approve";
+  let triggeredRule = "all_reviewed_without_required_changes";
+
+  if (pendingRiskCount > 0 || pendingGapCount > 0) {
+    finalRecommendedDecision = "Hold for Review";
+    triggeredRule = "pending_risk_or_gap_review";
+  } else if (revisedRiskCount > 0 || acceptedGapCount > 0) {
+    finalRecommendedDecision = "Approve with Changes";
+    triggeredRule = "revised_risk_or_accepted_gap";
+  }
+
+  return {
+    pendingRiskCount,
+    pendingGapCount,
+    revisedRiskCount,
+    acceptedGapCount,
+    finalRecommendedDecision,
+    triggeredRule,
+    note: "Initial deterministic recommendation before human review; final review is driven by review state."
+  };
 }
 
 export function canFinalizeReview(finalReviewCounts: FinalReviewCounts) {
