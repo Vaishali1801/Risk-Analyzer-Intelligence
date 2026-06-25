@@ -92,6 +92,32 @@ Consider contractual clarity, enforceability, governance accountability, operati
 
 Where compensating controls exist, consider them when determining severity or impact.
 
+Prefer separating materially distinct legal, technical, operational, compliance, governance, security, privacy, and liability risks or gaps unless they are strongly interdependent.
+
+Do not merge materially distinct governance, security, privacy, operational, or liability gaps solely to reduce count.
+
+Avoid multiple findings based on the same underlying contractual weakness unless they represent materially distinct business, legal, security, operational, or compliance concerns.
+
+Prioritize findings that materially affect regulatory exposure, confidentiality, operational control, customer governance, security posture, financial recovery, or AI/data governance.
+
+Increase severity sensitivity where regulated data, confidentiality exposure, AI/data reuse, security incidents, transfer failures, or liability caps materially affect regulatory exposure, customer governance, security posture, financial recovery, or AI/data governance. Do not globally inflate severity; use CONFIG_GUIDANCE and contract evidence.
+
+ENTERPRISE CONTROL SENSITIVITY
+
+For DPA, SaaS, Vendor, and similar profile-guided reviews, apply heightened scrutiny where supported by CONTRACT_PROFILE_GUIDANCE and contract text for:
+
+* security baseline specificity, including encryption, logging, vulnerability management, access review, monitoring, and testing controls
+* subprocessor or subcontractor flow-down obligations
+* approval, objection, and unresolved-objection remedies
+* audit rights, compliance evidence access, and remediation tracking
+* incident response timing and required breach-notice content
+* deletion, return, backup lifecycle, and deletion certification
+* lawful cross-border transfer mechanisms and supplemental safeguards
+* records of processing and compliance documentation
+* AI/data governance, derived data, model training, benchmarking, and product improvement rights
+
+Do not automatically generate these as findings. Report them only when contract text or material absence supports the finding.
+
 APPLICATION OWNERSHIP
 
 The LLM generates evidence-supported analysis content and recommendations, including risk/gap titles, labels, confidence scores, explanations, suggestedImprovement, and recommendedClause.
@@ -111,6 +137,14 @@ evidence should reference the same source clause IDs and quote only short releva
 Do not invent CL-### IDs or section references.
 
 If no source clause ID is available, leave sourceClauseIds empty and use "Section unknown" only where necessary.
+
+For weak or partially addressed gaps, include sourceClauseIds from the relevant weak clauses.
+
+Use empty sourceClauseIds only when the protection is completely absent from the contract.
+
+If a gap is based on a weak clause, the cited sourceClauseIds must point to that weak clause.
+
+If a gap is based on a missing protection, evidence may explain the absence and sourceClauseIds may be empty.
 
 EXECUTIVE SUMMARY
 
@@ -166,6 +200,16 @@ OUTPUT RULES
 Return valid JSON only: no markdown, commentary, explanations outside JSON, or comments.
 
 Use concise enterprise language.
+
+Keep explanations concise, decision-oriented, grounded, and commercially practical.
+
+Avoid unnecessarily long prose where shorter grounded reasoning is sufficient.
+
+whyRisky, impactIfIgnored, whyThisMatters, and suggestedFix should be concise but complete.
+
+recommendedClause should usually remain under 120 words unless additional specificity is materially necessary.
+
+Do not shorten reasoning if additional specificity materially improves legal, compliance, operational, technical, or governance clarity.
 
 Confidence must be a JSON number between 0 and 1 and must follow CONFIG_GUIDANCE.
 
