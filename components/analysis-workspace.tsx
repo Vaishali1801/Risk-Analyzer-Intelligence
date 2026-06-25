@@ -86,6 +86,7 @@ type ActiveAskAiRequest = {
   riskId: string;
   lens: RiskReviewLens;
 };
+type GeneratedRiskClauseVariantsById = Record<string, NormalizedFinding["clauseVariants"]>;
 
 const SECTION_OFFSET_PADDING_PX = 16;
 const SECTION_ACTIVE_TOLERANCE_PX = 12;
@@ -122,6 +123,7 @@ export function AnalysisWorkspace() {
   const [reviewLens, setReviewLens] = useState<RiskReviewLens | null>(null);
   const [activeAskAiRequest, setActiveAskAiRequest] = useState<ActiveAskAiRequest | null>(null);
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
+  const [generatedRiskClauseVariantsById, setGeneratedRiskClauseVariantsById] = useState<GeneratedRiskClauseVariantsById>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
   const [expandedFinalReviewGapId, setExpandedFinalReviewGapId] = useState<string | null>(null);
@@ -416,7 +418,9 @@ export function AnalysisWorkspace() {
   const applyReviewLens = async (risk: NormalizedFinding, nextLens: RiskReviewLens) => {
     if (activeAskAiRequestRef.current?.riskId === risk.riskId) return;
 
-    const storedVariant = getRiskStoredClauseVariant(risk, nextLens);
+    const storedVariant =
+      getRiskGeneratedClauseVariant(generatedRiskClauseVariantsById, risk.riskId, nextLens) ||
+      getRiskStoredClauseVariant(risk, nextLens);
     if (storedVariant) {
       setReviewLens(nextLens);
       updateRiskDraft(risk.riskId, storedVariant);
@@ -471,11 +475,13 @@ export function AnalysisWorkspace() {
       const nextDraft = aiOutput || fallbackOutput;
 
       if (nextDraft && isCurrentRequest()) {
+        setGeneratedRiskClauseVariant(risk.riskId, nextLens, nextDraft);
         updateRiskDraft(risk.riskId, nextDraft);
       }
     } catch {
       const fallbackOutput = normalizeReviewText(buildClauseAction(nextLens, risk));
       if (fallbackOutput && isCurrentRequest()) {
+        setGeneratedRiskClauseVariant(risk.riskId, nextLens, fallbackOutput);
         updateRiskDraft(risk.riskId, fallbackOutput);
       }
     } finally {
@@ -701,9 +707,28 @@ export function AnalysisWorkspace() {
     setIsDecisionPanelOpen(false);
     setReviewLens(null);
     setPanelFocusTarget("summary");
+    setGeneratedRiskClauseVariantsById((current) => (Object.keys(current).length ? {} : current));
     activeAskAiRequestRef.current = null;
     setActiveAskAiRequest(null);
   }, [reviewSessionKey]);
+
+  const setGeneratedRiskClauseVariant = (riskId: string, lens: RiskReviewLens, value: string) => {
+    const variantKey = riskClauseVariantKeyByLens[lens];
+    const variant = normalizeReviewText(value);
+    if (!variantKey || !variant) return;
+
+    setGeneratedRiskClauseVariantsById((current) => {
+      if (current[riskId]?.[variantKey] === variant) return current;
+
+      return {
+        ...current,
+        [riskId]: {
+          ...current[riskId],
+          [variantKey]: variant
+        }
+      };
+    });
+  };
 
   useEffect(() => {
     if (!documentModel || !reviewSessionKey) return;
@@ -2227,6 +2252,11 @@ function normalizeReviewText(value: unknown) {
 function getRiskStoredClauseVariant(risk: NormalizedFinding, lens: RiskReviewLens) {
   const variantKey = riskClauseVariantKeyByLens[lens];
   return variantKey ? normalizeReviewText(risk.clauseVariants[variantKey]) : "";
+}
+
+function getRiskGeneratedClauseVariant(variantsByRiskId: GeneratedRiskClauseVariantsById, riskId: string, lens: RiskReviewLens) {
+  const variantKey = riskClauseVariantKeyByLens[lens];
+  return variantKey ? normalizeReviewText(variantsByRiskId[riskId]?.[variantKey]) : "";
 }
 
 function buildFinalReviewSummary(finalReviewDecision: ReturnType<typeof getFinalReviewDecision>) {
