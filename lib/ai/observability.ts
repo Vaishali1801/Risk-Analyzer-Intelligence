@@ -3,7 +3,7 @@ import type { ContractType } from "@/lib/ai/contract-profiles";
 import type { FinalDecisionComputation, FinalOverallDecision, OverallRiskComputation } from "@/lib/output-model";
 import type { ContractAnalysis } from "@/types/contract";
 
-export const PROMPT_VERSION = "clause-aware-v5.1";
+export const PROMPT_VERSION = "clause-aware-v5.2";
 
 export type PromptPath = "clause-aware" | "legacy";
 

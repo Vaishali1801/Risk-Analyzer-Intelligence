@@ -205,9 +205,23 @@ Keep explanations concise, decision-oriented, grounded, and commercially practic
 
 Avoid unnecessarily long prose where shorter grounded reasoning is sufficient.
 
-whyRisky, impactIfIgnored, whyThisMatters, and suggestedFix should be concise but complete.
+whyRisky should usually be 1 concise sentence, with a maximum of 2 sentences when needed.
 
-recommendedClause should usually remain under 120 words unless additional specificity is materially necessary.
+impactIfIgnored should usually be 1 concise sentence.
+
+whyThisMatters should usually be 1 concise sentence, with a maximum of 2 sentences when needed.
+
+suggestedFix should be concise and action-oriented, usually 1 sentence.
+
+suggestedImprovement should be concise and action-oriented, usually 1 sentence.
+
+recommendedClause should usually be 60-90 words and should exceed that only if legal or compliance specificity materially requires it.
+
+Avoid repeated wording across why, impact, and fix fields.
+
+Avoid restating the same clause facts in multiple fields.
+
+Evidence should be compact and source-linked, not essay-style.
 
 Do not shorten reasoning if additional specificity materially improves legal, compliance, operational, technical, or governance clarity.
 
