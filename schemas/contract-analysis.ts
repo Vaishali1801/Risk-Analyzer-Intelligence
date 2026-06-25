@@ -44,10 +44,10 @@ export const SourceClauseSchema = z.object({
 });
 export const ContractClauseSchema = SourceClauseSchema;
 export const GapAnalysisClauseVariantsSchema = z.object({
-  balanced: z.string().min(1),
-  detailed: z.string().min(1),
-  alternative: z.string().min(1),
-  protective: z.string().min(1)
+  balanced: z.string().min(1).optional(),
+  detailed: z.string().min(1).optional(),
+  alternative: z.string().min(1).optional(),
+  protective: z.string().min(1).optional()
 });
 export const RiskClauseVariantsSchema = z.object({
   balanced: z.string().min(1).optional(),
@@ -83,6 +83,21 @@ const OptionalRiskClauseVariantsSchema = z.preprocess((value) => {
 
   return Object.keys(normalizedVariants).length ? normalizedVariants : undefined;
 }, RiskClauseVariantsSchema.optional());
+
+const OptionalGapClauseVariantsSchema = z.preprocess((value) => {
+  const record = getObjectRecord(value);
+  if (!record) return undefined;
+
+  const variants = {
+    balanced: getCleanMultilineString(record.balanced),
+    detailed: getCleanMultilineString(record.detailed),
+    alternative: getCleanMultilineString(record.alternative),
+    protective: getCleanMultilineString(record.protective)
+  };
+  const normalizedVariants = Object.fromEntries(Object.entries(variants).filter(([, variant]) => variant));
+
+  return Object.keys(normalizedVariants).length ? normalizedVariants : undefined;
+}, GapAnalysisClauseVariantsSchema.optional());
 
 export const ContractRiskSchema = z.object({
   id: z.string().min(1),
@@ -254,7 +269,7 @@ export const GapAnalysisItemSchema = z.object({
   whyThisMatters: z.string().min(1),
   suggestedFix: z.string().min(1),
   recommendedClause: z.string().min(1),
-  clauseVariants: GapAnalysisClauseVariantsSchema,
+  clauseVariants: OptionalGapClauseVariantsSchema,
   sourceClauseIds: SourceClauseIdListSchema.optional(),
   evidence: ClauseEvidenceSchema.optional(),
   primaryCategory: CategoryLabelSchema.optional(),
@@ -334,7 +349,7 @@ export function normalizeGapAnalysis(value: unknown): GapAnalysisNormalizationRe
     const aiConfidence = normalizeGapAiConfidence(record.aiConfidence, fallbackReasons);
     const status = normalizeGapStatus(record.status, fallbackReasons);
     const recommendedClause = getCleanMultilineString(record.recommendedClause) || DEFAULT_GAP_RECOMMENDED_CLAUSE;
-    const clauseVariants = normalizeGapClauseVariants(record.clauseVariants, recommendedClause, fallbackReasons);
+    const clauseVariants = normalizeGapClauseVariants(record.clauseVariants);
     const sourceClauseIds = getCleanStringArray(record.sourceClauseIds);
     const evidence = normalizeClauseEvidence(record.evidence, fallbackReasons);
     const primaryCategory = getCleanString(record.primaryCategory);
@@ -635,31 +650,20 @@ function normalizeGapStatus(value: unknown, fallbackReasons: string[]): z.infer<
 }
 
 function normalizeGapClauseVariants(
-  value: unknown,
-  recommendedClause: string,
-  fallbackReasons: string[]
-): z.infer<typeof GapAnalysisClauseVariantsSchema> {
+  value: unknown
+): z.infer<typeof GapAnalysisClauseVariantsSchema> | undefined {
   const record = getObjectRecord(value);
-  if (!record) {
-    fallbackReasons.push("Missing clauseVariants -> defaulted all variants");
-  }
+  if (!record) return undefined;
 
   const clauseVariants = {
-    balanced: getCleanMultilineString(record?.balanced) || recommendedClause,
-    detailed: getCleanMultilineString(record?.detailed) || recommendedClause,
-    alternative: getCleanMultilineString(record?.alternative) || recommendedClause,
-    protective: getCleanMultilineString(record?.protective) || recommendedClause
+    balanced: getCleanMultilineString(record.balanced) || undefined,
+    detailed: getCleanMultilineString(record.detailed) || undefined,
+    alternative: getCleanMultilineString(record.alternative) || undefined,
+    protective: getCleanMultilineString(record.protective) || undefined
   };
+  const normalizedVariants = Object.fromEntries(Object.entries(clauseVariants).filter(([, variant]) => variant));
 
-  if (record) {
-    (["balanced", "detailed", "alternative", "protective"] as const).forEach((key) => {
-      if (!getCleanMultilineString(record[key])) {
-        fallbackReasons.push(`Missing ${key} clause variant -> defaulted to recommended clause`);
-      }
-    });
-  }
-
-  return clauseVariants;
+  return Object.keys(normalizedVariants).length ? normalizedVariants : undefined;
 }
 
 function recordFallbackRiskItem(

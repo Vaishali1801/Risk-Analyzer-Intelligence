@@ -6,18 +6,37 @@ import { buildClauseAction } from "@/lib/reporting/actions";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const AskAiActionSchema = z.enum(["simplify", "balanced", "protective", "standard", "safer_wording", "hidden_risks", "compare_standard"]);
+const AskAiScopeSchema = z.enum(["risk", "gap"]);
+const AskAiActionSchema = z.enum([
+  "simplify",
+  "balanced",
+  "protective",
+  "standard",
+  "safer_wording",
+  "hidden_risks",
+  "compare_standard",
+  "detailed",
+  "alternative"
+]);
 
 const AskAiRequestSchema = z.object({
+  scope: AskAiScopeSchema.optional().default("risk"),
   actionType: AskAiActionSchema,
   riskTitle: z.string().optional().default(""),
+  clauseName: z.string().optional().default(""),
   category: z.string().optional().default("Uncategorized"),
   severity: z.string().optional().default("Unknown"),
+  action: z.string().optional().default(""),
+  impact: z.string().optional().default("Unknown"),
   sectionRef: z.string().optional().default(""),
   fullClauseText: z.string().optional().default(""),
   flaggedText: z.string().optional().default(""),
   whyItMatters: z.string().optional().default(""),
   businessImpact: z.string().optional().default(""),
+  suggestedFix: z.string().optional().default(""),
+  recommendedClause: z.string().optional().default(""),
+  sourceText: z.string().optional().default(""),
+  missingOrWeakProtection: z.string().optional().default(""),
   currentDraft: z.string().optional().default("")
 });
 
@@ -31,7 +50,9 @@ const ACTION_FALLBACKS: Record<AskAiAction, Parameters<typeof buildClauseAction>
   standard: "standard",
   safer_wording: "balanced",
   hidden_risks: "hidden",
-  compare_standard: "standard"
+  compare_standard: "standard",
+  detailed: "standard",
+  alternative: "balanced"
 };
 
 const ASK_AI_TIMEOUT_MS = 18000;
@@ -43,7 +64,7 @@ export async function POST(request: Request) {
     const aiOutput = await tryGenerateAskAiResponse(payload);
     const output = normalizeOutput(aiOutput) || getFallbackOutput(payload);
 
-    return NextResponse.json({ output });
+    return NextResponse.json({ output, variantText: output });
   } catch {
     return NextResponse.json({ output: "" });
   }
@@ -80,6 +101,10 @@ async function tryGenerateAskAiResponse(payload: AskAiRequest) {
 }
 
 function buildPrompt(payload: AskAiRequest) {
+  if (payload.scope === "gap") {
+    return buildGapPrompt(payload);
+  }
+
   const actionInstruction = getActionInstruction(payload.actionType);
   const clause = payload.fullClauseText || payload.flaggedText || payload.currentDraft;
 
@@ -99,6 +124,28 @@ ${payload.currentDraft || "Unavailable"}
 
 Clause:
 ${clause || "Unavailable"}`;
+}
+
+function buildGapPrompt(payload: AskAiRequest) {
+  const variantInstruction = getGapVariantInstruction(payload.actionType);
+  const draft = payload.currentDraft || payload.recommendedClause;
+
+  return `${variantInstruction}
+
+Gap context:
+- Clause name: ${payload.clauseName || "Unavailable"}
+- Category: ${payload.category || "Uncategorized"}
+- Action: ${payload.action || "Unavailable"}
+- Impact: ${payload.impact || "Unknown"}
+- Why this matters: ${payload.whyItMatters || "Unavailable"}
+- Suggested fix: ${payload.suggestedFix || "Unavailable"}
+- Missing or weak protection: ${payload.missingOrWeakProtection || "Unavailable"}
+- Source text: ${payload.sourceText || "Unavailable"}
+
+Current recommended clause:
+${draft || "Unavailable"}
+
+Return only the revised clause text for this one requested variant. Do not return alternative variants, explanations, headings, or markdown.`;
 }
 
 function getActionInstruction(actionType: AskAiAction) {
@@ -125,7 +172,27 @@ function getActionInstruction(actionType: AskAiAction) {
   return "Produce an industry-standard revised clause that reflects typical market contracting expectations in concise, contract-ready language.";
 }
 
+function getGapVariantInstruction(actionType: AskAiAction) {
+  if (actionType === "detailed") {
+    return "Produce a more detailed version of the recommended gap clause with useful operational clarity, measurable obligations, and implementation detail. Keep it concise and contract-ready.";
+  }
+
+  if (actionType === "alternative") {
+    return "Produce an alternative contract-ready version of the recommended gap clause that preserves the same business objective using a different acceptable drafting approach.";
+  }
+
+  if (actionType === "protective") {
+    return "Produce a more protective version of the recommended gap clause that reduces enterprise/customer exposure and improves accountability while remaining commercially realistic.";
+  }
+
+  return "Produce a more balanced version of the recommended gap clause that is fair, practical, concise, and negotiation-ready.";
+}
+
 function getFallbackOutput(payload: AskAiRequest) {
+  if (payload.scope === "gap") {
+    return normalizeOutput(payload.currentDraft || payload.recommendedClause);
+  }
+
   try {
     return normalizeOutput(
       buildClauseAction(ACTION_FALLBACKS[payload.actionType], {

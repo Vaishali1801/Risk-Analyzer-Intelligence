@@ -920,6 +920,7 @@ function getStringArray(value: unknown) {
 function normalizeOutputGapAnalysis(gaps: GapAnalysisItem[] | undefined): GapAnalysisItem[] {
   return (gaps ?? []).map((gap) => ({
     ...gap,
+    clauseVariants: getGapClauseVariants(gap.clauseVariants),
     aiConfidence: normalizeOutputConfidence(gap.aiConfidence)
   }));
 }
@@ -953,6 +954,21 @@ function getRiskClauseVariants(value: unknown): RiskClauseVariants {
     }
     return variants;
   }, {});
+}
+
+function getGapClauseVariants(value: unknown): NonNullable<GapAnalysisItem["clauseVariants"]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  return (["balanced", "detailed", "alternative", "protective"] as const).reduce<NonNullable<GapAnalysisItem["clauseVariants"]>>(
+    (variants, key) => {
+      const variant = getUsableMultilineText((value as Record<typeof key, unknown>)[key]);
+      if (variant) {
+        variants[key] = variant;
+      }
+      return variants;
+    },
+    {}
+  );
 }
 
 function buildShortClauseExcerpt(value: string, maxLength = 140) {

@@ -87,6 +87,7 @@ type ActiveAskAiRequest = {
   lens: RiskReviewLens;
 };
 type GeneratedRiskClauseVariantsById = Record<string, NormalizedFinding["clauseVariants"]>;
+type GeneratedGapClauseVariantsById = Record<string, Partial<Record<GapAskAiVariantKey, string>>>;
 
 const SECTION_OFFSET_PADDING_PX = 16;
 const SECTION_ACTIVE_TOLERANCE_PX = 12;
@@ -124,6 +125,7 @@ export function AnalysisWorkspace() {
   const [activeAskAiRequest, setActiveAskAiRequest] = useState<ActiveAskAiRequest | null>(null);
   const [reviewByRiskId, setReviewByRiskId] = useState<ReviewByRiskId>({});
   const [generatedRiskClauseVariantsById, setGeneratedRiskClauseVariantsById] = useState<GeneratedRiskClauseVariantsById>({});
+  const [generatedGapClauseVariantsById, setGeneratedGapClauseVariantsById] = useState<GeneratedGapClauseVariantsById>({});
   const [isDecisionPanelOpen, setIsDecisionPanelOpen] = useState(false);
   const [panelFocusTarget, setPanelFocusTarget] = useState<RiskPanelFocusTarget>("summary");
   const [expandedFinalReviewGapId, setExpandedFinalReviewGapId] = useState<string | null>(null);
@@ -492,6 +494,45 @@ export function AnalysisWorkspace() {
     }
   };
 
+  const generateGapClauseVariant = async (gap: GapAnalysisItem, variantKey: GapAskAiVariantKey) => {
+    const row = gap as GapRegisterRow;
+    const cachedVariant = getGapGeneratedClauseVariant(generatedGapClauseVariantsById, gap.id, variantKey);
+    if (cachedVariant) return cachedVariant;
+
+    const storedVariant = getGapClauseVariant(row, variantKey);
+    if (storedVariant) return storedVariant;
+
+    const baseRecommendedClause = getGapRecommendedClause(row);
+    const response = await fetch("/api/ask-ai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        scope: "gap",
+        actionType: variantKey,
+        clauseName: gap.clauseName,
+        category: getGapCategoryLabel(row),
+        action: gap.action,
+        impact: gap.impact,
+        whyItMatters: gap.whyThisMatters,
+        suggestedFix: gap.suggestedFix,
+        recommendedClause: baseRecommendedClause,
+        currentDraft: baseRecommendedClause,
+        sourceText: getGapSourceText(row),
+        missingOrWeakProtection: normalizeReviewText(gap.missingOrWeakProtection)
+      })
+    });
+    const payload = response.ok ? ((await response.json()) as { output?: unknown; variantText?: unknown }) : null;
+    const generatedVariant = normalizeReviewText(payload?.variantText) || normalizeReviewText(payload?.output);
+
+    if (generatedVariant) {
+      setGeneratedGapClauseVariant(gap.id, variantKey, generatedVariant);
+    }
+
+    return generatedVariant;
+  };
+
   useEffect(() => {
     const storedSession = readAnalysisSession();
     setSession(storedSession);
@@ -708,6 +749,7 @@ export function AnalysisWorkspace() {
     setReviewLens(null);
     setPanelFocusTarget("summary");
     setGeneratedRiskClauseVariantsById((current) => (Object.keys(current).length ? {} : current));
+    setGeneratedGapClauseVariantsById((current) => (Object.keys(current).length ? {} : current));
     activeAskAiRequestRef.current = null;
     setActiveAskAiRequest(null);
   }, [reviewSessionKey]);
@@ -724,6 +766,23 @@ export function AnalysisWorkspace() {
         ...current,
         [riskId]: {
           ...current[riskId],
+          [variantKey]: variant
+        }
+      };
+    });
+  };
+
+  const setGeneratedGapClauseVariant = (gapId: string, variantKey: GapAskAiVariantKey, value: string) => {
+    const variant = normalizeReviewText(value);
+    if (!variant) return;
+
+    setGeneratedGapClauseVariantsById((current) => {
+      if (current[gapId]?.[variantKey] === variant) return current;
+
+      return {
+        ...current,
+        [gapId]: {
+          ...current[gapId],
           [variantKey]: variant
         }
       };
@@ -1369,7 +1428,9 @@ export function AnalysisWorkspace() {
         open={Boolean(selectedGap)}
         gap={selectedGap}
         reviewDecision={selectedGap ? effectiveGapReviewById[selectedGap.id] : undefined}
+        generatedVariantsByGapId={generatedGapClauseVariantsById}
         onClose={() => setSelectedGapId("")}
+        onGenerateVariant={generateGapClauseVariant}
         onAccept={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "accepted" }))}
         onReject={(gap) => setGapReviewById((current) => ({ ...current, [gap.id]: "rejected" }))}
       />
@@ -1751,14 +1812,18 @@ function GapReviewPanel({
   open,
   gap,
   reviewDecision,
+  generatedVariantsByGapId,
   onClose,
+  onGenerateVariant,
   onAccept,
   onReject
 }: {
   open: boolean;
   gap?: GapAnalysisItem;
   reviewDecision?: GapReviewDecision | FinalGapReviewDecision;
+  generatedVariantsByGapId: GeneratedGapClauseVariantsById;
   onClose: () => void;
+  onGenerateVariant: (gap: GapAnalysisItem, variantKey: GapAskAiVariantKey) => Promise<string>;
   onAccept: (gap: GapAnalysisItem) => void;
   onReject: (gap: GapAnalysisItem) => void;
 }) {
@@ -1769,6 +1834,7 @@ function GapReviewPanel({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   const [activeVariant, setActiveVariant] = useState<GapAskAiVariantKey | null>(null);
+  const [loadingVariant, setLoadingVariant] = useState<GapAskAiVariantKey | null>(null);
   const [variantMessage, setVariantMessage] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "done">("idle");
   const row = gap as GapRegisterRow | undefined;
@@ -1776,7 +1842,10 @@ function GapReviewPanel({
   const confidence = row ? formatGapAiConfidence(row.aiConfidence) : "\u2014";
   const status = row ? getEffectiveGapReviewDecision(row, reviewDecision ? { [row.id]: reviewDecision } : {}) : "Pending";
   const baseRecommendedClause = getGapRecommendedClause(row);
-  const activeVariantText = row && activeVariant ? getGapClauseVariant(row, activeVariant) : "";
+  const activeVariantText =
+    row && activeVariant
+      ? getGapGeneratedClauseVariant(generatedVariantsByGapId, row.id, activeVariant) || getGapClauseVariant(row, activeVariant)
+      : "";
   const displayedRecommendedClause = activeVariantText || baseRecommendedClause;
 
   useEffect(() => {
@@ -1823,6 +1892,7 @@ function GapReviewPanel({
     if (!open || !gap) return;
 
     setActiveVariant(null);
+    setLoadingVariant(null);
     setVariantMessage("");
     setCopyState("idle");
     window.requestAnimationFrame(() => {
@@ -1897,18 +1967,36 @@ function GapReviewPanel({
                     <button
                       key={option.key}
                       type="button"
-                      onClick={() => {
-                        const variant = getGapClauseVariant(row, option.key);
+                      disabled={Boolean(loadingVariant)}
+                      aria-busy={loadingVariant === option.key}
+                      onClick={async () => {
                         setActiveVariant(option.key);
-                        setVariantMessage(variant ? "" : "AI rewrite is not available yet for this item.");
+                        setVariantMessage("");
+                        setCopyState("idle");
+
+                        const existingVariant =
+                          getGapGeneratedClauseVariant(generatedVariantsByGapId, row.id, option.key) ||
+                          getGapClauseVariant(row, option.key);
+                        if (existingVariant) return;
+
+                        setLoadingVariant(option.key);
+                        try {
+                          const generatedVariant = await onGenerateVariant(gap, option.key);
+                          setVariantMessage(generatedVariant ? "" : "AI rewrite is not available yet for this item.");
+                        } catch {
+                          setVariantMessage("AI rewrite could not be generated. Please try again.");
+                        } finally {
+                          setLoadingVariant(null);
+                        }
                       }}
                       className={cn(
-                        "inline-flex min-h-8 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition",
+                        "inline-flex min-h-8 items-center justify-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-[0.78rem] font-medium transition disabled:cursor-not-allowed disabled:opacity-70",
                         activeVariant === option.key
                           ? "border-slate-950 bg-slate-950 text-white"
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                       )}
                     >
+                      {loadingVariant === option.key ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" /> : null}
                       {option.label}
                     </button>
                   ))}
@@ -1930,6 +2018,7 @@ function GapReviewPanel({
                       size="sm"
                       onClick={() => {
                         setActiveVariant(null);
+                        setLoadingVariant(null);
                         setVariantMessage("");
                         setCopyState("idle");
                       }}
@@ -2039,6 +2128,22 @@ function getGapClauseVariant(gap: GapRegisterRow, variantKey: GapAskAiVariantKey
   if (!variants) return "";
 
   return normalizeReviewText(variants[variantKey]);
+}
+
+function getGapGeneratedClauseVariant(variantsByGapId: GeneratedGapClauseVariantsById, gapId: string, variantKey: GapAskAiVariantKey) {
+  return normalizeReviewText(variantsByGapId[gapId]?.[variantKey]);
+}
+
+function getGapSourceText(gap: GapRegisterRow) {
+  const evidence = getObjectRecord(gap.evidence);
+  if (!evidence) return "";
+
+  return (
+    normalizeReviewText(evidence.quote) ||
+    normalizeReviewText(evidence.highlightedText) ||
+    normalizeReviewText(evidence.sectionRef) ||
+    normalizeReviewText(evidence.clauseTitle)
+  );
 }
 
 function getObjectRecord(value: unknown): Record<string, unknown> | null {
