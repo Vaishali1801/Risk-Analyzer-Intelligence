@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { estimateOpenAICostUsd } from "@/lib/ai/observability";
 import { buildClauseAction } from "@/lib/reporting/actions";
 
 export const runtime = "nodejs";
@@ -42,6 +43,16 @@ const AskAiRequestSchema = z.object({
 
 type AskAiAction = z.infer<typeof AskAiActionSchema>;
 type AskAiRequest = z.infer<typeof AskAiRequestSchema>;
+type AskAiUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+type AskAiGenerationResult = {
+  output: string;
+  model: string;
+  usage?: AskAiUsage | null;
+};
 
 const ACTION_FALLBACKS: Record<AskAiAction, Parameters<typeof buildClauseAction>[0]> = {
   simplify: "simplify",
@@ -59,10 +70,14 @@ const ASK_AI_TIMEOUT_MS = 18000;
 const MAX_OUTPUT_LENGTH = 2200;
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+
   try {
     const payload = AskAiRequestSchema.parse(await request.json());
-    const aiOutput = await tryGenerateAskAiResponse(payload);
-    const output = normalizeOutput(aiOutput) || getFallbackOutput(payload);
+    const aiResult = await tryGenerateAskAiResponse(payload);
+    const output = normalizeOutput(aiResult.output) || getFallbackOutput(payload);
+
+    logAskAiRun(payload, aiResult.model, aiResult.usage, Date.now() - startedAt);
 
     return NextResponse.json({ output, variantText: output });
   } catch {
@@ -70,14 +85,15 @@ export async function POST(request: Request) {
   }
 }
 
-async function tryGenerateAskAiResponse(payload: AskAiRequest) {
-  if (!process.env.OPENAI_API_KEY) return "";
+async function tryGenerateAskAiResponse(payload: AskAiRequest): Promise<AskAiGenerationResult> {
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  if (!process.env.OPENAI_API_KEY) return { output: "", model };
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const completion = await withTimeout(
       client.chat.completions.create({
-        model: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
+        model,
         temperature: 0.2,
         messages: [
           {
@@ -94,9 +110,13 @@ async function tryGenerateAskAiResponse(payload: AskAiRequest) {
       ASK_AI_TIMEOUT_MS
     );
 
-    return completion.choices[0]?.message?.content ?? "";
+    return {
+      output: completion.choices[0]?.message?.content ?? "",
+      model,
+      usage: completion.usage
+    };
   } catch {
-    return "";
+    return { output: "", model };
   }
 }
 
@@ -209,6 +229,32 @@ function getFallbackOutput(payload: AskAiRequest) {
 function normalizeOutput(value: unknown) {
   if (typeof value !== "string") return "";
   return value.replace(/\s+$/g, "").trim().slice(0, MAX_OUTPUT_LENGTH);
+}
+
+function logAskAiRun(payload: AskAiRequest, model: string, usage: AskAiUsage | null | undefined, latencyMs: number) {
+  try {
+    const promptTokens = getUsageTokenCount(usage?.prompt_tokens);
+    const outputTokens = getUsageTokenCount(usage?.completion_tokens);
+    const totalTokens = getUsageTokenCount(usage?.total_tokens);
+
+    console.info("[ask-ai-run]", {
+      model,
+      scope: payload.scope,
+      actionType: payload.actionType,
+      latencyMs,
+      promptTokens,
+      outputTokens,
+      totalTokens,
+      estimatedCostUsd: estimateOpenAICostUsd(model, promptTokens, outputTokens),
+      cacheHit: false
+    });
+  } catch {
+    // Observability should never affect Ask-AI responses.
+  }
+}
+
+function getUsageTokenCount(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
