@@ -6,7 +6,9 @@ import {
   type ContractTypeDetectionResult
 } from "@/lib/ai/contract-profiles";
 import { buildAnalyzeContractPrompt } from "@/lib/ai/prompts/analyze-contract-prompt";
+import { evaluateRuntimeQualityGate, type RuntimeQualityGateResult } from "@/lib/ai/runtime-quality-gate";
 import { buildClauseAwareAnalysisInput } from "@/lib/clauses/input";
+import { segmentContractClauses } from "@/lib/clauses/segment";
 import { getFinalGapReviewCounts, getFinalReviewDecisionComputation, getOverallRiskLevelComputation } from "@/lib/output-model";
 import { ContractAnalysisSchema } from "@/schemas/contract-analysis";
 import type { ContractAnalysis } from "@/types/contract";
@@ -253,7 +255,7 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
     const firstCompletion = await callOpenAIWithMetrics(prompt, model, metrics);
     firstResponse = firstCompletion.content;
     const analysis = validateResponse(firstResponse);
-    markValidationSuccess(metrics, analysis);
+    markValidationSuccess(metrics, analysis, text);
     logAnalysisRunMetrics(metrics);
     return analysis;
   } catch (firstError) {
@@ -270,7 +272,7 @@ ${firstResponse || String(firstError)}`;
 
       const retryCompletion = await callOpenAIWithMetrics(repairPrompt, model, metrics);
       const analysis = validateResponse(retryCompletion.content);
-      markValidationSuccess(metrics, analysis);
+      markValidationSuccess(metrics, analysis, text);
       logAnalysisRunMetrics(metrics);
       return analysis;
     } catch (retryError) {
@@ -285,7 +287,7 @@ ${firstResponse || String(firstError)}`;
       const fallbackAnalysis = createFallbackAnalysis(reason);
       const jsonParsePassed = metrics.jsonParsePassed;
       const schemaValidationPassed = metrics.schemaValidationPassed;
-      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), computeDeterministicReviewDiagnostics(fallbackAnalysis), {
+      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), computeDeterministicReviewDiagnostics(fallbackAnalysis), computeRuntimeQualityGateMetrics(fallbackAnalysis, text), {
         jsonParsePassed,
         schemaValidationPassed
       });
@@ -362,8 +364,8 @@ function applyUsageMetrics(metrics: AnalysisRunMetrics, model: string, usage?: O
   metrics.estimatedCostUsd = estimateOpenAICostUsd(model, metrics.promptTokens, metrics.outputTokens);
 }
 
-function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis) {
-  Object.assign(metrics, computeOutputQualityMetrics(analysis), computeDeterministicReviewDiagnostics(analysis));
+function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis, text: string) {
+  Object.assign(metrics, computeOutputQualityMetrics(analysis), computeDeterministicReviewDiagnostics(analysis), computeRuntimeQualityGateMetrics(analysis, text));
 }
 
 function computeDeterministicReviewDiagnostics(analysis: ContractAnalysis): Partial<AnalysisRunMetrics> {
@@ -379,6 +381,40 @@ function computeDeterministicReviewDiagnostics(analysis: ContractAnalysis): Part
     finalRecommendedDecision: finalDecisionComputation.finalRecommendedDecision,
     finalDecisionComputation
   };
+}
+
+function computeRuntimeQualityGateMetrics(analysis: ContractAnalysis, text: string): RuntimeQualityGateResult {
+  try {
+    const validSourceClauseIds = new Set(segmentContractClauses(text).map((clause) => clause.clauseId));
+
+    return evaluateRuntimeQualityGate({
+      analysis,
+      validSourceClauseIds
+    });
+  } catch {
+    return {
+      qualityGatePassed: false,
+      qualityGateFailures: ["quality_gate_runtime_error"],
+      qualityGateWarnings: [],
+      unsupportedFindingRate: 0,
+      groundingFailureRate: 0,
+      highRiskGroundingRate: 100,
+      weakGapMissingSourceRate: 0,
+      invalidSourceClauseIdRate: 0,
+      placeholderTextRate: 0,
+      duplicateFindingWarningCount: 0,
+      confidenceAnomalyDetected: false,
+      qualityGateIssueCount: 1,
+      qualityGateWarningCount: 0,
+      invalidSourceClauseIdsCount: 0,
+      placeholderTextFindingsCount: 0,
+      duplicateFindingsCount: 0,
+      highRiskGroundingFailuresCount: 0,
+      weakGapMissingSourceClauseIdsCount: 0,
+      unsupportedFindingsCount: 0,
+      groundingFailuresCount: 0
+    };
+  }
 }
 
 function markValidationFailure(metrics: AnalysisRunMetrics, error: unknown) {

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { ContractType } from "@/lib/ai/contract-profiles";
+import type { RuntimeQualityGateResult } from "@/lib/ai/runtime-quality-gate";
 import type { FinalDecisionComputation, FinalOverallDecision, OverallRiskComputation } from "@/lib/output-model";
 import type { ContractAnalysis } from "@/types/contract";
 
@@ -18,7 +19,32 @@ export type OutputQualityMetrics = {
   gapsWithEvidencePct: number;
 };
 
-export type AnalysisRunMetrics = OutputQualityMetrics & {
+export type RuntimeQualityGateMetrics = Pick<
+  RuntimeQualityGateResult,
+  | "qualityGatePassed"
+  | "qualityGateFailures"
+  | "qualityGateWarnings"
+  | "unsupportedFindingRate"
+  | "groundingFailureRate"
+  | "highRiskGroundingRate"
+  | "weakGapMissingSourceRate"
+  | "invalidSourceClauseIdRate"
+  | "placeholderTextRate"
+  | "duplicateFindingWarningCount"
+  | "confidenceAnomalyDetected"
+  | "qualityGateIssueCount"
+  | "qualityGateWarningCount"
+  | "invalidSourceClauseIdsCount"
+  | "placeholderTextFindingsCount"
+  | "duplicateFindingsCount"
+  | "highRiskGroundingFailuresCount"
+  | "weakGapMissingSourceClauseIdsCount"
+  | "unsupportedFindingsCount"
+  | "groundingFailuresCount"
+>;
+
+export type AnalysisRunMetrics = OutputQualityMetrics &
+  Partial<RuntimeQualityGateMetrics> & {
   runId: string;
   timestamp: string;
   model: string;
