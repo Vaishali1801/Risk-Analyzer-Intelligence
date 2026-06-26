@@ -96,6 +96,8 @@ const MODEL_PRICING_USD_PER_1M_TOKENS: Record<string, { input: number; output: n
 };
 
 const PRIVATE_LOG_FIELDS = new Set(["contractText", "prompt", "rawPrompt", "rawResponse", "modelOutput", "llmResponse"]);
+const MAX_LOG_ARRAY_ITEMS = 12;
+const MAX_LOG_STRING_LENGTH = 240;
 
 export function createRunId(): string {
   return `run_${randomUUID()}`;
@@ -139,7 +141,7 @@ export function computeOutputQualityMetrics(validatedAnalysis: ContractAnalysis)
 }
 
 export function logAnalysisRunMetrics(metrics: AnalysisRunMetrics): void {
-  console.info("[analysis-run]", sanitizeForLog(metrics));
+  console.info("[analysis-run]", JSON.stringify(sanitizeForLog(metrics)));
 }
 
 function percentage(numerator: number, denominator: number): number {
@@ -209,10 +211,21 @@ const PLACEHOLDER_EVIDENCE_VALUES = new Set([
 
 function sanitizeForLog(value: unknown): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForLog(item));
+    const sanitizedItems = value.slice(0, MAX_LOG_ARRAY_ITEMS).map((item) => sanitizeForLog(item));
+    const hiddenItemCount = value.length - sanitizedItems.length;
+
+    return hiddenItemCount > 0 ? [...sanitizedItems, `...${hiddenItemCount} more items`] : sanitizedItems;
   }
 
   if (!value || typeof value !== "object") {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Number(value.toFixed(3));
+    }
+
+    if (typeof value === "string") {
+      return value.length > MAX_LOG_STRING_LENGTH ? `${value.slice(0, MAX_LOG_STRING_LENGTH).trimEnd()}...` : value;
+    }
+
     return value;
   }
 
