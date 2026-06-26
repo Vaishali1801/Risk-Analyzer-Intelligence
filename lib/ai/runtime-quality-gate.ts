@@ -31,6 +31,7 @@ type FindingQualityRecord = {
   confidence: number;
   sourceClauseIds: string[];
   evidence: unknown;
+  missingOrWeakProtection?: string;
 };
 
 const INVALID_SOURCE_ID_FAILURE_THRESHOLD = 20;
@@ -68,7 +69,7 @@ export function evaluateRuntimeQualityGate(input: {
     warnings.push("source_clause_id_validation_skipped");
   }
 
-  const unsupportedFindingsCount = findings.filter((finding) => !hasSourceClauseIds(finding.sourceClauseIds) && !hasUsefulEvidence(finding.evidence)).length;
+  const unsupportedFindingsCount = findings.filter(isUnsupportedFinding).length;
   const highRiskGroundingFailuresCount = risks.filter((risk) => risk.severity === "High" && !hasFindingGrounding(risk)).length;
   if (highRiskGroundingFailuresCount > 0) {
     failures.push("high_risk_grounding_missing");
@@ -118,7 +119,7 @@ export function evaluateRuntimeQualityGate(input: {
     warnings.push("recommended_clause_unusual_length");
   }
 
-  if (findings.some((finding) => !hasSourceClauseIds(finding.sourceClauseIds) && hasUsefulEvidence(finding.evidence))) {
+  if (findings.some((finding) => !hasSourceClauseIds(finding.sourceClauseIds) && hasEvidencePayload(finding.evidence))) {
     warnings.push("source_clause_ids_missing_but_evidence_present");
   }
 
@@ -167,12 +168,18 @@ function toGapRecord(gap: GapAnalysisItem): FindingQualityRecord {
     title: gap.clauseName,
     confidence: gap.aiConfidence,
     sourceClauseIds: getStringArray(gap.sourceClauseIds),
-    evidence: gap.evidence
+    evidence: gap.evidence,
+    missingOrWeakProtection: gap.missingOrWeakProtection
   };
 }
 
 function hasFindingGrounding(finding: { sourceClauseIds?: unknown; evidence?: unknown }) {
   return hasSourceClauseIds(finding.sourceClauseIds) || hasUsefulEvidence(finding.evidence);
+}
+
+function isUnsupportedFinding(finding: FindingQualityRecord) {
+  if (isFullyMissingGapRecord(finding)) return false;
+  return !hasSourceClauseIds(finding.sourceClauseIds) && !hasEvidencePayload(finding.evidence);
 }
 
 function hasSourceClauseIds(value: unknown): boolean {
@@ -193,6 +200,18 @@ function hasUsefulEvidence(value: unknown): boolean {
     if (typeof item === "string") return hasUsefulEvidenceText(item);
     if (Array.isArray(item)) return hasUsefulEvidence(item);
     return false;
+  });
+}
+
+function hasEvidencePayload(value: unknown): boolean {
+  if (typeof value === "string") return normalizeText(value).length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (!value || typeof value !== "object") return false;
+
+  return Object.values(value).some((item) => {
+    if (typeof item === "string") return normalizeText(item).length > 0;
+    if (Array.isArray(item)) return item.length > 0;
+    return typeof item !== "undefined" && item !== null;
   });
 }
 
@@ -283,10 +302,24 @@ function isWeakOrPartiallyAddressedGap(gap: GapAnalysisItem) {
   if (!text) return false;
 
   const lower = text.toLowerCase();
-  const weakSignal = /\b(weak|partial|partially|limited|narrow|insufficient|inadequate|unclear|ambiguous)\b/.test(lower);
-  const fullyMissingSignal = /\b(absent|omitted|not included|no\b|missing)\b/.test(lower) && !weakSignal;
+  const weakSignal = /\b(weak|partial|partially|incomplete|limited|narrow|insufficient|inadequate|unclear|ambiguous)\b/.test(lower);
+  const fullyMissingSignal = hasFullyMissingProtectionSignal(lower) && !weakSignal;
 
   return weakSignal && !fullyMissingSignal;
+}
+
+function isFullyMissingGapRecord(finding: FindingQualityRecord) {
+  if (finding.kind !== "gap") return false;
+
+  const lower = normalizeText(finding.missingOrWeakProtection).toLowerCase();
+  if (!lower) return false;
+
+  const weakSignal = /\b(weak|partial|partially|incomplete|limited|narrow|insufficient|inadequate|unclear|ambiguous)\b/.test(lower);
+  return hasFullyMissingProtectionSignal(lower) && !weakSignal;
+}
+
+function hasFullyMissingProtectionSignal(value: string) {
+  return /\b(absent|omitted|not included|no\b|missing)\b/.test(value);
 }
 
 function normalizeText(value: unknown) {
