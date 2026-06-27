@@ -143,7 +143,7 @@ export function computeOutputQualityMetrics(validatedAnalysis: ContractAnalysis)
 }
 
 export function logAnalysisRunMetrics(metrics: AnalysisRunMetrics): void {
-  console.info("[analysis-run]", JSON.stringify(sanitizeForLog(metrics)));
+  console.info("[analysis-run]", JSON.stringify(sanitizeForLog(metrics), null, 2));
 }
 
 function percentage(numerator: number, denominator: number): number {
