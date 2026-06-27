@@ -1,5 +1,13 @@
 import OpenAI from "openai";
 import {
+  createAnalysisTrace,
+  endTraceStage,
+  finalizeAnalysisTrace,
+  safeTraceStage,
+  startTraceStage,
+  type AnalysisTrace
+} from "@/lib/ai/analysis-trace";
+import {
   detectContractType,
   getProfileForContractType,
   type ContractReviewProfile,
@@ -214,18 +222,58 @@ type AnalyzeContractOptions = {
 
 export async function analyzeContract(text: string, options: AnalyzeContractOptions = {}): Promise<ContractAnalysis> {
   const allowFallbackAnalysis = options.allowFallbackAnalysis ?? true;
+  const runId = createRunId();
+  const trace = createAnalysisTrace(runId);
   const model = getOpenAIModel();
   const promptPath = getPromptPath();
-  const contractTypeDetection = safelyDetectContractType(text);
-  const prompt = selectAnalysisPrompt(text, contractTypeDetection.selectedProfile);
+  const cleanedTextChars = text.length;
+  const estimatedInputTokens = estimateTokensFromChars(cleanedTextChars);
+  const contractTypeDetection = safeTraceStage(trace, "contract_type_detection", () => safelyDetectContractType(text), (detection) => ({
+    detectedContractType: detection.contractType,
+    contractTypeConfidence: detection.confidence,
+    contractTypeScoreMargin: detection.scoreMargin,
+    contractTypeStrongTitleMatched: detection.strongTitleMatched
+  }));
+  let clauseAwareInput = "";
+
+  if (promptPath === "clause-aware") {
+    clauseAwareInput = safeTraceStage(trace, "clause_segmentation", () => buildClauseAwareAnalysisInput(text), () => ({
+      clauseAwareInputBuilt: true,
+      cleanedTextChars,
+      estimatedInputTokens
+    }));
+  } else {
+    const skippedStage = startTraceStage(trace, "clause_segmentation");
+    endTraceStage(skippedStage, "skipped", {
+      clauseAwareInputBuilt: false,
+      cleanedTextChars,
+      estimatedInputTokens
+    });
+  }
+
+  const prompt = safeTraceStage(
+    trace,
+    "prompt_build",
+    () =>
+      promptPath === "legacy"
+        ? buildPrompt(text)
+        : buildAnalyzeContractPrompt({ contractText: clauseAwareInput, selectedProfile: contractTypeDetection.selectedProfile }),
+    (builtPrompt) => ({
+      promptPath,
+      promptVersion: PROMPT_VERSION,
+      promptChars: builtPrompt.length,
+      estimatedPromptTokens: estimateTokensFromChars(builtPrompt.length),
+      profileGuidanceInjected: promptPath === "clause-aware"
+    })
+  );
   const metrics: AnalysisRunMetrics = {
-    runId: createRunId(),
+    runId,
     timestamp: new Date().toISOString(),
     model,
     promptPath,
     promptVersion: PROMPT_VERSION,
-    cleanedTextChars: text.length,
-    estimatedInputTokens: estimateTokensFromChars(text.length),
+    cleanedTextChars,
+    estimatedInputTokens,
     promptChars: prompt.length,
     estimatedPromptTokens: estimateTokensFromChars(prompt.length),
     pricingKnown: hasKnownOpenAIModelPricing(model),
@@ -252,11 +300,13 @@ export async function analyzeContract(text: string, options: AnalyzeContractOpti
   let firstResponse = "";
 
   try {
-    const firstCompletion = await callOpenAIWithMetrics(prompt, model, metrics);
+    const firstCompletion = await safeTraceStage(trace, "llm_analysis", () => callOpenAIWithMetrics(prompt, model, metrics), () =>
+      getLlmTraceQuality(metrics, model, "initial")
+    );
     firstResponse = firstCompletion.content;
-    const analysis = validateResponse(firstResponse);
-    markValidationSuccess(metrics, analysis, text);
-    logAnalysisRunMetrics(metrics);
+    const analysis = validateResponseWithTrace(firstResponse, metrics, trace);
+    markValidationSuccess(metrics, analysis, text, trace);
+    logAnalysisRunMetricsWithTrace(metrics, trace);
     return analysis;
   } catch (firstError) {
     markValidationFailure(metrics, firstError);
@@ -270,16 +320,18 @@ Your previous output was invalid or did not match the schema. Return corrected J
 Previous output:
 ${firstResponse || String(firstError)}`;
 
-      const retryCompletion = await callOpenAIWithMetrics(repairPrompt, model, metrics);
-      const analysis = validateResponse(retryCompletion.content);
-      markValidationSuccess(metrics, analysis, text);
-      logAnalysisRunMetrics(metrics);
+      const retryCompletion = await safeTraceStage(trace, "llm_analysis", () => callOpenAIWithMetrics(repairPrompt, model, metrics), () =>
+        getLlmTraceQuality(metrics, model, "retry")
+      );
+      const analysis = validateResponseWithTrace(retryCompletion.content, metrics, trace);
+      markValidationSuccess(metrics, analysis, text, trace);
+      logAnalysisRunMetricsWithTrace(metrics, trace);
       return analysis;
     } catch (retryError) {
       markValidationFailure(metrics, retryError);
       const reason = retryError instanceof Error ? retryError.message : "Model output failed validation after retry.";
       if (!allowFallbackAnalysis) {
-        logAnalysisRunMetrics(metrics);
+        logAnalysisRunMetricsWithTrace(metrics, trace);
         throw new Error(reason);
       }
 
@@ -287,11 +339,11 @@ ${firstResponse || String(firstError)}`;
       const fallbackAnalysis = createFallbackAnalysis(reason);
       const jsonParsePassed = metrics.jsonParsePassed;
       const schemaValidationPassed = metrics.schemaValidationPassed;
-      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), computeDeterministicReviewDiagnostics(fallbackAnalysis), computeRuntimeQualityGateMetrics(fallbackAnalysis, text), {
+      Object.assign(metrics, computeOutputQualityMetrics(fallbackAnalysis), computeDeterministicReviewDiagnostics(fallbackAnalysis), computeRuntimeQualityGateMetrics(fallbackAnalysis, text, trace), {
         jsonParsePassed,
         schemaValidationPassed
       });
-      logAnalysisRunMetrics(metrics);
+      logAnalysisRunMetricsWithTrace(metrics, trace);
       return fallbackAnalysis;
     }
   }
@@ -364,8 +416,44 @@ function applyUsageMetrics(metrics: AnalysisRunMetrics, model: string, usage?: O
   metrics.estimatedCostUsd = estimateOpenAICostUsd(model, metrics.promptTokens, metrics.outputTokens);
 }
 
-function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis, text: string) {
-  Object.assign(metrics, computeOutputQualityMetrics(analysis), computeDeterministicReviewDiagnostics(analysis), computeRuntimeQualityGateMetrics(analysis, text));
+function validateResponseWithTrace(rawResponse: string, metrics: AnalysisRunMetrics, trace: AnalysisTrace): ContractAnalysis {
+  const stage = startTraceStage(trace, "json_parse_schema_validation");
+
+  try {
+    const analysis = validateResponse(rawResponse);
+    endTraceStage(stage, "success", {
+      jsonParsePassed: true,
+      schemaValidationPassed: true,
+      repairUsed: metrics.repairUsed,
+      responseCharCount: rawResponse.length
+    });
+    return analysis;
+  } catch (error) {
+    const validationError = error as { jsonParsePassed?: unknown; schemaValidationPassed?: unknown };
+    endTraceStage(
+      stage,
+      "failed",
+      {
+        jsonParsePassed: validationError.jsonParsePassed === true,
+        schemaValidationPassed: validationError.schemaValidationPassed === true,
+        repairUsed: metrics.repairUsed,
+        responseCharCount: rawResponse.length,
+        schemaIssueCount: getSchemaIssueCount(error)
+      },
+      undefined,
+      [error instanceof Error ? error.name : "validation_error"]
+    );
+    throw error;
+  }
+}
+
+function markValidationSuccess(metrics: AnalysisRunMetrics, analysis: ContractAnalysis, text: string, trace: AnalysisTrace) {
+  Object.assign(
+    metrics,
+    computeOutputQualityMetrics(analysis),
+    computeDeterministicReviewDiagnostics(analysis),
+    computeRuntimeQualityGateMetrics(analysis, text, trace)
+  );
 }
 
 function computeDeterministicReviewDiagnostics(analysis: ContractAnalysis): Partial<AnalysisRunMetrics> {
@@ -383,15 +471,48 @@ function computeDeterministicReviewDiagnostics(analysis: ContractAnalysis): Part
   };
 }
 
-function computeRuntimeQualityGateMetrics(analysis: ContractAnalysis, text: string): RuntimeQualityGateResult {
+function computeRuntimeQualityGateMetrics(analysis: ContractAnalysis, text: string, trace: AnalysisTrace): RuntimeQualityGateResult {
+  const stage = startTraceStage(trace, "runtime_quality_gate");
+
   try {
     const validSourceClauseIds = new Set(segmentContractClauses(text).map((clause) => clause.clauseId));
-
-    return evaluateRuntimeQualityGate({
+    const qualityGate = evaluateRuntimeQualityGate({
       analysis,
       validSourceClauseIds
     });
+
+    endTraceStage(stage, qualityGate.qualityGatePassed ? "success" : "warning", {
+      qualityGatePassed: qualityGate.qualityGatePassed,
+      groundingFailureRate: qualityGate.groundingFailureRate,
+      unsupportedFindingRate: qualityGate.unsupportedFindingRate,
+      highRiskGroundingRate: qualityGate.highRiskGroundingRate,
+      weakGapMissingSourceRate: qualityGate.weakGapMissingSourceRate,
+      invalidSourceClauseIdRate: qualityGate.invalidSourceClauseIdRate,
+      placeholderTextRate: qualityGate.placeholderTextRate,
+      duplicateFindingWarningCount: qualityGate.duplicateFindingWarningCount,
+      confidenceAnomalyDetected: qualityGate.confidenceAnomalyDetected
+    });
+
+    return qualityGate;
   } catch {
+    endTraceStage(
+      stage,
+      "failed",
+      {
+        qualityGatePassed: false,
+        groundingFailureRate: 0,
+        unsupportedFindingRate: 0,
+        highRiskGroundingRate: 100,
+        weakGapMissingSourceRate: 0,
+        invalidSourceClauseIdRate: 0,
+        placeholderTextRate: 0,
+        duplicateFindingWarningCount: 0,
+        confidenceAnomalyDetected: false
+      },
+      undefined,
+      ["quality_gate_runtime_error"]
+    );
+
     return {
       qualityGatePassed: false,
       qualityGateFailures: ["quality_gate_runtime_error"],
@@ -415,6 +536,34 @@ function computeRuntimeQualityGateMetrics(analysis: ContractAnalysis, text: stri
       groundingFailuresCount: 0
     };
   }
+}
+
+function logAnalysisRunMetricsWithTrace(metrics: AnalysisRunMetrics, trace: AnalysisTrace) {
+  const stage = startTraceStage(trace, "observability_log");
+  endTraceStage(stage, "success", {
+    metricCount: Object.keys(metrics).length,
+    traceStageCount: trace.stages.length + 1
+  });
+
+  metrics.analysisTrace = finalizeAnalysisTrace(trace);
+  logAnalysisRunMetrics(metrics);
+}
+
+function getLlmTraceQuality(metrics: AnalysisRunMetrics, model: string, attempt: "initial" | "retry") {
+  return {
+    attempt,
+    model,
+    promptTokens: metrics.promptTokens ?? 0,
+    outputTokens: metrics.outputTokens ?? 0,
+    totalTokens: metrics.totalTokens ?? 0,
+    estimatedCostUsd: metrics.estimatedCostUsd ?? 0,
+    llmLatencyMs: metrics.llmLatencyMs
+  };
+}
+
+function getSchemaIssueCount(error: unknown) {
+  const issues = (error as { issues?: unknown }).issues;
+  return Array.isArray(issues) ? issues.length : 0;
 }
 
 function markValidationFailure(metrics: AnalysisRunMetrics, error: unknown) {

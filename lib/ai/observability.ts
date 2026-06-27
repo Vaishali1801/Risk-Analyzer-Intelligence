@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { AnalysisTrace } from "@/lib/ai/analysis-trace";
 import type { ContractType } from "@/lib/ai/contract-profiles";
 import type { RuntimeQualityGateResult } from "@/lib/ai/runtime-quality-gate";
 import type { FinalDecisionComputation, FinalOverallDecision, OverallRiskComputation } from "@/lib/output-model";
@@ -84,6 +85,7 @@ export type AnalysisRunMetrics = OutputQualityMetrics &
   retryCount: number;
   repairUsed: boolean;
   fallbackUsed: boolean;
+  analysisTrace?: AnalysisTrace;
 };
 
 const MODEL_PRICING_USD_PER_1M_TOKENS: Record<string, { input: number; output: number }> = {
