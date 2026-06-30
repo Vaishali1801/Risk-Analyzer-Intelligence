@@ -17,6 +17,24 @@ export type KBCollectionMetadata = {
   description: string;
 };
 
+export type KBSeedSourceType =
+  | "placeholder"
+  | "manual_seed"
+  | "approved_policy"
+  | "approved_playbook"
+  | "approved_clause_library";
+
+export type KBSeedDocument = {
+  id: string;
+  collection: KBCollection;
+  title: string;
+  sourceType: KBSeedSourceType;
+  version: string;
+  tags: string[];
+  content: string;
+  metadata: Record<string, unknown>;
+};
+
 export const KB_COLLECTION_LABELS: Record<KBCollection, string> = {
   company_profile: "Company Profile",
   risk_taxonomy: "Risk Taxonomy",

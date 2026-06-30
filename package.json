@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "probe:review": "node scripts/probe-deterministic-review.cjs",
-    "probe:session-evidence": "node scripts/probe-session-evidence.cjs"
+    "probe:session-evidence": "node scripts/probe-session-evidence.cjs",
+    "probe:knowledge-seed": "node scripts/probe-knowledge-seed.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
