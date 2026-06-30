@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "probe:review": "node scripts/probe-deterministic-review.cjs"
+    "probe:review": "node scripts/probe-deterministic-review.cjs",
+    "probe:session-evidence": "node scripts/probe-session-evidence.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
