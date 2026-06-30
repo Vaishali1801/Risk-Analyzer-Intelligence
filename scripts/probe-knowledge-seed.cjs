@@ -51,6 +51,12 @@ function assertTruthy(value, message) {
   }
 }
 
+function assertFalse(value, message) {
+  if (value !== false) {
+    throw new Error(`${message}: expected false, received ${value}`);
+  }
+}
+
 function assertArray(value, message) {
   if (!Array.isArray(value)) {
     throw new Error(`${message}: expected array`);
@@ -126,16 +132,28 @@ KB_COLLECTIONS.forEach((collection) => {
 
   const seedDocuments = KNOWLEDGE_SEED_DOCUMENTS_BY_COLLECTION[collection];
   assertArray(seedDocuments, `Knowledge seed: ${collection} has seed array`);
-  assertTruthy(seedDocuments.length > 0, `Knowledge seed: ${collection} has seed content`);
+  assertEqual(seedDocuments.length, 1, `Knowledge seed: ${collection} has exactly one seed document`);
+
+  const seedSource = fs.readFileSync(seedFileByCollection[collection], "utf8");
+  assertIncludes(seedSource, "KB_COLLECTIONS", `Knowledge seed: ${collection} seed module imports KB_COLLECTIONS`);
+  assertTruthy(
+    !/collection:\s*["']/.test(seedSource),
+    `Knowledge seed: ${collection} seed module does not use string-literal collection assignment`
+  );
 
   seedDocuments.forEach((document) => {
     assertEqual(document.collection, collection, `Knowledge seed: ${document.id} collection matches map key`);
+    assertTruthy(KB_COLLECTIONS.includes(document.collection), `Knowledge seed: ${document.id} collection is from KB_COLLECTIONS`);
     assertTruthy(typeof document.id === "string" && document.id.trim(), `Knowledge seed: ${collection} item has id`);
     assertTruthy(typeof document.title === "string" && document.title.trim(), `Knowledge seed: ${document.id} has title`);
     assertTruthy(typeof document.content === "string" && document.content.trim(), `Knowledge seed: ${document.id} has content`);
+    assertTruthy(Object.prototype.hasOwnProperty.call(document, "ingestReady"), `Knowledge seed: ${document.id} has top-level ingestReady`);
+    assertFalse(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady is false`);
     assertTruthy(document.metadata && typeof document.metadata === "object", `Knowledge seed: ${document.id} has metadata`);
+    assertFalse(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady is false`);
     assertTruthy(typeof document.version === "string" && document.version.trim(), `Knowledge seed: ${document.id} has version`);
     assertArray(document.tags, `Knowledge seed: ${document.id} has tags`);
+    assertEqual(document.sourceType, "placeholder", `Knowledge seed: ${document.id} sourceType remains placeholder`);
     assertIncludes(document.tags, "replace-with-approved-content", `Knowledge seed: ${document.id} is marked for replacement`);
   });
 });

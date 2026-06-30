@@ -32,6 +32,7 @@ export type KBSeedDocument = {
   version: string;
   tags: string[];
   content: string;
+  ingestReady: boolean;
   metadata: Record<string, unknown>;
 };
 
