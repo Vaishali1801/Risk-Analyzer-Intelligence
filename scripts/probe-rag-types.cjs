@@ -22,17 +22,28 @@ function assertNotMatches(value, pattern, message) {
   }
 }
 
+function getTypeBlock(source, typeName) {
+  const start = source.indexOf(`export type ${typeName} = {`);
+  assertTruthy(start >= 0, `RAG types: ${typeName} block exists`);
+
+  const nextType = source.indexOf("\nexport type ", start + 1);
+  return source.slice(start, nextType >= 0 ? nextType : source.length);
+}
+
 assertTruthy(fs.existsSync(TYPES_PATH), "RAG types: types file exists");
 assertTruthy(fs.existsSync(KNOWLEDGE_TYPES_PATH), "RAG types: knowledge types file exists");
 
 const typesSource = fs.readFileSync(TYPES_PATH, "utf8");
 const knowledgeTypesSource = fs.readFileSync(KNOWLEDGE_TYPES_PATH, "utf8");
 const packageJson = JSON.parse(fs.readFileSync(PACKAGE_PATH, "utf8"));
+const retrievalResultBlock = getTypeBlock(typesSource, "RetrievalResult");
+const retrievalResponseBlock = getTypeBlock(typesSource, "RetrievalResponse");
 
 [
   "export type RetrievalFilters",
   "export type RetrievalQuery",
   "export type RetrievalResult",
+  "export type RetrievalResponse",
   "export type KBReference",
   "export type RetrievalChunkType"
 ].forEach((expected) => {
@@ -83,8 +94,31 @@ assertIncludes(knowledgeTypesSource, "export type KBCollection", "RAG types: KBC
   "metadata: Record<string, unknown>",
   "kbReference: KBReference"
 ].forEach((expected) => {
-  assertIncludes(typesSource, expected, `RAG types: RetrievalResult supports ${expected}`);
+  assertIncludes(retrievalResultBlock, expected, `RAG types: RetrievalResult supports ${expected}`);
 });
+
+[
+  "query: RetrievalQuery",
+  "results: RetrievalResult[]",
+  "references: KBReference[]",
+  "retrievedChunkCount: number",
+  "topSimilarity?: number",
+  "latencyMs?: number",
+  "metadata?: Record<string, unknown>"
+].forEach((expected) => {
+  assertIncludes(retrievalResponseBlock, expected, `RAG types: RetrievalResponse supports ${expected}`);
+});
+
+[
+  "references?: KBReference[]",
+  "retrievedChunkCount?: number",
+  "topSimilarity?: number",
+  "latencyMs?: number"
+].forEach((unexpected) => {
+  assertTruthy(!retrievalResultBlock.includes(unexpected), `RAG types: RetrievalResult does not include aggregate field ${unexpected}`);
+});
+
+assertTruthy(typesSource.indexOf("export type RetrievalResult") < typesSource.indexOf("export type RetrievalResponse"), "RAG types: per-hit result is defined before aggregate response");
 
 [
   "sourceType: KBSeedSourceType",

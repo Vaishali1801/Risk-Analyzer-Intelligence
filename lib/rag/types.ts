@@ -106,13 +106,21 @@ export type RetrievalResult = {
   metadata: Record<string, unknown>;
   kbReference: KBReference;
 
-  // Optional aggregate fields preserve the prior result envelope shape.
+  // Deprecated legacy aliases retained temporarily for older adapters.
+  /** @deprecated Use RetrievalResponse.query.id instead. */
   queryId?: string;
+  /** @deprecated Use RetrievalResponse.query.queryText instead. */
   query?: string;
-  references?: KBReference[];
-  latencyMs?: number;
-  retrievedChunkCount?: number;
+};
+
+export type RetrievalResponse = {
+  query: RetrievalQuery;
+  results: RetrievalResult[];
+  references: KBReference[];
+  retrievedChunkCount: number;
   topSimilarity?: number;
+  latencyMs?: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type RAGContextMetadata = {
