@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "probe:review": "node scripts/probe-deterministic-review.cjs",
     "probe:session-evidence": "node scripts/probe-session-evidence.cjs",
-    "probe:knowledge-seed": "node scripts/probe-knowledge-seed.cjs"
+    "probe:knowledge-seed": "node scripts/probe-knowledge-seed.cjs",
+    "probe:rag-sql": "node scripts/probe-rag-sql.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
