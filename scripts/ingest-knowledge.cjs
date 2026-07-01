@@ -1,6 +1,9 @@
 const { execFileSync } = require("child_process");
+const { loadEnvConfig } = require("@next/env");
 const ts = require("typescript");
 const fs = require("fs");
+
+loadEnvConfig(process.cwd());
 
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_BATCH_SIZE = 64;

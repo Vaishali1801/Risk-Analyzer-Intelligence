@@ -69,6 +69,8 @@ const helperSource = fs.readFileSync(INGEST_HELPER_PATH, "utf8");
 assertIncludes(scriptSource, "const LIVE_FLAG = \"--live\"", "Knowledge ingest script: live flag is explicit");
 assertIncludes(scriptSource, "const DRY_RUN_FLAG = \"--dry-run\"", "Knowledge ingest script: dry-run flag exists");
 assertIncludes(scriptSource, "const isDryRun = !isLive", "Knowledge ingest script: dry-run is default");
+assertIncludes(scriptSource, "require(\"@next/env\")", "Knowledge ingest script: Next env loader is used");
+assertIncludes(scriptSource, "loadEnvConfig(process.cwd())", "Knowledge ingest script: .env.local is loaded before env reads");
 assertIncludes(scriptSource, "runIngestReadyProbe", "Knowledge ingest script: live mode runs readiness probe");
 assertIncludes(scriptSource, "scripts/probe-knowledge-ingest-ready.cjs", "Knowledge ingest script: live mode requires ingest-ready validation");
 assertIncludes(scriptSource, "RAG_DATABASE_URL", "Knowledge ingest script: RAG_DATABASE_URL is referenced");
