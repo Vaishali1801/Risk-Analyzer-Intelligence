@@ -3,6 +3,8 @@ const fs = require("fs");
 
 const INGEST_SCRIPT_PATH = "scripts/ingest-knowledge.cjs";
 const INGEST_HELPER_PATH = "lib/rag/ingest-knowledge.ts";
+const RAG_DB_HELPER_PATH = "lib/rag/db.ts";
+const RAG_EMBED_QUERY_HELPER_PATH = "lib/rag/embed-query.ts";
 const PACKAGE_PATH = "package.json";
 
 function assertTruthy(value, message) {
@@ -120,7 +122,7 @@ execFileSync(process.execPath, [INGEST_SCRIPT_PATH, "--dry-run"], {
 });
 
 const runtimeFiles = collectSourceFiles(["app", "components", "lib", "schemas", "types"]).filter(
-  (file) => file !== INGEST_HELPER_PATH
+  (file) => file !== INGEST_HELPER_PATH && file !== RAG_DB_HELPER_PATH && file !== RAG_EMBED_QUERY_HELPER_PATH
 );
 assertNoPatternInFiles(runtimeFiles, /\bretrieveKnowledge\b|\bretrieveRagContext\b/i, "Knowledge ingest script: retrieval functions are absent from runtime");
 assertNoPatternInFiles(

@@ -242,8 +242,11 @@ const sourceFiles = collectSourceFiles(["app", "components", "lib", "schemas", "
   (file) =>
     file !== "scripts/probe-rag-sql.cjs" &&
     file !== "scripts/probe-rag-types.cjs" &&
+    file !== "scripts/probe-rag-infra.cjs" &&
     file !== "scripts/ingest-knowledge.cjs" &&
-    file !== "scripts/probe-knowledge-ingest-script.cjs"
+    file !== "scripts/probe-knowledge-ingest-script.cjs" &&
+    file !== "lib/rag/db.ts" &&
+    file !== "lib/rag/embed-query.ts"
 );
 assertNoPatternInFiles(sourceFiles, /\bretrieveKnowledge\b|\bretrieveRagContext\b/i, "RAG retrieval boundary: retrieval functions are absent");
 assertNoPatternInFiles(sourceFiles, /embedding\s*(<=>|<#>|<->)|order\s+by\s+[^;]*embedding|similarity\s+search|similaritySearch/i, "RAG retrieval boundary: vector/similarity search execution is absent");

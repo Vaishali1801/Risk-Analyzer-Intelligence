@@ -14,6 +14,7 @@
     "probe:knowledge-ingest-ready": "node scripts/probe-knowledge-ingest-ready.cjs",
     "probe:knowledge-ingest-script": "node scripts/probe-knowledge-ingest-script.cjs",
     "probe:rag-types": "node scripts/probe-rag-types.cjs",
+    "probe:rag-infra": "node scripts/probe-rag-infra.cjs",
     "probe:rag-sql": "node scripts/probe-rag-sql.cjs",
     "ingest:knowledge": "node scripts/ingest-knowledge.cjs",
     "ingest:knowledge:dry-run": "node scripts/ingest-knowledge.cjs --dry-run"
