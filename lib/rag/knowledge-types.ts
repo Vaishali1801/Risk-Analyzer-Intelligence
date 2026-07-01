@@ -24,6 +24,24 @@ export type KBSeedSourceType =
   | "approved_playbook"
   | "approved_clause_library";
 
+export type KBChunkPreparationMetadata = {
+  chunkType?: "company_profile" | "risk_taxonomy" | "clause_guidance" | "playbook" | "checklist" | "standard" | "policy";
+  domains?: string[];
+  contractTypes?: string[];
+  governanceArea?: string;
+  severityRelevant?: boolean;
+  gapRelevant?: boolean;
+  priorityRelevant?: boolean;
+  retrievalTags?: string[];
+};
+
+export type KBSeedMetadata = Record<string, unknown> & {
+  collectionLabel: string;
+  status: "enterprise_ready" | "draft" | "retired";
+  ingestReady: boolean;
+  chunkPreparation?: KBChunkPreparationMetadata;
+};
+
 export type KBSeedDocument = {
   id: string;
   collection: KBCollection;
@@ -33,7 +51,7 @@ export type KBSeedDocument = {
   tags: string[];
   content: string;
   ingestReady: boolean;
-  metadata: Record<string, unknown>;
+  metadata: KBSeedMetadata;
 };
 
 export const KB_COLLECTION_LABELS: Record<KBCollection, string> = {

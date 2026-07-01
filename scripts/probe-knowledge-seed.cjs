@@ -45,6 +45,12 @@ function assertIncludes(value, expected, message) {
   }
 }
 
+function assertNotIncludes(value, expected, message) {
+  if (value.includes(expected)) {
+    throw new Error(`${message}: expected not to include ${expected}`);
+  }
+}
+
 function assertTruthy(value, message) {
   if (!value) {
     throw new Error(`${message}: expected truthy value`);
@@ -61,6 +67,15 @@ function assertArray(value, message) {
   if (!Array.isArray(value)) {
     throw new Error(`${message}: expected array`);
   }
+}
+
+function assertSerializable(value, message) {
+  JSON.stringify(value, (_key, item) => {
+    if (typeof item === "undefined" || typeof item === "function" || typeof item === "symbol") {
+      throw new Error(`${message}: metadata contains non-serializable value`);
+    }
+    return item;
+  });
 }
 
 const seedFileByCollection = {
@@ -117,6 +132,17 @@ const {
   getKnowledgeSeedDocuments
 } = seedIndex;
 
+const expectedSourceTypeByCollection = {
+  company_profile: "manual_seed",
+  risk_taxonomy: "approved_policy",
+  contract_review_playbook: "approved_playbook",
+  contract_review_checklist: "approved_policy",
+  security_compliance_standards: "approved_policy",
+  clause_library: "approved_clause_library",
+  procurement_policy: "approved_policy",
+  privacy_data_governance_standards: "approved_policy"
+};
+
 assertArray(KB_COLLECTIONS, "Knowledge seed: KB_COLLECTIONS is available");
 assertArray(KNOWLEDGE_SEED_DOCUMENTS, "Knowledge seed: flattened seed documents are available");
 assertTruthy(KNOWLEDGE_SEED_DOCUMENTS_BY_COLLECTION, "Knowledge seed: seed map is available");
@@ -145,16 +171,37 @@ KB_COLLECTIONS.forEach((collection) => {
     assertEqual(document.collection, collection, `Knowledge seed: ${document.id} collection matches map key`);
     assertTruthy(KB_COLLECTIONS.includes(document.collection), `Knowledge seed: ${document.id} collection is from KB_COLLECTIONS`);
     assertTruthy(typeof document.id === "string" && document.id.trim(), `Knowledge seed: ${collection} item has id`);
+    assertNotIncludes(document.id.toLowerCase(), "placeholder", `Knowledge seed: ${document.id} id is enterprise-ready`);
     assertTruthy(typeof document.title === "string" && document.title.trim(), `Knowledge seed: ${document.id} has title`);
+    assertNotIncludes(document.title.toLowerCase(), "placeholder", `Knowledge seed: ${document.id} title is enterprise-ready`);
     assertTruthy(typeof document.content === "string" && document.content.trim(), `Knowledge seed: ${document.id} has content`);
+    assertTruthy(document.content.length >= 1200, `Knowledge seed: ${document.id} contains substantial enterprise content`);
+    assertNotIncludes(document.content.toLowerCase(), "placeholder", `Knowledge seed: ${document.id} content has no placeholder marker`);
+    assertNotIncludes(document.content, "replace-with-approved-content", `Knowledge seed: ${document.id} content has no replacement marker`);
     assertTruthy(Object.prototype.hasOwnProperty.call(document, "ingestReady"), `Knowledge seed: ${document.id} has top-level ingestReady`);
-    assertFalse(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady is false`);
+    assertTruthy(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady is true`);
     assertTruthy(document.metadata && typeof document.metadata === "object", `Knowledge seed: ${document.id} has metadata`);
-    assertFalse(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady is false`);
+    assertSerializable(document.metadata, `Knowledge seed: ${document.id} metadata is serializable`);
+    assertTruthy(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady is true`);
+    assertEqual(document.metadata.status, "enterprise_ready", `Knowledge seed: ${document.id} metadata status is enterprise_ready`);
     assertTruthy(typeof document.version === "string" && document.version.trim(), `Knowledge seed: ${document.id} has version`);
     assertArray(document.tags, `Knowledge seed: ${document.id} has tags`);
-    assertEqual(document.sourceType, "placeholder", `Knowledge seed: ${document.id} sourceType remains placeholder`);
-    assertIncludes(document.tags, "replace-with-approved-content", `Knowledge seed: ${document.id} is marked for replacement`);
+    assertEqual(document.version, "1.0.0", `Knowledge seed: ${document.id} uses enterprise seed version`);
+    assertEqual(document.sourceType, expectedSourceTypeByCollection[collection], `Knowledge seed: ${document.id} uses approved source type`);
+    assertTruthy(!document.tags.includes("placeholder"), `Knowledge seed: ${document.id} tags have no placeholder marker`);
+    assertTruthy(!document.tags.includes("replace-with-approved-content"), `Knowledge seed: ${document.id} tags have no replacement marker`);
+
+    const chunkPreparation = document.metadata.chunkPreparation;
+    assertTruthy(chunkPreparation && typeof chunkPreparation === "object", `Knowledge seed: ${document.id} has chunk preparation metadata`);
+    assertTruthy(typeof chunkPreparation.chunkType === "string" && chunkPreparation.chunkType.trim(), `Knowledge seed: ${document.id} has chunkType`);
+    assertArray(chunkPreparation.domains, `Knowledge seed: ${document.id} has domains`);
+    assertArray(chunkPreparation.contractTypes, `Knowledge seed: ${document.id} has contractTypes`);
+    assertTruthy(typeof chunkPreparation.governanceArea === "string" && chunkPreparation.governanceArea.trim(), `Knowledge seed: ${document.id} has governanceArea`);
+    assertTruthy(typeof chunkPreparation.severityRelevant === "boolean", `Knowledge seed: ${document.id} has severityRelevant flag`);
+    assertTruthy(typeof chunkPreparation.gapRelevant === "boolean", `Knowledge seed: ${document.id} has gapRelevant flag`);
+    assertTruthy(typeof chunkPreparation.priorityRelevant === "boolean", `Knowledge seed: ${document.id} has priorityRelevant flag`);
+    assertArray(chunkPreparation.retrievalTags, `Knowledge seed: ${document.id} has retrievalTags`);
+    assertTruthy(chunkPreparation.retrievalTags.length >= 3, `Knowledge seed: ${document.id} has retrieval-oriented tags`);
   });
 });
 

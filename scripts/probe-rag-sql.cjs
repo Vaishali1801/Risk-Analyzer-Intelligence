@@ -53,6 +53,12 @@ function assertIncludes(value, expected, message) {
   }
 }
 
+function assertNotIncludes(value, expected, message) {
+  if (value.includes(expected)) {
+    throw new Error(`${message}: expected not to include ${expected}`);
+  }
+}
+
 function assertNotMatches(value, pattern, message) {
   if (pattern.test(value)) {
     throw new Error(message);
@@ -182,6 +188,12 @@ const { KNOWLEDGE_SEED_DOCUMENTS } = seedIndex;
 
 const validation = ingest.validateKnowledgeSeedDocuments(KNOWLEDGE_SEED_DOCUMENTS);
 assertTruthy(validation.valid, `RAG ingest: seed documents validate (${validation.errors.join("; ")})`);
+KNOWLEDGE_SEED_DOCUMENTS.forEach((document) => {
+  assertNotIncludes(document.id.toLowerCase(), "placeholder", `RAG ingest: ${document.id} id has no placeholder marker`);
+  assertNotIncludes(document.title.toLowerCase(), "placeholder", `RAG ingest: ${document.id} title has no placeholder marker`);
+  assertNotIncludes(document.content.toLowerCase(), "placeholder", `RAG ingest: ${document.id} content has no placeholder marker`);
+  assertTruthy(document.metadata.chunkPreparation, `RAG ingest: ${document.id} has chunk preparation metadata`);
+});
 
 const firstPass = ingest.buildKnowledgeIngestRecords(KNOWLEDGE_SEED_DOCUMENTS);
 moduleCache.delete("lib/rag/ingest-knowledge.ts");
@@ -210,6 +222,8 @@ firstPass.chunks.forEach((chunk) => {
   assertTruthy(chunk.metadata.seedMetadata && typeof chunk.metadata.seedMetadata === "object", `RAG ingest: ${chunk.id} metadata preserves seed metadata`);
   assertEqual(chunk.metadata.sourceType, firstPass.documents.find((document) => document.id === chunk.documentId).sourceType, `RAG ingest: ${chunk.id} metadata preserves sourceType`);
   assertEqual(chunk.metadata.version, firstPass.documents.find((document) => document.id === chunk.documentId).version, `RAG ingest: ${chunk.id} metadata preserves version`);
+  assertTruthy(chunk.metadata.chunkPreparation && typeof chunk.metadata.chunkPreparation === "object", `RAG ingest: ${chunk.id} metadata preserves chunk preparation`);
+  assertDeepEqual(chunk.metadata.chunkPreparation, chunk.metadata.seedMetadata.chunkPreparation, `RAG ingest: ${chunk.id} chunk preparation remains deterministic`);
 });
 
 const ingestSource = fs.readFileSync("lib/rag/ingest-knowledge.ts", "utf8");

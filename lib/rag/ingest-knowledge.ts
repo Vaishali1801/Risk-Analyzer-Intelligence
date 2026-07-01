@@ -86,6 +86,16 @@ function validateMetadata(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function isSerializableMetadataValue(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.every(isSerializableMetadataValue);
+  if (value && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).every(isSerializableMetadataValue);
+  }
+  return false;
+}
+
 export function validateKnowledgeSeedDocuments(
   seedDocuments: readonly KBSeedDocument[] = getKnowledgeSeedDocuments()
 ): KnowledgeSeedValidationResult {
@@ -119,6 +129,8 @@ export function validateKnowledgeSeedDocuments(
     }
     if (!validateMetadata(document.metadata)) {
       errors.push(`${label}: metadata must be an object`);
+    } else if (!isSerializableMetadataValue(document.metadata)) {
+      errors.push(`${label}: metadata must be JSON-serializable`);
     }
     if (typeof document.ingestReady !== "boolean") {
       errors.push(`${label}: ingestReady must be boolean`);
