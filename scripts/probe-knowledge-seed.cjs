@@ -1,6 +1,7 @@
 const fs = require("fs");
 const ts = require("typescript");
 
+const mode = process.argv.includes("--mode=ingest-ready") ? "ingest-ready" : "content-ready";
 const moduleCache = new Map();
 
 function loadTsModule(path, localRequire = require, useCache = true) {
@@ -76,6 +77,12 @@ function assertSerializable(value, message) {
     }
     return item;
   });
+}
+
+function assertBoolean(value, message) {
+  if (typeof value !== "boolean") {
+    throw new Error(`${message}: expected boolean, received ${typeof value}`);
+  }
 }
 
 const seedFileByCollection = {
@@ -179,10 +186,17 @@ KB_COLLECTIONS.forEach((collection) => {
     assertNotIncludes(document.content.toLowerCase(), "placeholder", `Knowledge seed: ${document.id} content has no placeholder marker`);
     assertNotIncludes(document.content, "replace-with-approved-content", `Knowledge seed: ${document.id} content has no replacement marker`);
     assertTruthy(Object.prototype.hasOwnProperty.call(document, "ingestReady"), `Knowledge seed: ${document.id} has top-level ingestReady`);
-    assertTruthy(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady is true`);
+    assertBoolean(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady`);
     assertTruthy(document.metadata && typeof document.metadata === "object", `Knowledge seed: ${document.id} has metadata`);
     assertSerializable(document.metadata, `Knowledge seed: ${document.id} metadata is serializable`);
-    assertTruthy(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady is true`);
+    assertTruthy(Object.prototype.hasOwnProperty.call(document.metadata, "ingestReady"), `Knowledge seed: ${document.id} has metadata ingestReady`);
+    assertBoolean(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady`);
+    assertEqual(document.ingestReady, document.metadata.ingestReady, `Knowledge seed: ${document.id} ingestReady flags are consistent`);
+    if (mode === "ingest-ready") {
+      assertTruthy(document.ingestReady, `Knowledge seed: ${document.id} top-level ingestReady is true`);
+      assertTruthy(document.metadata.ingestReady, `Knowledge seed: ${document.id} metadata ingestReady is true`);
+      assertTruthy(document.sourceType !== "placeholder", `Knowledge seed: ${document.id} sourceType is approved for ingestion`);
+    }
     assertEqual(document.metadata.status, "enterprise_ready", `Knowledge seed: ${document.id} metadata status is enterprise_ready`);
     assertTruthy(typeof document.version === "string" && document.version.trim(), `Knowledge seed: ${document.id} has version`);
     assertArray(document.tags, `Knowledge seed: ${document.id} has tags`);
@@ -231,4 +245,4 @@ moduleCache.clear();
 const reloaded = loadSeedIndex(false).seedIndex.KNOWLEDGE_SEED_DOCUMENTS;
 assertDeepEqual(KNOWLEDGE_SEED_DOCUMENTS, reloaded, "Knowledge seed: seed index is deterministic across loads");
 
-console.log("Knowledge seed probes passed.");
+console.log(`${mode === "ingest-ready" ? "Knowledge ingest-ready" : "Knowledge seed"} probes passed.`);
