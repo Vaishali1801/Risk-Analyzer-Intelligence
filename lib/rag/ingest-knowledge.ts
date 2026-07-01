@@ -53,6 +53,13 @@ type CollectionChunkingRule = {
   chunkType: string;
 };
 
+type SectionMetadataRefinement = {
+  contractTypes?: string[];
+  governanceArea?: string;
+  primaryDomains?: string[];
+  retrievalTags?: string[];
+};
+
 const COLLECTION_CHUNKING_RULES: Record<KBCollection, CollectionChunkingRule> = {
   company_profile: {
     strategy: "collection-aware section-based chunks for major company context sections",
@@ -259,14 +266,14 @@ function splitContentIntoChunks(content: string, options: ChunkingOptions = {}):
 
 function isSemanticHeading(line: string): boolean {
   const normalized = line.trim();
-  if (!normalized || normalized.length > 90) return false;
+  if (!normalized || normalized.length > 120) return false;
   if (/^(?:\d+\.|[-*]|â€¢|•)\s/.test(normalized)) return false;
   if (/[.!?]$/.test(normalized)) return false;
   if (normalized.includes(":") && !/^(Examples|Example|Generally Required|Recommended|Elevated Review|Preferred Position|Fallback Position)$/i.test(normalized)) {
     return false;
   }
 
-  return /^[A-Z0-9][A-Za-z0-9&/() -]+$/.test(normalized);
+  return /^[A-Z0-9][A-Za-z0-9&/+() -]+$/.test(normalized) || /^Tier\s+\d+\s+.+Vendor$/i.test(normalized);
 }
 
 function firstHeadingLine(block: string): string | undefined {
@@ -286,13 +293,22 @@ function shouldUseParentHeading(block: string, collection: KBCollection): boolea
   const heading = lines[0];
   const parentHeadingsByCollection: Record<KBCollection, string[]> = {
     company_profile: ["Product Portfolio"],
-    risk_taxonomy: ["Risk Domains", "Common Enterprise Risk Patterns"],
+    risk_taxonomy: [
+      "Risk Domains",
+      "Risk vs Gap",
+      "Gap Priority Levels",
+      "Severity Classification",
+      "Confidence Interpretation",
+      "Common Enterprise Risk Patterns",
+      "Severity vs Priority"
+    ],
     contract_review_playbook: [
       "Preferred Contract Positions",
       "Red Flag Indicators",
       "Gap Prioritization Guidance",
       "Agreement-Type Guidance",
-      "Recommendation Styles"
+      "Recommendation Styles",
+      "Recommendation Strategy"
     ],
     contract_review_checklist: [
       "NDA Checklist",
@@ -300,11 +316,18 @@ function shouldUseParentHeading(block: string, collection: KBCollection): boolea
       "Master Services Agreement (MSA) Checklist",
       "Vendor Agreement Checklist",
       "Data Processing Agreement (DPA) Checklist",
+      "Checklist Interpretation",
       "Gap Types"
     ],
     security_compliance_standards: [
       "Security Governance Standards",
       "Data Protection Standards",
+      "Incident Response Expectations",
+      "Access Control Standards",
+      "Operational Resilience Standards",
+      "Auditability & Compliance Standards",
+      "AI Governance Standards",
+      "Vendor Oversight Standards",
       "Security Gap Types",
       "Security & Compliance Risk Indicators"
     ],
@@ -317,18 +340,26 @@ function shouldUseParentHeading(block: string, collection: KBCollection): boolea
       "Operational Governance Guidance",
       "Audit & Compliance Guidance",
       "AI Governance Guidance",
+      "Guidance Interpretation",
+      "Recommendation Strategy",
       "Agreement-Type Priorities"
     ],
     procurement_policy: [
       "Vendor Criticality Classification",
       "Vendor Governance Standards",
+      "Operational Dependency Standards",
+      "Subcontractor Governance",
+      "Business Continuity Expectations",
+      "AI Vendor Governance",
       "Procurement Escalation Guidance",
       "Contract Acceptance Guidance",
       "Procurement Risk & Gap Interpretation"
     ],
     privacy_data_governance_standards: [
       "AI & Derived Data Governance",
+      "Data Usage Governance",
       "Retention & Deletion Standards",
+      "Cross-Border Processing Governance",
       "Subprocessor Data Governance",
       "Privacy & Data Governance Risk & Gap Interpretation",
       "Data Governance Risk Prioritization Matrix"
@@ -336,6 +367,141 @@ function shouldUseParentHeading(block: string, collection: KBCollection): boolea
   };
 
   return parentHeadingsByCollection[collection].includes(heading);
+}
+
+function shouldPrefixParentHeading(heading: string): boolean {
+  if (/^Tier\s+\d+\s+.+Vendor$/i.test(heading)) return true;
+
+  return [
+    "Acceptable Alternative",
+    "Balanced",
+    "Elevated Review",
+    "Executive Review",
+    "Gap",
+    "Generally Required",
+    "High Confidence",
+    "High Severity",
+    "Low Confidence",
+    "Low Severity",
+    "Medium Confidence",
+    "Medium Severity",
+    "Negotiate",
+    "Operational",
+    "Optional",
+    "Priority",
+    "Procurement + Legal Review",
+    "Procurement + Security Review",
+    "Procurement Review",
+    "Protective",
+    "Recommended",
+    "Risk",
+    "Simplified"
+  ].includes(heading);
+}
+
+function normalizeMetadataKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/\+/g, " plus ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function refineSectionMetadata(
+  collection: KBCollection,
+  semanticSectionTitle: string,
+  chunkPreparation: Record<string, unknown>
+): SectionMetadataRefinement {
+  const normalizedTitle = semanticSectionTitle.toLowerCase();
+  const baseDomains = toStringArray(chunkPreparation.domains);
+  const baseContractTypes = toStringArray(chunkPreparation.contractTypes);
+  const primaryDomains = new Set<string>();
+  const contractTypes = new Set<string>();
+  const retrievalTags = new Set<string>([semanticSectionTitle]);
+  let governanceArea = typeof chunkPreparation.governanceArea === "string" ? chunkPreparation.governanceArea : undefined;
+
+  const addDomain = (domain: string) => {
+    if (baseDomains.includes(domain)) primaryDomains.add(domain);
+  };
+  const addContractType = (contractType: string) => {
+    if (baseContractTypes.includes(contractType)) contractTypes.add(contractType);
+  };
+  const addTags = (...tags: string[]) => {
+    tags.forEach((tag) => retrievalTags.add(tag));
+  };
+
+  if (/financial|pricing|payment|commercial|revenue|fee|refund|credit/.test(normalizedTitle)) addDomain("Financial");
+  if (/legal|liability|indemnification|termination|ownership|intellectual property|ip|dispute|confidentiality/.test(normalizedTitle)) {
+    addDomain("Legal");
+  }
+  if (/compliance|audit|regulatory|privacy|breach|retention|deletion|subprocessor|data governance|data protection/.test(normalizedTitle)) {
+    addDomain("Compliance");
+  }
+  if (/operational|support|service|sla|vendor|procurement|continuity|transition|escalation|dependency|resilience/.test(normalizedTitle)) {
+    addDomain("Operational");
+  }
+  if (/technical|security|incident|access control|ai|data|cloud|disaster recovery|encryption|model|embedding/.test(normalizedTitle)) {
+    addDomain("Technical");
+  }
+
+  if (/\bnda\b|confidentiality/.test(normalizedTitle)) addContractType("NDA");
+  if (/saas|cloud|service level|sla|uptime/.test(normalizedTitle)) addContractType("SaaS");
+  if (/master services|msa|statement of work|service operations/.test(normalizedTitle)) addContractType("MSA");
+  if (/vendor|procurement|supplier|subcontractor|third-party/.test(normalizedTitle)) addContractType("Vendor");
+  if (/data processing|\bdpa\b|privacy|subprocessor|cross-border|retention|deletion|data portability/.test(normalizedTitle)) {
+    addContractType("DPA");
+  }
+
+  if (/ai|model|training|generated output|embedding/.test(normalizedTitle)) addTags("AI governance", "model training", "AI data use");
+  if (/incident|breach/.test(normalizedTitle)) addTags("incident response", "breach notification");
+  if (/audit/.test(normalizedTitle)) addTags("audit rights", "auditability");
+  if (/liability/.test(normalizedTitle)) addTags("liability", "risk allocation");
+  if (/pricing|payment|commercial/.test(normalizedTitle)) addTags("pricing", "commercial terms");
+  if (/retention|deletion/.test(normalizedTitle)) addTags("retention", "deletion");
+  if (/subprocessor|subcontractor/.test(normalizedTitle)) addTags("subprocessor", "subcontractor governance");
+  if (/transition/.test(normalizedTitle)) addTags("transition assistance");
+  if (/escalation|executive review/.test(normalizedTitle)) addTags("escalation", "approval workflow");
+  if (/checklist|generally required|required/.test(normalizedTitle)) addTags("required controls");
+  if (/recommended/.test(normalizedTitle)) addTags("recommended controls");
+  if (/elevated review/.test(normalizedTitle)) addTags("elevated review");
+  if (/risk/.test(normalizedTitle)) addTags("risk interpretation");
+  if (/gap/.test(normalizedTitle)) addTags("gap interpretation");
+
+  if (primaryDomains.size > 0 || contractTypes.size > 0 || retrievalTags.size > 1) {
+    governanceArea = `${collection}_${normalizeMetadataKey(semanticSectionTitle)}`;
+  }
+
+  return {
+    contractTypes: contractTypes.size > 0 ? Array.from(contractTypes).sort() : undefined,
+    governanceArea,
+    primaryDomains: primaryDomains.size > 0 ? Array.from(primaryDomains).sort() : undefined,
+    retrievalTags: Array.from(retrievalTags).sort()
+  };
+}
+
+function getEmbeddedContextHeading(block: string, collection: KBCollection): { heading: string; parentHeading: string } | undefined {
+  const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) return undefined;
+
+  const possibleParentHeading = lines[0];
+  const possibleChildHeading = lines[1];
+  if (!shouldUseParentHeading(possibleParentHeading, collection) || !isSemanticHeading(possibleChildHeading)) {
+    return undefined;
+  }
+
+  if (
+    shouldPrefixParentHeading(possibleChildHeading) ||
+    /^Tier\s+\d+\s+.+Vendor$/i.test(possibleChildHeading) ||
+    /^Procurement(?: \+ (?:Legal|Security))? Review$/i.test(possibleChildHeading)
+  ) {
+    return {
+      heading: possibleChildHeading,
+      parentHeading: possibleParentHeading
+    };
+  }
+
+  return undefined;
 }
 
 function splitLongSemanticUnit(unit: SemanticChunkUnit, maxChars: number): SemanticChunkUnit[] {
@@ -371,12 +537,18 @@ function buildSemanticChunkUnits(seedDocument: KBSeedDocument, options: Chunking
       return;
     }
 
-    const heading = firstHeadingLine(block) ?? (parentHeading || seedDocument.title);
-    const semanticSectionTitle = parentHeading && heading !== parentHeading ? `${parentHeading} - ${heading}` : heading;
-    const content = parentHeading && heading !== parentHeading ? `${parentHeading}\n${block}` : block;
+    const embeddedContext = getEmbeddedContextHeading(block, seedDocument.collection);
+    const activeParentHeading = embeddedContext?.parentHeading ?? parentHeading;
+    const heading = embeddedContext?.heading ?? firstHeadingLine(block) ?? (activeParentHeading || seedDocument.title);
+    const shouldUseContextTitle =
+      activeParentHeading && heading !== activeParentHeading && (shouldPrefixParentHeading(heading) || Boolean(embeddedContext));
+    const semanticSectionTitle = shouldUseContextTitle ? `${activeParentHeading} - ${heading}` : heading;
+    const content = shouldUseContextTitle && !block.startsWith(`${activeParentHeading}\n`) ? `${activeParentHeading}\n${block}` : block;
+    const sectionMetadata = refineSectionMetadata(seedDocument.collection, semanticSectionTitle, chunkPreparation);
     const retrievalTags = uniqueSortedStrings([
       ...seedDocument.tags,
       ...toStringArray(chunkPreparation.retrievalTags),
+      ...toStringArray(sectionMetadata.retrievalTags),
       semanticSectionTitle
     ]);
 
@@ -386,9 +558,10 @@ function buildSemanticChunkUnits(seedDocument: KBSeedDocument, options: Chunking
       metadata: {
         chunkType: chunkPreparation.chunkType ?? rule.chunkType,
         collection: seedDocument.collection,
-        contractTypes: toStringArray(chunkPreparation.contractTypes),
-        governanceArea: chunkPreparation.governanceArea,
-        primaryDomains: toStringArray(chunkPreparation.domains),
+        contractTypes: sectionMetadata.contractTypes ?? toStringArray(chunkPreparation.contractTypes),
+        governanceArea: sectionMetadata.governanceArea ?? chunkPreparation.governanceArea,
+        parentSectionTitle: activeParentHeading || undefined,
+        primaryDomains: sectionMetadata.primaryDomains ?? toStringArray(chunkPreparation.domains),
         retrievalTags,
         semanticChunkStrategy: rule.strategy,
         semanticSectionTitle,
@@ -397,6 +570,12 @@ function buildSemanticChunkUnits(seedDocument: KBSeedDocument, options: Chunking
         version: seedDocument.version
       }
     });
+
+    if (embeddedContext) {
+      parentHeading = embeddedContext.parentHeading;
+    } else if (shouldUseParentHeading(heading, seedDocument.collection)) {
+      parentHeading = heading;
+    }
   });
 
   const semanticUnits = units.length > 0
