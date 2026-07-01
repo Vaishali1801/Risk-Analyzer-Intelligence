@@ -241,6 +241,7 @@ assertNotMatches(ingestSource, /openai|embeddings\.create|text-embedding/i, "RAG
 const sourceFiles = collectSourceFiles(["app", "components", "lib", "schemas", "types", "scripts"]).filter(
   (file) =>
     file !== "scripts/probe-rag-sql.cjs" &&
+    file !== "scripts/probe-rag-types.cjs" &&
     file !== "scripts/ingest-knowledge.cjs" &&
     file !== "scripts/probe-knowledge-ingest-script.cjs"
 );

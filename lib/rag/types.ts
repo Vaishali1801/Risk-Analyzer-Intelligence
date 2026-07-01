@@ -1,5 +1,5 @@
 import type { ClauseDomain } from "@/lib/clauses/types";
-import type { KBCollection } from "./knowledge-types";
+import type { KBChunkPreparationMetadata, KBCollection, KBSeedSourceType } from "./knowledge-types";
 
 export type { KBCollection } from "./knowledge-types";
 
@@ -38,10 +38,53 @@ export type SessionEvidencePackage = {
   clauses: SessionEvidenceClause[];
 };
 
+export type RetrievalChunkType = NonNullable<KBChunkPreparationMetadata["chunkType"]>;
+
+// Retrieval type foundations are intentionally data-only. They support future
+// retrieval, grounding, observability, and prompt context building without
+// adding database access, embedding calls, or runtime retrieval behavior here.
+export type RetrievalFilters = {
+  collections?: KBCollection[];
+  governanceAreas?: string[];
+  primaryDomains?: string[];
+  contractTypes?: string[];
+  retrievalTags?: string[];
+  chunkTypes?: RetrievalChunkType[];
+  sourceTypes?: KBSeedSourceType[];
+  versions?: string[];
+};
+
+export type RetrievalQuery = {
+  id: string;
+  queryText: string;
+  intent: string;
+  sourceClauseId?: string;
+  topK: number;
+  minSimilarity: number;
+  filters: RetrievalFilters;
+  metadata?: Record<string, unknown>;
+
+  // Legacy aliases retained while downstream code migrates to id/queryText.
+  queryId?: string;
+  query?: string;
+  collections?: KBCollection[];
+  sourceClauseIds?: string[];
+  clauseTypeHints?: string[];
+  domainHints?: string[];
+};
+
 export type KBReference = {
-  collection: KBCollection;
+  documentId: string;
   chunkId: string;
-  documentId?: string;
+  collection: KBCollection;
+  title: string;
+  sourceType: KBSeedSourceType;
+  version: string;
+  governanceArea?: string;
+  retrievalTags?: string[];
+  similarityScore?: number;
+
+  // Legacy citation fields remain optional for future grounding adapters.
   sourceTitle?: string;
   sourceUri?: string;
   heading?: string;
@@ -51,24 +94,24 @@ export type KBReference = {
   metadata?: Record<string, unknown>;
 };
 
-export type RetrievalQuery = {
-  queryId: string;
-  query: string;
-  intent?: string;
-  collections: KBCollection[];
-  sourceClauseIds?: string[];
-  clauseTypeHints?: string[];
-  domainHints?: string[];
-  topK?: number;
-  minSimilarity?: number;
-};
-
 export type RetrievalResult = {
-  queryId: string;
-  query: string;
-  references: KBReference[];
+  chunkId: string;
+  documentId: string;
+  collection: KBCollection;
+  title: string;
+  content: string;
+  similarityScore: number;
+  tokenEstimate: number;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  kbReference: KBReference;
+
+  // Optional aggregate fields preserve the prior result envelope shape.
+  queryId?: string;
+  query?: string;
+  references?: KBReference[];
   latencyMs?: number;
-  retrievedChunkCount: number;
+  retrievedChunkCount?: number;
   topSimilarity?: number;
 };
 
