@@ -49,6 +49,16 @@ OPENAI_API_KEY=sk-your-openai-api-key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
+Optional RAG ingestion infrastructure variables for the script-only admin path:
+
+```bash
+RAG_DATABASE_URL=postgresql://user:password@host:5432/database
+OPENAI_API_KEY=sk-your-openai-api-key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+The RAG ingestion script defaults to dry-run mode and does not connect to Postgres or call OpenAI unless run with `--live` after seed documents are explicitly approved for ingestion.
+
 Open `http://localhost:3000`.
 
 ## Validation Commands
@@ -57,6 +67,10 @@ Open `http://localhost:3000`.
 npm run typecheck
 npm run lint
 npm run build
+npm run probe:knowledge-seed
+npm run probe:knowledge-ingest-ready
+npm run probe:rag-sql
+npm run probe:knowledge-ingest-script
 ```
 
 ## Product Flow
