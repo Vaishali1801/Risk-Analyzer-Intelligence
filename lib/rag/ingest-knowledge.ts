@@ -205,8 +205,12 @@ export function toIngestChunkRecords(
   return splitContentIntoChunks(seedDocument.content, options).map((content, chunkIndex) => {
     const chunkMetadata: Record<string, unknown> = {
       ...documentRecord.metadata,
+      collection: documentRecord.collection,
       documentVersion: documentRecord.version,
-      sourceType: documentRecord.sourceType
+      seedMetadata: documentRecord.metadata,
+      sourceType: documentRecord.sourceType,
+      tags,
+      version: documentRecord.version
     };
 
     return {

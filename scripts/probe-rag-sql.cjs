@@ -59,6 +59,46 @@ function assertNotMatches(value, pattern, message) {
   }
 }
 
+function assertFalse(value, message) {
+  if (value !== false) {
+    throw new Error(message);
+  }
+}
+
+function collectSourceFiles(paths) {
+  const files = [];
+
+  paths.forEach((path) => {
+    if (!fs.existsSync(path)) return;
+    const stat = fs.statSync(path);
+
+    if (stat.isFile()) {
+      files.push(path);
+      return;
+    }
+
+    fs.readdirSync(path, { withFileTypes: true }).forEach((entry) => {
+      if (entry.name === "node_modules" || entry.name === ".next") return;
+      const childPath = `${path}/${entry.name}`;
+
+      if (entry.isDirectory()) {
+        files.push(...collectSourceFiles([childPath]));
+      } else if (/\.(ts|tsx|cjs|json|sql)$/.test(entry.name)) {
+        files.push(childPath);
+      }
+    });
+  });
+
+  return files;
+}
+
+function assertNoPatternInFiles(files, pattern, message) {
+  files.forEach((file) => {
+    const source = fs.readFileSync(file, "utf8");
+    assertNotMatches(source, pattern, `${message}: ${file}`);
+  });
+}
+
 const seedFileByCollection = {
   company_profile: "lib/rag/seed/company-profile.ts",
   risk_taxonomy: "lib/rag/seed/risk-taxonomy.ts",
@@ -165,10 +205,31 @@ firstPass.chunks.forEach((chunk) => {
   assertTruthy(documentIds.includes(chunk.documentId), `RAG ingest: ${chunk.id} references a known document`);
   assertEqual(typeof chunk.tokenEstimate, "number", `RAG ingest: ${chunk.id} has numeric token estimate`);
   assertTruthy(chunk.contentHash.startsWith("fnv1a32:"), `RAG ingest: ${chunk.id} has stable content hash`);
+  assertEqual(chunk.metadata.collection, chunk.collection, `RAG ingest: ${chunk.id} metadata preserves collection`);
+  assertDeepEqual(chunk.metadata.tags, chunk.tags, `RAG ingest: ${chunk.id} metadata preserves tags`);
+  assertTruthy(chunk.metadata.seedMetadata && typeof chunk.metadata.seedMetadata === "object", `RAG ingest: ${chunk.id} metadata preserves seed metadata`);
+  assertEqual(chunk.metadata.sourceType, firstPass.documents.find((document) => document.id === chunk.documentId).sourceType, `RAG ingest: ${chunk.id} metadata preserves sourceType`);
+  assertEqual(chunk.metadata.version, firstPass.documents.find((document) => document.id === chunk.documentId).version, `RAG ingest: ${chunk.id} metadata preserves version`);
 });
 
 const ingestSource = fs.readFileSync("lib/rag/ingest-knowledge.ts", "utf8");
 assertNotMatches(ingestSource, /new\s+pg\b|postgres\(|createClient\(|\.connect\(|pool\(/i, "RAG ingest: database connection behavior is absent");
 assertNotMatches(ingestSource, /openai|embeddings\.create|text-embedding/i, "RAG ingest: OpenAI embedding behavior is absent");
+
+[
+  "lib/rag/retriever.ts",
+  "lib/rag/router.ts",
+  "lib/rag/context-builder.ts"
+].forEach((file) => {
+  assertFalse(fs.existsSync(file), `RAG retrieval boundary: ${file} was not added`);
+});
+
+const sourceFiles = collectSourceFiles(["app", "components", "lib", "schemas", "types", "scripts"]).filter(
+  (file) => file !== "scripts/probe-rag-sql.cjs"
+);
+assertNoPatternInFiles(sourceFiles, /\bretrieveKnowledge\b|\bretrieveRagContext\b/i, "RAG retrieval boundary: retrieval functions are absent");
+assertNoPatternInFiles(sourceFiles, /embedding\s*(<=>|<#>|<->)|order\s+by\s+[^;]*embedding|similarity\s+search|similaritySearch/i, "RAG retrieval boundary: vector/similarity search execution is absent");
+assertNoPatternInFiles(sourceFiles, /from\s+["']pg["']|require\(["']pg["']\)|@supabase\/supabase-js|new\s+(Pool|Client)\b|postgres\(|createClient\(/i, "RAG retrieval boundary: database client usage is absent");
+assertNoPatternInFiles(sourceFiles, /embeddings\.create|text-embedding-3|openai\.embeddings|client\.embeddings/i, "RAG retrieval boundary: OpenAI embedding calls are absent");
 
 console.log("RAG SQL and ingest preparation probes passed.");
