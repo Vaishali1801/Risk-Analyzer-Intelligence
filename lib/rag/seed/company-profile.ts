@@ -10,32 +10,130 @@ export const companyProfileSeed = [
     sourceType: "manual_seed",
     version: "1.0.0",
     tags: ["company-context", "risk-appetite", "approval-thresholds", "contracting-position"],
-    content: `Enterprise Company Profile
+    content: `Northstar Cloud Intelligence (NCI) – Company Profile
 
-The organization uses contract review to protect revenue continuity, customer trust, regulated data, operational resilience, and audit readiness. Reviewers should prefer clear allocation of responsibility, measurable performance commitments, enforceable confidentiality, security and privacy obligations, and practical remedies that can be administered by business owners without creating hidden operational burdens.
+Company Overview
+Northstar Cloud Intelligence (NCI) is a fictional global enterprise technology company providing AI-powered workflow automation, enterprise analytics, cloud-native data platforms, and governance solutions.
+NCI helps organizations modernize operations through secure, scalable, and responsible AI-enabled platforms while maintaining strong governance, operational reliability, and regulatory alignment.
+The company serves enterprise and regulated customers that require secure, resilient, and globally scalable digital solutions.
 
-Risk appetite is moderate for routine low-value vendor and service contracts where obligations are operationally simple, data exposure is limited, and termination rights remain practical. Risk appetite is low for contracts involving regulated data, production system access, customer-facing service commitments, uncapped liability, broad indemnities, non-standard payment holds, irreversible IP assignments, or vendor lock-in.
+Industries Served
+NCI supports organizations across:
+• Financial Services
+• Healthcare
+• Retail & E-commerce
+• Manufacturing
+• Technology
+• Professional Services
+• Logistics & Supply Chain
+These industries often operate under strict operational, contractual, privacy, and compliance requirements.
 
-Preferred contracting posture:
-* obligations should be mutual where both parties control performance or information;
-* vendor obligations should be specific enough to audit and enforce;
-* customer obligations should not excuse vendor failure unless dependency is objective and documented;
-* confidentiality, data protection, security, audit, incident notice, subcontracting, assignment, and termination provisions should survive where needed;
-* changes to scope, price, security commitments, service levels, data processing, or subprocessors should require written approval or documented notice rights;
-* acceptance, renewal, termination, and payment mechanics should avoid indefinite delay or unilateral discretion.
+Product Portfolio
+Northstar AI Copilot
+An enterprise AI assistant platform supporting workflow automation, document intelligence, enterprise search, and AI-assisted productivity.
+Core capabilities
+• Workflow automation
+• Enterprise knowledge retrieval
+• AI-assisted reporting
+• Business process support
+• Decision assistance
 
-Approval expectations:
-* high-risk terms require legal or executive review before signature;
-* business owner approval is required for operational exceptions, service-level exclusions, transition obligations, and implementation dependencies;
-* finance approval is required for non-standard payment timing, prepaid commitments, auto-renewals above budget threshold, audit fees, credits, penalties, or open-ended pass-through costs;
-* security or privacy approval is required for personal data, confidential customer data, production access, AI/data reuse, cross-border transfer, weak incident notice, or missing control commitments.
+Northstar DataHub
+A cloud-native enterprise analytics and integration platform.
+Core capabilities
+• Data integration
+• Real-time analytics
+• Business intelligence
+• API connectivity
+• Enterprise reporting
 
-Escalate when a contract includes uncapped or unusually broad liability, one-way indemnity, unrestricted data use, weak confidentiality survival, no meaningful termination right, assignment without consent, audit rights that expose sensitive operations, security obligations limited to policy discretion, service credits as exclusive remedy for material outages, or customer payment hold rights without objective dispute rules.`,
-    ingestReady: true,
+Northstar Governance Suite
+A governance and compliance platform supporting enterprise risk, audit, policy, and operational oversight.
+Core capabilities
+• Governance workflows
+• Risk reporting
+• Compliance monitoring
+• Audit support
+• Operational dashboards
+
+Global Operations
+NCI operates internationally across:
+• North America
+• Europe
+• Asia-Pacific
+• Middle East
+Its platforms support customers operating in multiple regulatory and contractual jurisdictions.
+
+Business Priorities
+NCI prioritizes:
+1. Customer trust
+2. Security and privacy
+3. Responsible AI adoption
+4. Reliable platform operations
+5. Regulatory alignment
+6. Operational resilience
+7. Sustainable commercial growth
+8. Long-term customer relationships
+
+Risk Appetite
+NCI maintains a moderate-to-low enterprise risk appetite.
+The company generally avoids:
+• unlimited or unpredictable financial exposure
+• unclear operational obligations
+• weak security accountability
+• unmanaged compliance risk
+• ambiguous ownership or governance structures
+Commercial flexibility is encouraged where risks remain measurable and operationally manageable.
+
+Contracting Philosophy
+NCI seeks commercially balanced agreements that clearly allocate responsibilities between parties while supporting long-term strategic relationships.
+The organization favors standardized contractual frameworks with negotiated deviations only where justified by business value and acceptable enterprise risk.
+
+Data & Intellectual Property Principles
+Unless otherwise agreed:
+• customers retain ownership of customer data
+• NCI retains ownership of its platforms, software, and pre-existing intellectual property
+• custom deliverables should include clearly defined ownership and licensing terms
+
+AI Governance Position
+NCI promotes responsible adoption of AI-enabled technologies.
+The organization expects AI-assisted systems to support:
+• appropriate human oversight
+• transparency of AI-enabled functionality
+• protection of customer information
+• governance over AI-generated outputs
+• responsible handling of training data
+• auditability where appropriate
+
+Security Position
+Security is considered a foundational operational requirement across NCI platforms and services.
+The organization emphasizes secure platform operations, resilient infrastructure, incident preparedness, and protection of customer information across enterprise environments.
+
+Vendor & Partnership Approach
+NCI values long-term vendor and customer relationships built on:
+• accountability
+• operational transparency
+• measurable commitments
+• scalable service delivery
+• responsible governance practices
+
+Enterprise Governance Position
+NCI maintains governance practices intended to support:
+• operational consistency
+• regulatory compliance
+• scalable growth
+• enterprise accountability
+• responsible technology adoption
+Technology-assisted review processes may support operational efficiency and consistency, while material legal and commercial decisions remain subject to human review.
+
+Purpose of this Profile
+This document provides organizational and operational context for Northstar Cloud Intelligence.
+Detailed governance standards, negotiation requirements, clause guidance, risk definitions, compliance controls, and contract review policies are maintained in separate enterprise governance documents and should be referenced independently during contract analysis and risk evaluation.`,
+    ingestReady: false,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.company_profile,
       status: "enterprise_ready",
-      ingestReady: true,
+      ingestReady: false,
       chunkPreparation: {
         chunkType: "company_profile",
         domains: ["Legal", "Financial", "Operational", "Compliance", "Technical"],
