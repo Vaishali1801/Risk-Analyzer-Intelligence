@@ -342,11 +342,11 @@ Minor drafting ambiguity or governance refinements may warrant lower review prio
 
 Human Review Requirement
 Technology-assisted contract review improves operational consistency and review efficiency; however, material legal, commercial, compliance, security, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.contract_review_checklist,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "checklist",
         domains: ["Legal", "Financial", "Operational", "Compliance", "Technical"],

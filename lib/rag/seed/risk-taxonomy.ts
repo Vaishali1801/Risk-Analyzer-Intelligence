@@ -351,11 +351,11 @@ Higher-priority findings should receive elevated attention during contract negot
 
 Human Review Requirement
 Technology-assisted contract analysis improves consistency, efficiency, and governance; however, material legal, commercial, regulatory, security, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.risk_taxonomy,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "risk_taxonomy",
         domains: ["Legal", "Financial", "Operational", "Compliance", "Technical"],

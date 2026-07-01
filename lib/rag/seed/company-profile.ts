@@ -129,11 +129,11 @@ Technology-assisted review processes may support operational efficiency and cons
 Purpose of this Profile
 This document provides organizational and operational context for Northstar Cloud Intelligence.
 Detailed governance standards, negotiation requirements, clause guidance, risk definitions, compliance controls, and contract review policies are maintained in separate enterprise governance documents and should be referenced independently during contract analysis and risk evaluation.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.company_profile,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "company_profile",
         domains: ["Legal", "Financial", "Operational", "Compliance", "Technical"],

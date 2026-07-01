@@ -377,11 +377,11 @@ Professional judgment should supplement guidance where appropriate.
 
 Human Review Requirement
 Technology-assisted contract review improves consistency and operational efficiency; however, material legal, commercial, compliance, security, operational, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.clause_library,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "clause_guidance",
         domains: ["Legal", "Compliance", "Technical", "Financial", "Operational"],

@@ -317,11 +317,11 @@ Elevated review attention may be appropriate where agreements involve:
 
 Human Review Requirement
 Technology-assisted review improves operational consistency and governance efficiency; however, material security, privacy, compliance, legal, operational, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.security_compliance_standards,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "standard",
         domains: ["Compliance", "Technical", "Operational", "Legal"],

@@ -390,11 +390,11 @@ Professional judgment should supplement procurement evaluation where appropriate
 
 Human Review Requirement
 Technology-assisted procurement review improves governance consistency and operational efficiency; however, material commercial, operational, legal, compliance, security, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.procurement_policy,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "policy",
         domains: ["Financial", "Operational", "Compliance", "Legal", "Technical"],

@@ -325,11 +325,11 @@ Professional judgment should supplement governance evaluation where appropriate.
 
 Human Review Requirement
 Technology-assisted governance review improves operational consistency and enterprise visibility; however, material legal, privacy, compliance, operational, security, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.privacy_data_governance_standards,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "standard",
         domains: ["Compliance", "Legal", "Technical", "Operational"],

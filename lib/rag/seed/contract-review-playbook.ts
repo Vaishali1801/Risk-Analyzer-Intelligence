@@ -357,11 +357,11 @@ Recommendations should:
 
 Human Review Requirement
 Technology-assisted contract review improves consistency and operational efficiency; however, material legal, commercial, compliance, security, and strategic decisions remain subject to appropriate human review and organizational approval.`,
-    ingestReady: false,
+    ingestReady: true,
     metadata: {
       collectionLabel: KB_COLLECTION_LABELS.contract_review_playbook,
       status: "enterprise_ready",
-      ingestReady: false,
+      ingestReady: true,
       chunkPreparation: {
         chunkType: "playbook",
         domains: ["Legal", "Financial", "Operational", "Compliance"],
