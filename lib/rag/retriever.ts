@@ -5,9 +5,11 @@ import type { KBReference, RetrievalFilters, RetrievalQuery, RetrievalResponse, 
 
 const DEFAULT_TOP_K = 6;
 const MAX_TOP_K = 12;
-const DEFAULT_MIN_SIMILARITY = 0.72;
+const DEFAULT_MIN_SIMILARITY = 0.5;
 const MIN_VECTOR_RESULTS_BEFORE_FALLBACK = 2;
 const MAX_LOW_CONFIDENCE_VECTOR_RESULTS = 2;
+
+type RetrievalSource = "vector" | "low_confidence_vector" | "keyword";
 
 type KnowledgeChunkRow = {
   chunk_id: string;
@@ -314,7 +316,7 @@ async function searchKeywordFallback(
     appendFilterValues([keywordSearchText], filterSql.values, 0).concat(limit)
   );
 
-  return result.rows.map((row) => toRetrievalResult(row, "keyword_fallback"));
+  return result.rows.map((row) => toRetrievalResult(row, "keyword"));
 }
 
 function parseMetadata(value: unknown): Record<string, unknown> {
@@ -353,15 +355,19 @@ function requireCollection(value: string): KBCollection {
   return value;
 }
 
-function toRetrievalResult(row: KnowledgeChunkRow, retrievalMethod: "vector" | "keyword_fallback"): RetrievalResult {
+function toRetrievalResult(row: KnowledgeChunkRow, retrievalSource: RetrievalSource): RetrievalResult {
   const metadata = parseMetadata(row.metadata);
   const tags = parseStringArray(row.tags);
   const collection = requireCollection(row.collection);
-  const similarityScore = retrievalMethod === "vector" ? Number(row.similarity_score ?? 0) : 0;
+  const similarityScore = retrievalSource === "keyword" ? 0 : Number(row.similarity_score ?? 0);
   const sourceType = (metadata.sourceType ?? row.source_type) as KBSeedSourceType;
   const version = String(metadata.version ?? metadata.documentVersion ?? row.version);
   const retrievalTags = parseStringArray(metadata.retrievalTags);
   const governanceArea = typeof metadata.governanceArea === "string" ? metadata.governanceArea : undefined;
+  const resultMetadata = {
+    ...metadata,
+    retrievalSource
+  };
 
   const kbReference: KBReference = {
     documentId: row.document_id,
@@ -374,9 +380,8 @@ function toRetrievalResult(row: KnowledgeChunkRow, retrievalMethod: "vector" | "
     retrievalTags,
     similarityScore,
     metadata: {
-      ...metadata,
-      retrievalMethod,
-      keywordRank: retrievalMethod === "keyword_fallback" ? Number(row.keyword_rank ?? 0) : undefined
+      ...resultMetadata,
+      keywordRank: retrievalSource === "keyword" ? Number(row.keyword_rank ?? 0) : undefined
     }
   };
 
@@ -389,8 +394,25 @@ function toRetrievalResult(row: KnowledgeChunkRow, retrievalMethod: "vector" | "
     similarityScore,
     tokenEstimate: Number(row.token_estimate ?? 0),
     tags,
-    metadata,
+    metadata: resultMetadata,
     kbReference
+  };
+}
+
+function withRetrievalSource(result: RetrievalResult, retrievalSource: RetrievalSource): RetrievalResult {
+  return {
+    ...result,
+    metadata: {
+      ...result.metadata,
+      retrievalSource
+    },
+    kbReference: {
+      ...result.kbReference,
+      metadata: {
+        ...(result.kbReference.metadata ?? {}),
+        retrievalSource
+      }
+    }
   };
 }
 
@@ -416,7 +438,7 @@ function selectVectorResults(candidates: RetrievalResult[], minSimilarity: numbe
   const aboveThreshold = candidates.filter((result) => result.similarityScore >= minSimilarity);
   if (aboveThreshold.length >= MIN_VECTOR_RESULTS_BEFORE_FALLBACK) {
     return {
-      results: aboveThreshold,
+      results: aboveThreshold.map((result) => withRetrievalSource(result, "vector")),
       belowThresholdAdded: 0,
       thresholdMatchCount: aboveThreshold.length
     };
@@ -427,7 +449,10 @@ function selectVectorResults(candidates: RetrievalResult[], minSimilarity: numbe
     .slice(0, MAX_LOW_CONFIDENCE_VECTOR_RESULTS);
 
   return {
-    results: [...aboveThreshold, ...belowThreshold],
+    results: [
+      ...aboveThreshold.map((result) => withRetrievalSource(result, "vector")),
+      ...belowThreshold.map((result) => withRetrievalSource(result, "low_confidence_vector"))
+    ],
     belowThresholdAdded: belowThreshold.length,
     thresholdMatchCount: aboveThreshold.length
   };

@@ -71,6 +71,10 @@ function formatTags(tags) {
   return Array.isArray(tags) && tags.length > 0 ? tags.join(", ") : "(none)";
 }
 
+function getRetrievalSource(result) {
+  return result.metadata?.retrievalSource ?? result.kbReference?.metadata?.retrievalSource ?? "(unknown)";
+}
+
 async function main() {
   requireEnv("RAG_DATABASE_URL");
   requireEnv("OPENAI_API_KEY");
@@ -87,7 +91,6 @@ async function main() {
       queryText,
       intent: "live_smoke_test",
       topK: 6,
-      minSimilarity: 0.72,
       filters: {}
     });
 
@@ -98,8 +101,10 @@ async function main() {
 
     response.results.slice(0, 5).forEach((result, index) => {
       const reference = result.kbReference;
+      const retrievalSource = getRetrievalSource(result);
       console.log(`${index + 1}. ${result.title}`);
       console.log(`   collection: ${result.collection}`);
+      console.log(`   source: ${retrievalSource}`);
       console.log(`   similarityScore: ${result.similarityScore.toFixed(4)}`);
       console.log(`   governanceArea: ${reference.governanceArea ?? "(none)"}`);
       console.log(`   retrievalTags: ${formatTags(reference.retrievalTags)}`);

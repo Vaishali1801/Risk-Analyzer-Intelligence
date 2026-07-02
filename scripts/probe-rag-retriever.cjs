@@ -32,6 +32,10 @@ function assertNotMatches(value, pattern, message) {
   }
 }
 
+function getRetrievalSource(result) {
+  return result.metadata?.retrievalSource ?? result.kbReference?.metadata?.retrievalSource ?? "(unknown)";
+}
+
 function collectSourceFiles(paths) {
   const files = [];
 
@@ -285,7 +289,7 @@ async function main() {
   assertIncludes(retrieverSource, "QUERY_EMBEDDING_DIMENSIONS", "RAG retriever: embedding dimensions are enforced");
   assertIncludes(retrieverSource, "DEFAULT_TOP_K = 6", "RAG retriever: default topK is 6");
   assertIncludes(retrieverSource, "MAX_TOP_K = 12", "RAG retriever: max topK is 12");
-  assertIncludes(retrieverSource, "DEFAULT_MIN_SIMILARITY = 0.72", "RAG retriever: default min similarity is 0.72");
+  assertIncludes(retrieverSource, "DEFAULT_MIN_SIMILARITY = 0.5", "RAG retriever: default min similarity is 0.50");
   assertIncludes(retrieverSource, "<=>", "RAG retriever: pgvector cosine search is used");
   assertIncludes(retrieverSource, "plainto_tsquery", "RAG retriever: keyword fallback is lightweight SQL text search");
   assertNotMatches(retrieverSource, /sk-[A-Za-z0-9_-]{12,}/, "RAG retriever: no OpenAI secret is hard-coded");
@@ -333,7 +337,7 @@ async function main() {
     assertTruthy(response.results.length === response.references.length, "RAG retriever: references mirror returned results");
     console.log(`Query: ${queryText}`);
     response.results.slice(0, 3).forEach((result) => {
-      console.log(`- ${result.title} (${result.similarityScore.toFixed(3)})`);
+      console.log(`- ${result.title} (${result.similarityScore.toFixed(3)}, ${getRetrievalSource(result)})`);
     });
   }
 
@@ -349,6 +353,14 @@ async function main() {
   assertTruthy(
     fallbackResponse.results.some((result) => result.chunkId === "liability-keyword-1"),
     "RAG retriever: keyword fallback results merge into vector results"
+  );
+  assertTruthy(
+    fallbackResponse.results.some((result) => result.metadata?.retrievalSource === "keyword"),
+    "RAG retriever: keyword fallback results are labeled as keyword"
+  );
+  assertTruthy(
+    fallbackResponse.results.some((result) => result.metadata?.retrievalSource === "low_confidence_vector"),
+    "RAG retriever: below-threshold vector results are labeled as low_confidence_vector"
   );
   assertTruthy(
     new Set(fallbackResponse.results.map((result) => result.chunkId)).size === fallbackResponse.results.length,
