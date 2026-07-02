@@ -444,6 +444,10 @@ export async function retrieveKnowledge(query: RetrievalQuery): Promise<Retrieva
   try {
     const vectorCandidates = await searchVectorCandidates(client, queryEmbedding.embedding, normalizedQuery.filters, normalizedQuery.topK);
     const vectorSelection = selectVectorResults(vectorCandidates, normalizedQuery.minSimilarity);
+    // Keyword fallback is based on strong vector evidence only. If fewer than
+    // two vector candidates meet minSimilarity, add up to two low-confidence
+    // vector candidates from the bounded candidate set and supplement with
+    // keyword fallback results; do not treat low-confidence matches as strong.
     const shouldRunKeywordFallback = vectorSelection.thresholdMatchCount < MIN_VECTOR_RESULTS_BEFORE_FALLBACK;
     const keywordResults = shouldRunKeywordFallback
       ? await searchKeywordFallback(client, normalizedQuery.queryText, normalizedQuery.filters, normalizedQuery.topK)
