@@ -87,7 +87,6 @@ assertNotMatches(embedSource, /\bretrieveKnowledge\b|\bretrieveRagContext\b/i, "
 assertNotMatches(embedSource, /console\.(log|warn|error)/, "RAG infra: embedding helper does not print secrets");
 
 [
-  "lib/rag/retriever.ts",
   "lib/rag/router.ts",
   "lib/rag/context-builder.ts"
 ].forEach((path) => {

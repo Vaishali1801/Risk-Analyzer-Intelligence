@@ -135,7 +135,6 @@ assertTruthy(typesSource.indexOf("export type RetrievalResult") < typesSource.in
 });
 
 [
-  "lib/rag/retriever.ts",
   "lib/rag/router.ts",
   "lib/rag/context-builder.ts"
 ].forEach((path) => {

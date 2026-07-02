@@ -16,6 +16,7 @@
     "probe:rag-types": "node scripts/probe-rag-types.cjs",
     "probe:rag-infra": "node scripts/probe-rag-infra.cjs",
     "probe:rag-sql": "node scripts/probe-rag-sql.cjs",
+    "probe:rag-retriever": "node scripts/probe-rag-retriever.cjs",
     "ingest:knowledge": "node scripts/ingest-knowledge.cjs",
     "ingest:knowledge:dry-run": "node scripts/ingest-knowledge.cjs --dry-run"
   },
