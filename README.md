@@ -1,107 +1,259 @@
-# Contract Risk Analyzer
+# Risk Analyzer Intelligence
 
-Portfolio-grade AI web application for enterprise contract review. It analyzes PDF/DOCX contracts, extracts structured risks, applies deterministic decision logic, and exports an executive-ready PDF report.
+## Enterprise AI Platform for Explainable Contract Intelligence
 
-## What It Demonstrates
+Contract Risk Analyzer Intelligence is an enterprise AI platform designed to automate contract review through structured risk detection, clause-gap analysis, grounded recommendations, and explainable legal insights.
 
-- Premium enterprise SaaS landing page and analysis workflow
-- Real PDF/DOCX text extraction through a server API route
-- Controlled GenAI pipeline using OpenAI only, not agents
-- JSON-only prompting, Zod validation, one retry, and safe fallback
-- Rule-based Accept / Renegotiate / Reject decision logic outside the model
-- Dashboard, filterable risk table, clause deep dive, editable safer wording, and PDF report export
-- Demo mode that works without an API key
+---
 
-## Tech Stack
+# Product Overview
 
-- Next.js 14 App Router
-- TypeScript
-- Tailwind CSS
-- shadcn/ui-style local components
-- React Hook Form + Zod
-- OpenAI Node SDK
-- Recharts
-- pdf-parse + mammoth
-- jsPDF
+## Business Problem
 
-## Setup
+Enterprise organizations review high volumes of contracts across legal, procurement, security, compliance, finance, and business teams under strict timelines.
 
-Install Node.js 20+ first, then run:
+Manual contract review is highly dependent on reviewer expertise, resulting in:
+- inconsistent risk identification
+- lengthy review cycles
+- limited organizational knowledge reuse
 
-```bash
-npm install
-cp .env.example .env.local
-npm run dev
+Failure to identify contractual risks can expose organizations to:
+
+- Financial loss and revenue leakage
+- Regulatory and compliance violations
+- Legal liabilities
+- Operational disruptions
+- Reputational damage
+
+Traditional GenAI contract review tools introduce additional challenges:
+
+- Hallucinated obligations
+- Unsupported legal recommendations
+- Limited explainability
+- Lack of evidence grounding
+- Non-deterministic outputs
+- Weak governance and auditability
+
+---
+
+# Solution
+
+The platform augments legal reviewers by combining LLMs with deterministic processing and enterprise AI governance to deliver explainable, evidence-backed contract intelligence.
+
+## Key Capabilities
+
+- Automated PDF/DOCX contract ingestion
+- Deterministic clause segmentation
+- Clause-aware risk and gap analysis
+- Evidence-linked AI findings
+- Grounded legal recommendations
+- Runtime schema validation
+- Deterministic post-processing
+- Human-in-the-loop review workflow
+- Executive-ready PDF report generation
+
+## Core Design Principles
+
+- Explainable AI
+- Grounded reasoning
+- Enterprise governance
+- Traceability
+- Human oversight
+- Reliability
+- Cost-aware orchestration
+
+---
+
+# Why This Architecture?
+
+This project explores how enterprise AI systems should be designed for production environments, where explainability, governance, reliability, and auditability are as important as model intelligence.
+
+The objective is to demonstrate how modern LLM systems can be combined with deterministic software engineering to support high-stakes enterprise decision making.
+
+---
+
+# High-Level Architecture
+
+```text
+Contract Upload
+        │
+        ▼
+PDF / DOCX Parsing & Cleaning
+        │
+        ▼
+Deterministic Clause Segmentation
+        │
+        ▼
+Clause & Domain Signal Extraction
+        │
+        ▼
+Evidence Retrieval & Knowledge Routing (RAG)
+        │
+        ▼
+Structured LLM Risk Analysis
+        │
+        ▼
+Schema Validation
+        │
+        ▼
+Deterministic Normalization
+        │
+        ▼
+Runtime Quality Gate
+        │
+        ▼
+Observability & Tracing
+        │
+        ▼
+Human-in-the-Loop Review
+        │
+        ▼
+App Output + Executive PDF Report
 ```
 
-PowerShell equivalent:
+---
 
-```powershell
-npm install
-Copy-Item .env.example .env.local
-npm run dev
-```
+# Technical Architecture
 
-Add your OpenAI key in `.env.local`:
+## AI & LLM Layer
 
-```bash
-OPENAI_API_KEY=sk-your-openai-api-key
-OPENAI_MODEL=gpt-4o-mini
-```
+- Structured GPT-based contract analysis
+- JSON-only prompting strategy
+- Schema-governed AI outputs
+- Deterministic post-processing
+- Retry-safe structured generation
+- Controlled inference configuration
 
-Optional RAG ingestion infrastructure variables for the script-only admin path:
+---
 
-```bash
-RAG_DATABASE_URL=postgresql://user:password@host:5432/database
-OPENAI_API_KEY=sk-your-openai-api-key
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-```
+## Knowledge & Retrieval Layer (Hybrid RAG)
 
-The RAG ingestion script defaults to dry-run mode and does not connect to Postgres or call OpenAI unless run with `--live` after seed documents are explicitly approved for ingestion.
+- PostgreSQL + pgvector knowledge store
+- Enterprise clause library retrieval
+- Organizational policy retrieval
+- Compliance and regulatory standards retrieval
+- Metadata-filtered semantic search
+- Domain-aware retrieval routing
 
-Open `http://localhost:3000`.
+---
 
-## Validation Commands
+# Technology Stack
 
-```bash
-npm run typecheck
-npm run lint
-npm run build
-npm run probe:knowledge-seed
-npm run probe:knowledge-ingest-ready
-npm run probe:rag-sql
-npm run probe:knowledge-ingest-script
-```
+- Frontend: Next.js 14, React, TypeScript, Tailwind
+- AI Layer: OpenAI API, structured JSON prompting
+- Validation: Zod schemas
+- Parsing: pdf-parse, mammoth
+- Vector Retrieval: PostgreSQL + pgvector (in progress)
+- Observability: custom runtime tracing and quality metrics
+- Deployment: Vercel
 
-## Product Flow
+---
 
-1. Open the landing page.
-2. Upload a PDF/DOCX contract or choose demo mode.
-3. Server extracts and preprocesses text.
-4. Long documents are chunked before prompting.
-5. OpenAI returns JSON-only structured analysis.
-6. Zod validates output. If invalid, the system retries once.
-7. Deterministic decision logic recalculates final recommendation.
-8. UI renders dashboard, risk table, deep dive, and report preview.
-9. User downloads the final PDF report.
+# Reliability & Governance
 
-## Architecture
+- Schema validation
+- Deterministic normalization
+- Runtime quality gates
+- Hallucination-risk detection
+- Unsupported finding detection
+- Grounding validation
+- Conservative fallback handling
+- Human-in-the-loop approval workflow
 
-- `app/api/analyze/route.ts`: upload endpoint and end-to-end orchestration
-- `lib/parsers`: PDF/DOCX extraction and preprocessing
-- `lib/ai/analyzeContract.ts`: chunking, prompt construction, OpenAI call, JSON repair, validation
-- `lib/ai/decision.ts`: explainable rule-based recommendation logic
-- `schemas/contract-analysis.ts`: Zod schema for all rendered AI output
-- `hooks/use-contract-analysis.ts`: client workflow state for uploads, pasted text, demo mode, and homepage handoff
-- `components`: landing page, upload flow, dashboard, risk table, deep dive, and report
-- `data/demo-contract.ts`: authoritative demo contract text and fixture analysis
-- `app/api/demo/route.ts`: fixture-backed demo analysis endpoint for the homepage flow
-- `app/api/demo/document/route.ts`: authoritative demo document endpoint used by "View demo doc"
+---
 
-## Reliability Notes
+# Observability
 
-- Uploaded contracts require `OPENAI_API_KEY`.
-- Demo mode uses a centralized fixture-backed API route that returns the same contract shape as live analysis.
-- The UI never renders unvalidated OpenAI output.
-- Unsupported, empty, oversized, and low-text files return user-safe errors.
-- If model output cannot be validated after retry, the API returns a conservative validated fallback instead of malformed content.
+- End-to-end workflow tracing
+- Stage-level execution diagnostics
+- Token and inference cost monitoring
+- Model latency tracking
+- Grounding diagnostics
+- Runtime quality metrics
+
+---
+
+# Enterprise AI Design Principles
+
+The platform is designed around enterprise AI requirements rather than chatbot interactions.
+
+| Design Principle     | Implementation |
+|---|---|
+| Explainability       | Clause-level evidence and reasoning |
+| Grounding            | Evidence-linked AI outputs |
+| Governance           | Human-in-the-loop review |
+| Traceability         | End-to-end workflow tracing |
+| Reliability          | Deterministic validation and normalization |
+| Auditability         | Structured outputs and runtime logging |
+| Enterprise Readiness | Modular architecture with knowledge retrieval |
+| Cost Efficiency      | Latency and token-aware orchestration |
+
+---
+
+# Evaluation Framework
+
+The platform includes deterministic runtime evaluation to improve AI reliability and observability.
+
+## Grounding Metrics
+
+- Unsupported finding rate
+- Grounding failure rate
+- High-risk grounding rate
+- Missing evidence rate
+- Invalid clause reference rate
+
+
+---
+
+## Operational Metrics
+
+- End-to-end latency
+- Stage-level execution tracing
+- Token consumption
+- Estimated inference cost
+- Retry tracking
+- Prompt size monitoring
+
+---
+
+# AI Guardrails
+
+The platform includes multiple deterministic guardrails to reduce hallucinations, unsupported recommendations, unreliable outputs, and governance risks in enterprise AI workflows.
+
+## Guardrails Implemented
+
+- JSON-schema-governed AI outputs
+- Runtime validation and normalization
+- Clause-level evidence grounding
+- Unsupported finding detection
+- Placeholder-content detection
+- Runtime quality gates
+- Conservative fallback handling
+- Human-in-the-loop review workflow
+- Structured observability and execution tracing
+- Deterministic post-processing outside the LLM
+- Safe retry handling for malformed structured outputs
+
+---
+
+# Product Thinking
+
+This project was built to explore how enterprise AI systems should be designed beyond prompt engineering.
+
+Rather than optimizing only model outputs, the focus is on creating trustworthy AI products through:
+- structured workflows
+- contextual knowledge retrieval
+- explainability
+- governance
+- observability
+- human oversight
+
+The architecture reflects the design decisions an AI Product Manager must make when balancing:
+- business value
+- reliability
+- compliance
+- latency
+- cost
+- user trust
+
+in production AI systems.
