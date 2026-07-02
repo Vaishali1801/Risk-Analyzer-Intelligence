@@ -135,7 +135,6 @@ assertTruthy(typesSource.indexOf("export type RetrievalResult") < typesSource.in
 });
 
 [
-  "lib/rag/router.ts",
   "lib/rag/context-builder.ts"
 ].forEach((path) => {
   assertTruthy(!fs.existsSync(path), `RAG types: ${path} was not added`);

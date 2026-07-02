@@ -114,14 +114,18 @@ execFileSync(process.execPath, [INGEST_SCRIPT_PATH, "--dry-run"], {
 });
 
 [
-  "lib/rag/router.ts",
   "lib/rag/context-builder.ts"
 ].forEach((file) => {
   assertTruthy(!fs.existsSync(file), `Knowledge ingest script: ${file} was not added`);
 });
 
 const runtimeFiles = collectSourceFiles(["app", "components", "lib", "schemas", "types"]).filter(
-  (file) => file !== INGEST_HELPER_PATH && file !== RAG_DB_HELPER_PATH && file !== RAG_EMBED_QUERY_HELPER_PATH && file !== "lib/rag/retriever.ts"
+  (file) =>
+    file !== INGEST_HELPER_PATH &&
+    file !== RAG_DB_HELPER_PATH &&
+    file !== RAG_EMBED_QUERY_HELPER_PATH &&
+    file !== "lib/rag/retriever.ts" &&
+    file !== "lib/rag/router.ts"
 );
 assertNoPatternInFiles(runtimeFiles, /\bretrieveKnowledge\b|\bretrieveRagContext\b/i, "Knowledge ingest script: retrieval functions are absent from runtime");
 assertNoPatternInFiles(

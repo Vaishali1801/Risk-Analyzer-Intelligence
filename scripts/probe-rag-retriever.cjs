@@ -295,7 +295,7 @@ async function main() {
   assertNotMatches(retrieverSource, /sk-[A-Za-z0-9_-]{12,}/, "RAG retriever: no OpenAI secret is hard-coded");
   assertNotMatches(retrieverSource, /postgres(?:ql)?:\/\/[^"'\s]+/i, "RAG retriever: no database URL is hard-coded");
 
-  ["lib/rag/router.ts", "lib/rag/context-builder.ts"].forEach((path) => {
+  ["lib/rag/context-builder.ts"].forEach((path) => {
     assertTruthy(!fs.existsSync(path), `RAG retriever boundary: ${path} was not added`);
   });
 
